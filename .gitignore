@@ -1,0 +1,38 @@
+# Node / Client
+client/node_modules/
+client/dist/
+client/dist-ssr/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Go / Server
+server/tmp/
+server/data/
+server/build-errors.log
+server/serverhub
+server/main.exe
+server/main
+server/coverage.out
+server/coverage.html
+server/.air.toml
+
+# Environment variables
+.env
+.env.local
+*.local
+client/.env
+server/.env
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
