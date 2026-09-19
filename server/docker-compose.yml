@@ -20,7 +20,7 @@ services:
       FRONTEND_URL: ${FRONTEND_URL:-https://imagesoft.in/server-hub}
       GITHUB_WEBHOOK_SECRET: ${GITHUB_WEBHOOK_SECRET:-}
       HEALTH_CHECK_INTERVAL_SEC: "60"
-      COOKIE_SECURE: "true"
+      COOKIE_SECURE: "false"
       SCAN_ROOTS: ${SCAN_ROOTS:-/srv/apps}
       BACKUP_DIR: /app/data/backups
       ALERT_CPU_PCT: ${ALERT_CPU_PCT:-85}
