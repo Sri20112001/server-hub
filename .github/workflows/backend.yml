@@ -78,4 +78,4 @@ jobs:
           docker compose up -d
           docker image prune -f
           sleep 8
-          curl -s -f http://localhost:4000/api/health || echo "No health endpoint found or server taking longer to start"
+          curl -s -f http://localhost:4000/health || echo "No health endpoint found or server taking longer to start"
