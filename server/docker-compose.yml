@@ -1,6 +1,8 @@
 services:
   serverhub:
-    build: .
+    build:
+      context: ..
+      dockerfile: server/Dockerfile
     container_name: serverhub
     restart: unless-stopped
     ports:
