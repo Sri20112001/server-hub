@@ -107,3 +107,13 @@ a { color: inherit; }
     background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.07) 50%, transparent 100%);
   }
 }
+
+@layer base {
+  body {
+    background-image: url("./assets/tech-grid.png");
+    background-repeat: repeat;
+    background-attachment: fixed;
+    /* Optional: blend mode to make it subtle */
+    background-blend-mode: overlay;
+  }
+}
