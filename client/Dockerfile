@@ -17,6 +17,10 @@ RUN echo 'server { \
         index index.html; \
         try_files $uri $uri/ /server-hub/index.html; \
     } \
+    location = /server-hub/index.html { \
+        root /usr/share/nginx/html; \
+        add_header Cache-Control "no-store, no-cache, must-revalidate"; \
+    } \
     # Redirect root to /server-hub/ \
     location = / { \
         return 301 /server-hub/; \
