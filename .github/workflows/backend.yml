@@ -53,10 +53,9 @@ jobs:
           cd client
           npm ci
           npm run build
-          # Use sudo to copy files to Apache's document root
-          sudo mkdir -p /var/www/html/server-hub
-          sudo cp -r dist/* /var/www/html/server-hub/
-          sudo chown -R www-data:www-data /var/www/html/server-hub || true
+          # Copy files directly to Apache's document root (no sudo needed once permissions are fixed)
+          mkdir -p /var/www/html/server-hub
+          cp -r dist/* /var/www/html/server-hub/
 
       - name: Build and Deploy Backend
         run: |
