@@ -74,7 +74,7 @@ function StatShell({
           : undefined
       }
     >
-      <div className="flex items-start justify-between gap-3 mb-4 mb-2">
+      <div className="flex items-start justify-between gap-3 mb-4">
         <Kicker>{kicker}</Kicker>
         <span className="text-muted dark:text-fog flex">{icon}</span>
       </div>
@@ -517,13 +517,13 @@ export function DashboardPage({ setOnline }: { setOnline: (v: boolean) => void }
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <button
-            className="inline-flex items-center gap-2 rounded-input text-[13px] font-medium px-4 py-2 cursor-pointer border border-transparent whitespace-nowrap transition-colors duration-150 disabled:opacity-55 disabled:cursor-not-allowed bg-white dark:bg-panel border-line dark:border-edge text-ink dark:text-bone hover:bg-paper dark:hover:bg-emboss px-3 py-1.5 text-xs"
+            className="inline-flex items-center gap-2 rounded-input font-medium cursor-pointer border border-transparent whitespace-nowrap transition-colors duration-150 disabled:opacity-55 disabled:cursor-not-allowed bg-white dark:bg-panel border-line dark:border-edge text-ink dark:text-bone hover:bg-paper dark:hover:bg-emboss px-3 py-1.5 text-xs"
             onClick={() => setShowScan(true)}
           >
             <Radar size={13} /> Scan
           </button>
           <button
-            className="inline-flex items-center gap-2 rounded-input text-[13px] font-medium px-4 py-2 cursor-pointer border border-transparent whitespace-nowrap transition-colors duration-150 disabled:opacity-55 disabled:cursor-not-allowed bg-white dark:bg-panel border-line dark:border-edge text-ink dark:text-bone hover:bg-paper dark:hover:bg-emboss px-3 py-1.5 text-xs"
+            className="inline-flex items-center gap-2 rounded-input font-medium cursor-pointer border border-transparent whitespace-nowrap transition-colors duration-150 disabled:opacity-55 disabled:cursor-not-allowed bg-white dark:bg-panel border-line dark:border-edge text-ink dark:text-bone hover:bg-paper dark:hover:bg-emboss px-3 py-1.5 text-xs"
             onClick={() => setShowCreate(true)}
           >
             <Plus size={13} /> New Ship
@@ -612,7 +612,7 @@ export function DashboardPage({ setOnline }: { setOnline: (v: boolean) => void }
             Showing {data.recentDeployments.length} of {data.counts.deployments} launches logged
           </span>
           <button
-            className="inline-flex items-center gap-2 rounded-input text-[13px] font-medium px-4 py-2 cursor-pointer border border-transparent whitespace-nowrap transition-colors duration-150 disabled:opacity-55 disabled:cursor-not-allowed bg-white dark:bg-panel border-line dark:border-edge text-ink dark:text-bone hover:bg-paper dark:hover:bg-emboss px-3 py-1.5 text-xs"
+            className="inline-flex items-center gap-2 rounded-input font-medium cursor-pointer border border-transparent whitespace-nowrap transition-colors duration-150 disabled:opacity-55 disabled:cursor-not-allowed bg-white dark:bg-panel border-line dark:border-edge text-ink dark:text-bone hover:bg-paper dark:hover:bg-emboss px-3 py-1.5 text-xs"
             onClick={() => setConfirmWipe(true)}
             title="Wipe deployment history"
           >
