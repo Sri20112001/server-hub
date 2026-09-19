@@ -4,7 +4,7 @@ WORKDIR /app
 COPY client/package*.json ./
 RUN npm ci
 COPY client/ .
-ARG VITE_API_URL=/server-hub/api
+ARG VITE_API_URL=""
 ENV VITE_API_URL=$VITE_API_URL
 RUN npm run build
 
