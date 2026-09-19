@@ -13,7 +13,7 @@ COPY --from=build /app/dist /usr/share/nginx/html/server-hub
 RUN echo 'server { \
     listen 80; \
     location /server-hub/ { \
-        alias /usr/share/nginx/html/server-hub/; \
+        root /usr/share/nginx/html; \
         index index.html; \
         try_files $uri $uri/ /server-hub/index.html; \
     } \
