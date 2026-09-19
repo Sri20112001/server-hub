@@ -4,6 +4,8 @@ WORKDIR /app
 COPY client/package*.json ./
 RUN npm ci
 COPY client/ .
+ARG VITE_API_URL=/server-hub/api
+ENV VITE_API_URL=$VITE_API_URL
 RUN npm run build
 
 # 2. Build the Go Backend
