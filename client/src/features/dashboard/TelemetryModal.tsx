@@ -7,7 +7,7 @@ import type {
   StorageInfo,
   TelemetryPoint,
 } from "../../lib/types";
-import { fmtGBFromMB, fmtRate, fmtUptime } from "../../lib/format";
+import { fmtRate, fmtUptime } from "../../lib/format";
 import { Kicker, Modal } from "../../components/ui";
 
 const RANGES = ["15m", "1h", "6h", "24h"] as const;
