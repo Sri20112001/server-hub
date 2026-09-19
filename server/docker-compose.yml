@@ -1,11 +1,12 @@
 services:
-
   serverhub:
-    build: .
+    build:
+      context: ..
+      dockerfile: server/Dockerfile
     container_name: serverhub
     restart: unless-stopped
     ports:
-      - "127.0.0.1:4000:4000"
+      - "4000:4000"
     volumes:
       - ./data:/app/data
       - /var/run/docker.sock:/var/run/docker.sock:ro

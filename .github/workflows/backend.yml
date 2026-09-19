@@ -42,22 +42,7 @@ jobs:
         run: docker run --rm -v $PWD:/app alpine sh -c "chown -R $(id -u):$(id -g) /app" || true
       - uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
-      - name: Build and Deploy Frontend
-        run: |
-          set -e
-          cd client
-          npm ci
-          npm run build
-          # Copy files directly to Apache's document root (no sudo needed once permissions are fixed)
-          mkdir -p /var/www/html/server-hub
-          cp -r dist/* /var/www/html/server-hub/
-
-      - name: Build and Deploy Backend
+      - name: Build and Deploy
         run: |
           set -e
           cd server

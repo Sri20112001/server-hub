@@ -167,6 +167,29 @@ func main() {
 	whH := &handlers.WebhookHandler{DB: db, Cfg: cfg, Broker: broker}
 	r.POST("/server-hub/api/webhooks/github", whH.GitHub)
 
+	// Serve frontend if FRONTEND_DIR is set (e.g. /app/client/dist)
+	if frontendDir := os.Getenv("FRONTEND_DIR"); frontendDir != "" {
+		log.Printf("Serving static frontend from %s", frontendDir)
+		// Map Vite's base path /server-hub/assets to the physical assets folder
+		r.Static("/server-hub/assets", filepath.Join(frontendDir, "assets"))
+		r.StaticFile("/server-hub/favicon.png", filepath.Join(frontendDir, "favicon.png"))
+		
+		// All other routes fallback to index.html (SPA)
+		r.NoRoute(func(c *gin.Context) {
+			// Only fallback to index.html if it's under /server-hub or / (to prevent shadowing API)
+			if strings.HasPrefix(c.Request.URL.Path, "/server-hub/") || c.Request.URL.Path == "/server-hub" || c.Request.URL.Path == "/" {
+				c.File(filepath.Join(frontendDir, "index.html"))
+			} else {
+				c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
+			}
+		})
+	} else {
+		// Default NoRoute if frontend isn't bundled
+		r.NoRoute(func(c *gin.Context) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
+		})
+	}
+
 	log.Printf("ServerHub API listening on :%s (db=%s docker=%v)", cfg.Port, cfg.DBPath, dockerClient.Available())
 	log.Printf("CORS allowed origins: %v", origins)
 	if err := r.Run(":" + cfg.Port); err != nil {
