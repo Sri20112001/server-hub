@@ -1,4 +1,3 @@
-import { ExternalLink, Check, Copy, Activity } from "lucide-react";
 import emptyDockImg from "../assets/empty-docking-bay.png";
 import { useEffect, type ReactNode } from "react";
 import { fleetLabel, toFleetStatus, type FleetStatus } from "../lib/types";
