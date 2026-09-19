@@ -23,10 +23,11 @@ export function AppRouter() {
     [
       { path: "/login", element: <LoginPage /> },
       {
+        path: "/",
         element: <AppShell online={online} />,
         children: [
           {
-            path: "/",
+            index: true,
             element: (
               <Protected>
                 <DashboardPage setOnline={setOnline} />
