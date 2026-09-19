@@ -42,7 +42,18 @@ jobs:
         run: docker run --rm -v $PWD:/app alpine sh -c "chown -R $(id -u):$(id -g) /app" || true
       - uses: actions/checkout@v4
 
-      - name: Build and Deploy
+      - name: Build and Deploy Frontend
+        run: |
+          set -e
+          cd client
+          npm ci
+          npm run build
+          # Use sudo to copy files to Apache's document root
+          sudo mkdir -p /var/www/html/server-hub
+          sudo cp -r dist/* /var/www/html/server-hub/
+          sudo chown -R www-data:www-data /var/www/html/server-hub || true
+
+      - name: Build and Deploy Backend
         run: |
           set -e
           cd server
