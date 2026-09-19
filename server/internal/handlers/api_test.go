@@ -229,6 +229,7 @@ func TestSecretsMetadataOnlyAndRotate(t *testing.T) {
 }
 
 func TestContainerStopRequiresConfirm(t *testing.T) {
+	t.Setenv("DOCKER_HOST", "tcp://127.0.0.1:12345") // Force docker down for test
 	_, _, r := testSetup(t)
 	cookies := login(t, r)
 	// no confirm → 400 (gate works even without docker)

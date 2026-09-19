@@ -63,6 +63,7 @@ func TestGuessType(t *testing.T) {
 }
 
 func TestDiscoveryWithoutDocker(t *testing.T) {
+	t.Setenv("DOCKER_HOST", "tcp://127.0.0.1:12345") // Force docker down for test
 	r, _ := discoverySetup(t)
 	// login
 	body := `{"username":"admin","password":"testpass123"}`
