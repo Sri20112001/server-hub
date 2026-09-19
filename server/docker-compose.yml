@@ -1,4 +1,14 @@
 services:
+  frontend:
+    build:
+      context: ../client
+      args:
+        VITE_API_URL: ${VITE_API_URL:-http://imagesoft.in:4000}
+    container_name: serverhub-frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+
   serverhub:
     build: .
     container_name: serverhub
