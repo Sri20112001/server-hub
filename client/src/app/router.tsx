@@ -21,32 +21,41 @@ export function AppRouter() {
   const [online, setOnline] = useState(true);
   const router = createBrowserRouter(
     [
-      { path: "/login", element: <LoginPage /> },
       {
         path: "/",
-        element: <AppShell online={online} />,
+        errorElement: <NotFoundPage />,
         children: [
           {
-            index: true,
-            element: (
-              <Protected>
-                <DashboardPage setOnline={setOnline} />
-              </Protected>
-            ),
+            path: "login",
+            element: <LoginPage />,
           },
           {
-            path: "/settings",
-            element: (
-              <Protected>
-                <SettingsPage setOnline={setOnline} />
-              </Protected>
-            ),
+            path: "",
+            element: <AppShell online={online} />,
+            children: [
+              {
+                index: true,
+                element: (
+                  <Protected>
+                    <DashboardPage setOnline={setOnline} />
+                  </Protected>
+                ),
+              },
+              {
+                path: "settings",
+                element: (
+                  <Protected>
+                    <SettingsPage setOnline={setOnline} />
+                  </Protected>
+                ),
+              },
+            ],
+          },
+          {
+            path: "*",
+            element: <NotFoundPage />,
           },
         ],
-      },
-      {
-        path: "*",
-        element: <NotFoundPage />
       },
     ],
     { basename: "/server-hub" },
