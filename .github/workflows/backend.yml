@@ -38,6 +38,8 @@ jobs:
     needs: test
     runs-on: self-hosted
     steps:
+      - name: Fix workspace permissions
+        run: docker run --rm -v $PWD:/app alpine sh -c "chown -R $(id -u):$(id -g) /app" || true
       - uses: actions/checkout@v4
 
       - name: Build and Deploy
