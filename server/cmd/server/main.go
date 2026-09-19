@@ -142,13 +142,7 @@ func main() {
 		api.DELETE("/secrets/:id", secH.Delete)
 		api.POST("/secrets/:id/reveal", secH.Reveal)
 
-		gwH := &handlers.GatewayHandler{DB: db, Cfg: cfg, Broker: broker}
-		api.GET("/gateway/routes", gwH.List)
-		api.POST("/gateway/routes", gwH.Create)
-		api.PUT("/gateway/routes/:id", gwH.Update)
-		api.DELETE("/gateway/routes/:id", gwH.Delete)
-		api.POST("/gateway/validate", gwH.Validate)
-		api.POST("/gateway/reload", gwH.Reload)
+
 
 		api.GET("/events", broker.Stream)
 

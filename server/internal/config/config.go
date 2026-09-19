@@ -19,7 +19,6 @@ type Config struct {
 	FrontendURL   string
 	AdminUser     string
 	AdminPass     string
-	CaddyfilePath string
 	WebhookSecret string
 	ScanRoots     []string
 	AlertCPU      float64
@@ -79,7 +78,6 @@ func Load() *Config {
 		FrontendURL:     getenv("FRONTEND_URL", "http://localhost:5173"),
 		AdminUser:       getenv("ADMIN_USERNAME", "admin"),
 		AdminPass:       getenv("ADMIN_PASSWORD", "changeme"),
-		CaddyfilePath:   getenv("CADDYFILE_PATH", "/etc/caddy/Caddyfile"),
 		WebhookSecret:   os.Getenv("GITHUB_WEBHOOK_SECRET"),
 		ScanRoots:       splitRoots(getenv("SCAN_ROOTS", "/srv/apps")),
 		AlertCPU:        getenvFloat("ALERT_CPU_PCT", 85),
