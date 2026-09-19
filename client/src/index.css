@@ -1,0 +1,109 @@
+@import "tailwindcss";
+
+/* Class-driven dark mode: `dark:` utilities respond to `.dark` on <html>,
+   toggled by src/lib/useTheme.ts (Workbench = light, Cyberdeck = dark). */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ServerHub — "Physical Workbench" tokens (see src/design/.../DESIGN.md).
+   Utilities like bg-paper, text-muted, border-line, bg-accent, font-head,
+   rounded-card, shadow-chrome are generated from this theme. */
+
+@theme {
+  --color-paper: #faf7f0;
+  --color-ink: #1c1917;
+  --color-muted: #78716c;
+  --color-line: #e7e0d3;
+  --color-accent: #ea580c;
+  --color-accent-hover: #c2410c;
+  --color-accent-deep: #a33900;
+  --color-moss: #16a34a;
+  --color-status-amber: #d97706;
+  --color-brick: #dc2626;
+  --color-stone: #a8a29e;
+  --color-sky: #e0f2f1;
+  --color-butter: #fef3c7;
+  --color-tint: #f6ece6;
+  --color-skel: #eae1da;
+
+  /* Cyberdeck Night tokens */
+  --color-abyss: #121316;
+  --color-panel: #1b1e22;
+  --color-emboss: #24272c;
+  --color-bone: #ece7df;
+  --color-fog: #a39c90;
+  --color-edge: #2c3036;
+  --color-ember: #f59e0b;
+  --color-ember-hover: #d97706;
+  --color-danger-night: #251a10;
+
+  --font-head: "Space Grotesk", system-ui, sans-serif;
+  --font-body: "Inter", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  --radius-card: 16px;
+  --radius-input: 10px;
+
+  --shadow-chrome:
+    0 4px 12px rgba(28, 25, 23, 0.06),
+    0 1px 2px rgba(28, 25, 23, 0.04);
+}
+
+body {
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+  margin: 0;
+}
+
+html { color-scheme: light; }
+html.dark { color-scheme: dark; }
+html.dark body {
+  background: var(--color-abyss);
+  color: var(--color-bone);
+}
+
+h1, h2, h3 {
+  font-family: var(--font-head);
+  margin: 0;
+}
+
+p { margin: 0; }
+button { font-family: inherit; }
+a { color: inherit; }
+
+/* Loading skeleton bars (see design/*loading_skeleton). Keyframes and the
+   sweep pseudo-element can't be Tailwind utilities, so they live here.
+   Bar sizes/shapes are utilities in className. Layered so utilities
+   still win when combined on one element. */
+@layer components {
+  @keyframes warm-sweep {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(150%); }
+  }
+  .skel {
+    position: relative;
+    overflow: hidden;
+    background-color: var(--color-skel);
+  }
+  .skel::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(90deg, transparent 0%, rgba(248, 245, 238, 0.75) 50%, transparent 100%);
+    animation: warm-sweep 1.8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .skel::after { animation: none; }
+  }
+  .dark .skel { background-color: var(--color-edge); }
+  .dark .skel::after {
+    background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.07) 50%, transparent 100%);
+  }
+}
