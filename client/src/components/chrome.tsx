@@ -30,7 +30,9 @@ function Brand() {
       <span className="w-[34px] h-[34px] rounded-full bg-accent-deep dark:bg-ember text-white dark:text-black flex items-center justify-center">
         <User size={17} strokeWidth={2.2} />
       </span>
-      <span className="font-head font-bold text-[17px] max-md:hidden">ServerHub</span>
+      <span className="font-head font-bold text-[17px] max-md:hidden">
+        ServerHub
+      </span>
     </Link>
   );
 }
@@ -44,15 +46,33 @@ function CommandPalette({ onClose }: { onClose: () => void }) {
   const [sel, setSel] = useState(0);
 
   useEffect(() => {
-    api.projects().then(setProjects).catch(() => setProjects([]));
+    api
+      .projects()
+      .then(setProjects)
+      .catch(() => setProjects([]));
   }, []);
 
   const items = useMemo(() => {
     const needle = q.trim().toLowerCase();
     const pages = [
-      { icon: <LayoutGrid size={15} />, title: "Go to Dashboard", sub: "page", run: () => nav("/") },
-      { icon: <SlidersHorizontal size={15} />, title: "Go to Settings", sub: "page", run: () => nav("/settings") },
-      { icon: <Radar size={15} />, title: "Scan shipyard", sub: "action", run: () => nav("/?scan=1") },
+      {
+        icon: <LayoutGrid size={15} />,
+        title: "Go to Dashboard",
+        sub: "page",
+        run: () => nav("/"),
+      },
+      {
+        icon: <SlidersHorizontal size={15} />,
+        title: "Go to Settings",
+        sub: "page",
+        run: () => nav("/settings"),
+      },
+      {
+        icon: <Radar size={15} />,
+        title: "Scan shipyard",
+        sub: "action",
+        run: () => nav("/?scan=1"),
+      },
     ];
     const ships = projects.map((p) => ({
       icon: <FolderGit2 size={15} />,
@@ -122,7 +142,9 @@ function CommandPalette({ onClose }: { onClose: () => void }) {
             >
               <span className="text-muted dark:text-fog flex">{item.icon}</span>
               {item.title}
-              <span className="text-muted dark:text-fog text-xs ml-auto">{item.sub}</span>
+              <span className="text-muted dark:text-fog text-xs ml-auto">
+                {item.sub}
+              </span>
             </button>
           ))}
         </div>
@@ -138,7 +160,8 @@ export function AppShell({ online }: { online: boolean }) {
   const loc = useLocation();
   const { user, logout } = useAuth();
   const { theme, setTheme } = useTheme();
-  const { toasts, dismissToast, paletteOpen, setPaletteOpen, pushToast } = useUi();
+  const { toasts, dismissToast, paletteOpen, setPaletteOpen, pushToast } =
+    useUi();
 
   useEffect(() => {
     const fn = (e: KeyboardEvent) => {
@@ -164,21 +187,30 @@ export function AppShell({ online }: { online: boolean }) {
     <>
       <Brand />
       <button
-        className="bg-white dark:bg-panel border border-line dark:border-edge rounded-full shadow-chrome fixed top-5 left-1/2 -translate-x-1/2 z-40 flex items-center gap-2.5 h-[42px] pl-4 pr-2 w-[calc(100vw-190px)] min-w-0 sm:w-auto sm:min-w-[480px] text-muted dark:text-fog text-[13px] cursor-pointer hover:border-accent dark:hover:border-ember"
+        className="bg-white dark:bg-panel border border-line dark:border-edge rounded-full shadow-chrome fixed top-5 left-1/2 -translate-x-1/2 z-40 flex items-center justify-between gap-2.5 h-[42px] pl-4 pr-2 w-[calc(100vw-190px)] min-w-0 sm:w-auto sm:min-w-[480px] text-muted dark:text-fog text-[13px] cursor-pointer hover:border-accent dark:hover:border-ember"
         onClick={() => setPaletteOpen(true)}
       >
-        <Search size={15} />
-        <span className="truncate">Search ships, actions, or press</span>
-        <span className="font-mono text-[11px] bg-paper dark:bg-abyss border border-line dark:border-edge rounded-md px-2 py-[2px] text-muted dark:text-fog">
-          ⌘K
+        <div className="flex items-center justify-center gap-3">
+          <Search size={15} />
+          <span className="truncate">Search ships, actions, or press</span>
+        </div>
+
+        <span className="flex items-center justify-center font-mono text-[11px] bg-paper dark:bg-abyss border border-line dark:border-edge rounded-md px-2.5 py-1.5 text-muted dark:text-fog">
+          ⌘ K
         </span>
       </button>
       <div className="fixed top-5 right-6 z-40 flex items-center gap-2 max-md:right-3">
         <button
           className="bg-white dark:bg-panel border border-line dark:border-edge rounded-full shadow-chrome w-[42px] h-[42px] flex items-center justify-center text-muted dark:text-fog hover:text-ink dark:hover:text-bone cursor-pointer"
-          title={theme === "cyberdeck" ? "Switch to light mode" : "Switch to dark mode"}
+          title={
+            theme === "cyberdeck"
+              ? "Switch to light mode"
+              : "Switch to dark mode"
+          }
           aria-label="Toggle color mode"
-          onClick={() => setTheme(theme === "cyberdeck" ? "workbench" : "cyberdeck")}
+          onClick={() =>
+            setTheme(theme === "cyberdeck" ? "workbench" : "cyberdeck")
+          }
         >
           {theme === "cyberdeck" ? <Sun size={16} /> : <Moon size={16} />}
         </button>
