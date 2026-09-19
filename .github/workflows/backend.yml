@@ -36,81 +36,46 @@ jobs:
   deploy:
     name: deploy to server
     needs: test
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
 
-      - name: Validate deploy secrets
-        run: |
-          fail=0
-          [ -z "${{ secrets.SERVER_HOST }}" ] && { echo "::error::Missing repository secret SERVER_HOST (server IP/hostname)"; fail=1; }
-          [ -z "${{ secrets.SERVER_USER }}" ] && { echo "::error::Missing repository secret SERVER_USER (SSH username)"; fail=1; }
-          [ -z "${{ secrets.SERVER_SSH_KEY }}" ] && { echo "::error::Missing repository secret SERVER_SSH_KEY (private key)"; fail=1; }
-          [ -z "${{ secrets.SERVER_PATH }}" ] && { echo "::error::Missing repository secret SERVER_PATH (repo dir on server)"; fail=1; }
-          if [ $fail -ne 0 ]; then
-            echo "::error::Add them under repo Settings → Secrets and variables → Actions → Secrets tab (NOT Variables tab), then re-run."
-            exit 1
-          fi
-          echo "All deploy secrets present."
-
-      - name: Sync code to server
+      - name: Build and Deploy
         run: |
           set -e
-          mkdir -p ~/.ssh
-          printf '%s\n' "${{ secrets.SERVER_SSH_KEY }}" > ~/.ssh/deploy_key
-          chmod 600 ~/.ssh/deploy_key
-          SSH="ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p ${{ secrets.SERVER_PORT || 22 }}"
-          HOST="${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}"
-          $SSH "$HOST" "mkdir -p '${{ secrets.SERVER_PATH }}'"
-          tar --exclude=./.git --exclude=./server/data --exclude=./server/tmp --exclude=./server/.env --exclude=./server/build-errors.log --exclude=./client/node_modules --exclude=./client/dist --exclude=./client/.env --exclude=./client/.env.local -czf - server client .dockerignore .github \
-            | $SSH "$HOST" "tar -C '${{ secrets.SERVER_PATH }}' -xzf -"
-          rm -f ~/.ssh/deploy_key
-          echo "sync done"
-
-      - name: Deploy over SSH
-        uses: appleboy/ssh-action@v1
-        env:
-          REPO_DIR: ${{ secrets.SERVER_PATH }}
-        with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USER }}
-          key: ${{ secrets.SERVER_SSH_KEY }}
-          port: ${{ secrets.SERVER_PORT || 22 }}
-          envs: REPO_DIR
-          script: |
-            set -e
-            cd "$REPO_DIR/server"
-            docker compose build
-            docker compose down --remove-orphans >/dev/null 2>&1 || true
-            
-            HOLDER="$(docker ps --format '{{.Names}} {{.Image}} {{.Ports}}' 2>/dev/null | grep '4000->4000' || true)"
-            if [ -n "$HOLDER" ]; then
-              echo "port holder: $HOLDER"
-              IMG="$(echo "$HOLDER" | awk '{print $2}')"
-              if [ "$IMG" = "serverhub" ] || [ "$IMG" = "docker.io/library/serverhub" ]; then
-                NAME="$(echo "$HOLDER" | awk '{print $1}')"
-                echo "stale own image container ($NAME) — stopping and removing"
-                docker stop "$NAME" >/dev/null
-                docker rm "$NAME" >/dev/null
-              else
-                echo "::error::host port 4000 is held by a foreign container:"
-                echo "$HOLDER"
-                echo "Stop it (docker stop <name>) or move our port, then re-run."
-                exit 1
-              fi
+          cd server
+          docker compose build
+          docker compose down --remove-orphans >/dev/null 2>&1 || true
+          
+          # Clean up any stale container holding port 4000
+          HOLDER="$(docker ps --format '{{.Names}} {{.Image}} {{.Ports}}' 2>/dev/null | grep '4000->4000' || true)"
+          if [ -n "$HOLDER" ]; then
+            echo "port holder: $HOLDER"
+            IMG="$(echo "$HOLDER" | awk '{print $2}')"
+            if [ "$IMG" = "serverhub" ] || [ "$IMG" = "docker.io/library/serverhub" ]; then
+              NAME="$(echo "$HOLDER" | awk '{print $1}')"
+              echo "stale own image container ($NAME) — stopping and removing"
+              docker stop "$NAME" >/dev/null
+              docker rm "$NAME" >/dev/null
+            else
+              echo "::error::host port 4000 is held by a foreign container:"
+              echo "$HOLDER"
+              echo "Stop it (docker stop <name>) or move our port, then re-run."
+              exit 1
             fi
-            
-            if command -v ss >/dev/null 2>&1; then
-              HP="$(ss -tlnp 2>/dev/null | grep ':4000 ' || true)"
-              if [ -n "$HP" ]; then
-                echo "::error::host port 4000 is held by a host process (not docker):"
-                echo "$HP"
-                echo "Stop it (e.g. kill <pid> / systemctl stop <service>), then re-run."
-                exit 1
-              fi
+          fi
+          
+          if command -v ss >/dev/null 2>&1; then
+            HP="$(ss -tlnp 2>/dev/null | grep ':4000 ' || true)"
+            if [ -n "$HP" ]; then
+              echo "::error::host port 4000 is held by a host process (not docker):"
+              echo "$HP"
+              echo "Stop it (e.g. kill <pid> / systemctl stop <service>), then re-run."
+              exit 1
             fi
-            
-            docker compose up -d
-            docker image prune -f
-            sleep 8
-            curl -s -f http://localhost:4000/api/health || echo "No health endpoint found or server taking longer to start"
+          fi
+          
+          docker compose up -d
+          docker image prune -f
+          sleep 8
+          curl -s -f http://localhost:4000/api/health || echo "No health endpoint found or server taking longer to start"
