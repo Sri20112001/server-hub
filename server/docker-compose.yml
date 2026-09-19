@@ -7,7 +7,7 @@ services:
     container_name: serverhub-frontend
     restart: unless-stopped
     ports:
-      - "80:80"
+      - "3000:80"
 
   serverhub:
     build: .
@@ -26,7 +26,7 @@ services:
       SERVERHUB_ENCRYPTION_KEY: ${SERVERHUB_ENCRYPTION_KEY:-}
       ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-changeme}
-      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173,http://imagesoft.in:3000}
       GITHUB_WEBHOOK_SECRET: ${GITHUB_WEBHOOK_SECRET:-}
       CADDYFILE_PATH: /etc/caddy/Caddyfile
       HEALTH_CHECK_INTERVAL_SEC: "60"
