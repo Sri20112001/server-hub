@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"bytes"
-	"database/sql"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -21,10 +20,10 @@ import (
 
 const testEncKey = "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff"
 
-func testSetup(t *testing.T) (*sql.DB, *config.Config, *gin.Engine) {
+func testSetup(t *testing.T) (*database.DB, *config.Config, *gin.Engine) {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
-	db, err := database.Open(t.TempDir() + "/test.db")
+	db, err := database.OpenDatabase("", t.TempDir()+"/test.db")
 	if err != nil {
 		t.Fatal(err)
 	}

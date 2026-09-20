@@ -1,7 +1,6 @@
 package health
 
 import (
-	"database/sql"
 	"log"
 	"net/http"
 	"strconv"
@@ -9,13 +8,14 @@ import (
 	"time"
 
 	"serverhub/internal/audit"
+	"serverhub/internal/database"
 	"serverhub/internal/events"
 )
 
 // StartLoop periodically checks every service/project health_url and
 // updates services.status / projects.status.
 // States: HEALTHY | DEGRADED | DOWN | UNKNOWN
-func StartLoop(db *sql.DB, broker *events.Broker, intervalSec int) {
+func StartLoop(db *database.DB, broker *events.Broker, intervalSec int) {
 	if intervalSec <= 0 {
 		intervalSec = 60
 	}
@@ -31,7 +31,7 @@ func StartLoop(db *sql.DB, broker *events.Broker, intervalSec int) {
 
 // transition records a monitor event when a status genuinely changes.
 // Transitions FROM unknown are discovery noise, not events.
-func transition(db *sql.DB, broker *events.Broker, resource, id, name, before, after string) {
+func transition(db *database.DB, broker *events.Broker, resource, id, name, before, after string) {
 	before, after = strings.ToUpper(before), strings.ToUpper(after)
 	if before == after || before == "" || before == "UNKNOWN" {
 		return
@@ -46,7 +46,7 @@ func transition(db *sql.DB, broker *events.Broker, resource, id, name, before, a
 	}
 }
 
-func check(db *sql.DB, broker *events.Broker) {
+func check(db *database.DB, broker *events.Broker) {
 	client := &http.Client{Timeout: 8 * time.Second}
 	// Services
 	rows, err := db.Query(`SELECT id, name, health_url, last_health FROM services WHERE health_url <> ''`)
@@ -69,7 +69,7 @@ func check(db *sql.DB, broker *events.Broker) {
 	rows.Close()
 	for _, s := range svcs {
 		state, rt := probe(client, s.url)
-		_, _ = db.Exec(`UPDATE services SET status=?, last_health=?, last_health_at=datetime('now'), response_time_ms=? WHERE id=?`,
+		_, _ = db.Exec(`UPDATE services SET status=?, last_health=?, last_health_at=CURRENT_TIMESTAMP, response_time_ms=? WHERE id=?`,
 			state, state, rt, s.id)
 		transition(db, broker, "service", strconv.FormatInt(s.id, 10), s.name, s.before, state)
 	}
@@ -88,7 +88,7 @@ func check(db *sql.DB, broker *events.Broker) {
 	prows.Close()
 	for _, p := range projs {
 		state, _ := probe(client, p.url)
-		_, _ = db.Exec(`UPDATE projects SET status=?, updated_at=datetime('now') WHERE id=?`, state, p.id)
+		_, _ = db.Exec(`UPDATE projects SET status=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`, state, p.id)
 		transition(db, broker, "project", strconv.FormatInt(p.id, 10), p.name, p.before, state)
 	}
 	// Snapshot aggregate statuses before recomputing them.
@@ -115,7 +115,7 @@ func check(db *sql.DB, broker *events.Broker) {
 				ELSE 'unknown'
 			END
 			FROM services s WHERE s.project_id = projects.id
-		), updated_at=datetime('now')
+		), updated_at=CURRENT_TIMESTAMP
 		WHERE health_url = '' OR health_url IS NULL
 	`)
 	arows, err := db.Query(`SELECT id, name, status FROM projects WHERE health_url = '' OR health_url IS NULL`)

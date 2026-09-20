@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"database/sql"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -22,7 +21,7 @@ func contains(hay, needle string) bool   { return strings.Contains(hay, needle) 
 func discoverySetup(t *testing.T) (*gin.Engine, *config.Config) {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
-	db, err := database.Open(t.TempDir() + "/disc.db")
+	db, err := database.OpenDatabase("", t.TempDir()+"/disc.db")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -33,7 +32,6 @@ func discoverySetup(t *testing.T) (*gin.Engine, *config.Config) {
 		JWTSecret:     "test-jwt-secret-min-32-chars-long!!",
 		EncryptionKey: testEncKey,
 	}
-	_ = sql.ErrNoRows
 	r := gin.New()
 	authH := &AuthHandler{DB: db, Cfg: cfg}
 	r.POST("/api/auth/login", authH.Login)

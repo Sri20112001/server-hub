@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"database/sql"
 	"net/http"
 	"path/filepath"
 	"strconv"
@@ -11,6 +10,7 @@ import (
 
 	"serverhub/internal/audit"
 	"serverhub/internal/config"
+	"serverhub/internal/database"
 	"serverhub/internal/dockerx"
 	"serverhub/internal/events"
 	"serverhub/internal/middleware"
@@ -21,7 +21,7 @@ import (
 // and proposes project/service rows, so fleets can be imported instead of
 // typed by hand.
 type DiscoveryHandler struct {
-	DB     *sql.DB
+	DB     *database.DB
 	Docker *dockerx.Client
 	Cfg    *config.Config
 	Broker *events.Broker
@@ -229,14 +229,14 @@ func (h *DiscoveryHandler) Import(c *gin.Context) {
 	var pid int64
 	err := h.DB.QueryRow(`SELECT id FROM projects WHERE name=?`, name).Scan(&pid)
 	if err != nil {
-		res, err := h.DB.Exec(`INSERT INTO projects (name,branch,environment,deployment_path,compose_file,status)
+		newID, err := h.DB.InsertID(`INSERT INTO projects (name,branch,environment,deployment_path,compose_file,status)
 			VALUES (?, 'main', 'production', ?, ?, 'unknown')`,
 			name, deployPath, composeFile)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
-		pid, _ = res.LastInsertId()
+		pid = newID
 		audit.Write(h.DB, u, "import", "project", strconv.FormatInt(pid, 10), "ok", name)
 	}
 	added := 0

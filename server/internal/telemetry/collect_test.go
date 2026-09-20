@@ -7,7 +7,7 @@ import (
 )
 
 func TestSampleWritesRow(t *testing.T) {
-	db, err := database.Open(t.TempDir() + "/tel.db")
+	db, err := database.OpenDatabase("", t.TempDir()+"/tel.db")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -26,3 +26,12 @@ func boolToInt(b bool) int {
 	}
 	return 0
 }
+
+// nullStr reads nullable timestamp/text columns (NULL on Postgres, '' or
+// datetime strings on SQLite) into plain strings.
+func nullStr(ns sql.NullString) string {
+	if ns.Valid {
+		return ns.String
+	}
+	return ""
+}

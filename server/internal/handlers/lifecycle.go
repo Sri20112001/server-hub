@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"bytes"
-	"database/sql"
 	"fmt"
 	"net/http"
 	"os"
@@ -13,6 +12,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"serverhub/internal/audit"
+	"serverhub/internal/database"
 	"serverhub/internal/events"
 	"serverhub/internal/middleware"
 	"serverhub/internal/ops"
@@ -21,7 +21,7 @@ import (
 // ProjectLifecycle runs docker-compose operations for a whole project.
 // Start is medium risk; stop/restart are HIGH RISK and require confirm=true.
 type ProjectLifecycle struct {
-	DB     *sql.DB
+	DB     *database.DB
 	Broker *events.Broker
 }
 

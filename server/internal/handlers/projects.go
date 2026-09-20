@@ -8,12 +8,13 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"serverhub/internal/audit"
+	"serverhub/internal/database"
 	"serverhub/internal/middleware"
 	"serverhub/internal/models"
 )
 
 type ProjectHandler struct {
-	DB *sql.DB
+	DB *database.DB
 }
 
 func scanProject(row interface {
@@ -21,10 +22,12 @@ func scanProject(row interface {
 }) (models.Project, error) {
 	var p models.Project
 	var autoDeploy int
+	var created, updated sql.NullString
 	err := row.Scan(&p.ID, &p.Name, &p.Description, &p.Repository, &p.Branch,
 		&p.Environment, &p.DeploymentPath, &p.ComposeFile, &p.GatewayPrefix,
-		&p.HealthURL, &p.Status, &autoDeploy, &p.CreatedAt, &p.UpdatedAt)
+		&p.HealthURL, &p.Status, &autoDeploy, &created, &updated)
 	p.AutoDeploy = autoDeploy == 1
+	p.CreatedAt, p.UpdatedAt = nullStr(created), nullStr(updated)
 	return p, err
 }
 
@@ -39,10 +42,12 @@ func (h *ProjectHandler) List(c *gin.Context) {
 	for rows.Next() {
 		var p models.Project
 		var autoDeploy int
+		var created, updated sql.NullString
 		if err := rows.Scan(&p.ID, &p.Name, &p.Description, &p.Repository, &p.Branch,
 			&p.Environment, &p.DeploymentPath, &p.ComposeFile, &p.GatewayPrefix,
-			&p.HealthURL, &p.Status, &autoDeploy, &p.CreatedAt, &p.UpdatedAt); err == nil {
+			&p.HealthURL, &p.Status, &autoDeploy, &created, &updated); err == nil {
 			p.AutoDeploy = autoDeploy == 1
+			p.CreatedAt, p.UpdatedAt = nullStr(created), nullStr(updated)
 			out = append(out, p)
 		}
 	}
@@ -64,14 +69,13 @@ func (h *ProjectHandler) Create(c *gin.Context) {
 	if p.ComposeFile == "" {
 		p.ComposeFile = "docker-compose.yml"
 	}
-	res, err := h.DB.Exec(`INSERT INTO projects (name,description,repository,branch,environment,deployment_path,compose_file,gateway_prefix,health_url,status,auto_deploy)
+	id, err := h.DB.InsertID(`INSERT INTO projects (name,description,repository,branch,environment,deployment_path,compose_file,gateway_prefix,health_url,status,auto_deploy)
 		VALUES (?,?,?,?,?,?,?,?,?,'unknown',?)`,
 		p.Name, p.Description, p.Repository, p.Branch, p.Environment, p.DeploymentPath, p.ComposeFile, p.GatewayPrefix, p.HealthURL, boolToInt(p.AutoDeploy))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	id, _ := res.LastInsertId()
 	u, _ := middleware.CurrentUser(c)
 	audit.Write(h.DB, u, "create", "project", strconv.FormatInt(id, 10), "ok", p.Name)
 	h.GetByID(c, id)
@@ -106,7 +110,7 @@ func (h *ProjectHandler) Update(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "name is required"})
 		return
 	}
-	_, err = h.DB.Exec(`UPDATE projects SET name=?,description=?,repository=?,branch=?,environment=?,deployment_path=?,compose_file=?,gateway_prefix=?,health_url=?,auto_deploy=?,updated_at=datetime('now') WHERE id=?`,
+	_, err = h.DB.Exec(`UPDATE projects SET name=?,description=?,repository=?,branch=?,environment=?,deployment_path=?,compose_file=?,gateway_prefix=?,health_url=?,auto_deploy=?,updated_at=CURRENT_TIMESTAMP WHERE id=?`,
 		p.Name, p.Description, p.Repository, p.Branch, p.Environment, p.DeploymentPath, p.ComposeFile, p.GatewayPrefix, p.HealthURL, boolToInt(p.AutoDeploy), id)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})

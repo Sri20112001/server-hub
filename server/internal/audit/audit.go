@@ -1,9 +1,9 @@
 package audit
 
-import "database/sql"
+import "serverhub/internal/database"
 
 // Write records a security-sensitive action. Never pass secret values in metadata.
-func Write(db *sql.DB, actor, action, resource, resourceID, result, metadata string) {
+func Write(db *database.DB, actor, action, resource, resourceID, result, metadata string) {
 	if db == nil {
 		return
 	}

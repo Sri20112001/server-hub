@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"context"
-	"database/sql"
 	"io"
 	"net/http"
 	"time"
@@ -11,6 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"serverhub/internal/audit"
+	"serverhub/internal/database"
 	"serverhub/internal/dockerx"
 	"serverhub/internal/events"
 	"serverhub/internal/middleware"
@@ -18,7 +18,7 @@ import (
 )
 
 type ContainerHandler struct {
-	DB     *sql.DB
+	DB     *database.DB
 	Docker *dockerx.Client
 	Broker *events.Broker
 }

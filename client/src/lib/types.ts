@@ -196,6 +196,25 @@ export interface BusEvent {
   timestamp: string;
 }
 
+export interface AppLog {
+  id: number;
+  timestamp: string;
+  level: string;
+  source: string;
+  actor?: string;
+  action?: string;
+  resource?: string;
+  resourceId?: string;
+  projectId?: number;
+  message: string;
+  metadata?: string;
+  requestId?: string;
+  method?: string;
+  path?: string;
+  statusCode?: number;
+  latencyMs?: number;
+}
+
 export interface MemDetail {
   totalMB: number;
   usedMB: number;

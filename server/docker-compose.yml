@@ -1,5 +1,23 @@
 name: server-hub
 services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: serverhub-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-serverhub}
+      POSTGRES_USER: ${POSTGRES_USER:-serverhub}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-serverhub}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   serverhub:
     build:
       context: ..
@@ -11,9 +29,14 @@ services:
     volumes:
       - ./data:/app/data
       - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
     environment:
       PORT: "4000"
       DB_PATH: /app/data/serverhub.db
+      DATABASE_URL: postgres://${POSTGRES_USER:-serverhub}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/${POSTGRES_DB:-serverhub}?sslmode=disable
+      LOG_RETENTION_DAYS: ${LOG_RETENTION_DAYS:-30}
       JWT_SECRET: ${JWT_SECRET}
       SERVERHUB_ENCRYPTION_KEY: ${SERVERHUB_ENCRYPTION_KEY}
       ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
@@ -27,3 +50,6 @@ services:
       ALERT_CPU_PCT: ${ALERT_CPU_PCT:-85}
       ALERT_RAM_PCT: ${ALERT_RAM_PCT:-90}
       ALERT_DISK_PCT: ${ALERT_DISK_PCT:-80}
+
+volumes:
+  pgdata:

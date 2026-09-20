@@ -1,15 +1,16 @@
 package handlers
 
 import (
-	"database/sql"
 	"net/http"
 	"time"
 
 	"github.com/gin-gonic/gin"
+
+	"serverhub/internal/database"
 )
 
 type TelemetryHandler struct {
-	DB *sql.DB
+	DB *database.DB
 }
 
 var rangeSeconds = map[string]int64{

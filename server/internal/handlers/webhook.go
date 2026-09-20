@@ -3,7 +3,6 @@ package handlers
 import (
 	"crypto/hmac"
 	"crypto/sha256"
-	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"io"
@@ -15,6 +14,7 @@ import (
 
 	"serverhub/internal/audit"
 	"serverhub/internal/config"
+	"serverhub/internal/database"
 	"serverhub/internal/events"
 	"serverhub/internal/ops"
 )
@@ -23,7 +23,7 @@ import (
 // Public endpoint — authenticated via HMAC-SHA256 signature, NOT session.
 // Requires GITHUB_WEBHOOK_SECRET to be configured, otherwise 503.
 type WebhookHandler struct {
-	DB     *sql.DB
+	DB     *database.DB
 	Cfg    *config.Config
 	Broker *events.Broker
 }
@@ -131,9 +131,8 @@ func (h *WebhookHandler) GitHub(c *gin.Context) {
 	results := []gin.H{}
 	for _, m := range matched {
 		if m.autoDeploy {
-			res, _ := h.DB.Exec(`INSERT INTO deployments (project_id,commit_sha,branch,trigger,status,started_at) VALUES (?,?,?,?, 'RUNNING', datetime('now'))`,
+			deployID, _ := h.DB.InsertID(`INSERT INTO deployments (project_id,commit_sha,branch,trigger,status,started_at) VALUES (?,?,?,?, 'RUNNING', CURRENT_TIMESTAMP)`,
 				m.id, p.After, branch, "github-webhook")
-			deployID, _ := res.LastInsertId()
 			op, _ := ops.Create(h.DB, "deploy", "project", strconv.FormatInt(m.id, 10), "webhook", deployStages)
 			opID := ""
 			if op != nil {
@@ -144,7 +143,7 @@ func (h *WebhookHandler) GitHub(c *gin.Context) {
 			results = append(results, gin.H{"project": m.name, "deployed": true, "commit": p.After, "operationId": opID})
 		} else {
 			// Record for visibility without running anything.
-			_, _ = h.DB.Exec(`INSERT INTO deployments (project_id,commit_sha,branch,trigger,status,started_at,completed_at,logs) VALUES (?,?,?,?, 'PENDING', datetime('now'), '', 'Auto-deploy disabled; manual deploy required.')`,
+			_, _ = h.DB.Exec(`INSERT INTO deployments (project_id,commit_sha,branch,trigger,status,started_at,completed_at,logs) VALUES (?,?,?,?, 'PENDING', CURRENT_TIMESTAMP, NULL, 'Auto-deploy disabled; manual deploy required.')`,
 				m.id, p.After, branch, "github-webhook")
 			audit.Write(h.DB, "webhook", "record-deployment", "project", strconv.FormatInt(m.id, 10), "ok", p.After)
 			results = append(results, gin.H{"project": m.name, "deployed": false, "reason": "autoDeploy disabled", "commit": p.After})

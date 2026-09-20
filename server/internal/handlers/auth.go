@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"database/sql"
 	"net/http"
 	"time"
 
@@ -11,11 +10,12 @@ import (
 
 	"serverhub/internal/audit"
 	"serverhub/internal/config"
+	"serverhub/internal/database"
 	"serverhub/internal/middleware"
 )
 
 type AuthHandler struct {
-	DB  *sql.DB
+	DB  *database.DB
 	Cfg *config.Config
 }
 

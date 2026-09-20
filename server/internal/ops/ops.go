@@ -9,6 +9,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"time"
+
+	"serverhub/internal/database"
 )
 
 type Stage struct {
@@ -37,8 +39,15 @@ func newID() string {
 	return "op_" + hex.EncodeToString(b)
 }
 
+func nullStr(ns sql.NullString) string {
+	if ns.Valid {
+		return ns.String
+	}
+	return ""
+}
+
 // Create inserts a QUEUED operation and returns it.
-func Create(db *sql.DB, opType, targetType, targetID, initiatedBy string, stages []string) (*Operation, error) {
+func Create(db *database.DB, opType, targetType, targetID, initiatedBy string, stages []string) (*Operation, error) {
 	op := &Operation{
 		ID:          newID(),
 		Type:        opType,
@@ -62,13 +71,13 @@ func Create(db *sql.DB, opType, targetType, targetID, initiatedBy string, stages
 }
 
 // Start marks RUNNING and activates the first stage.
-func Start(db *sql.DB, id string) error {
-	_, err := db.Exec(`UPDATE operations SET status='RUNNING', started_at=datetime('now') WHERE id=?`, id)
+func Start(db *database.DB, id string) error {
+	_, err := db.Exec(`UPDATE operations SET status='RUNNING', started_at=CURRENT_TIMESTAMP WHERE id=?`, id)
 	return err
 }
 
 // SetStage marks stages[:idx] done, stages[idx] active (or failed), rest pending.
-func SetStage(db *sql.DB, id string, idx int, failed bool, label string) error {
+func SetStage(db *database.DB, id string, idx int, failed bool, label string) error {
 	op, err := Get(db, id)
 	if err != nil {
 		return err
@@ -97,7 +106,7 @@ func SetStage(db *sql.DB, id string, idx int, failed bool, label string) error {
 }
 
 // Finish marks terminal status and completes remaining stages accordingly.
-func Finish(db *sql.DB, id, status, errMsg string) error {
+func Finish(db *database.DB, id, status, errMsg string) error {
 	op, err := Get(db, id)
 	if err != nil {
 		return err
@@ -112,22 +121,24 @@ func Finish(db *sql.DB, id, status, errMsg string) error {
 		}
 	}
 	raw, _ := json.Marshal(op.Stages)
-	_, err = db.Exec(`UPDATE operations SET status=?, error=?, stages=?, completed_at=datetime('now') WHERE id=?`,
+	_, err = db.Exec(`UPDATE operations SET status=?, error=?, stages=?, completed_at=CURRENT_TIMESTAMP WHERE id=?`,
 		status, errMsg, string(raw), id)
 	return err
 }
 
 // Get fetches one operation.
-func Get(db *sql.DB, id string) (*Operation, error) {
+func Get(db *database.DB, id string) (*Operation, error) {
 	var op Operation
 	var stages string
+	var created, started, completed sql.NullString
 	err := db.QueryRow(`SELECT id,type,target_type,target_id,status,stage,stages,
 		initiated_by,error,created_at,started_at,completed_at FROM operations WHERE id=?`, id).
 		Scan(&op.ID, &op.Type, &op.TargetType, &op.TargetID, &op.Status, &op.Stage,
-			&stages, &op.InitiatedBy, &op.Error, &op.CreatedAt, &op.StartedAt, &op.CompletedAt)
+			&stages, &op.InitiatedBy, &op.Error, &created, &started, &completed)
 	if err != nil {
 		return nil, err
 	}
+	op.CreatedAt, op.StartedAt, op.CompletedAt = nullStr(created), nullStr(started), nullStr(completed)
 	_ = json.Unmarshal([]byte(stages), &op.Stages)
 	if op.Stages == nil {
 		op.Stages = []Stage{}
@@ -136,13 +147,13 @@ func Get(db *sql.DB, id string) (*Operation, error) {
 }
 
 // List returns the newest operations first.
-func List(db *sql.DB, limit int) ([]Operation, error) {
+func List(db *database.DB, limit int) ([]Operation, error) {
 	if limit <= 0 || limit > 200 {
 		limit = 50
 	}
 	rows, err := db.Query(`SELECT id,type,target_type,target_id,status,stage,stages,
 		initiated_by,error,created_at,started_at,completed_at FROM operations
-		ORDER BY rowid DESC LIMIT ?`, limit)
+		ORDER BY created_at DESC LIMIT ?`, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -151,9 +162,11 @@ func List(db *sql.DB, limit int) ([]Operation, error) {
 	for rows.Next() {
 		var op Operation
 		var stages string
+		var created, started, completed sql.NullString
 		if err := rows.Scan(&op.ID, &op.Type, &op.TargetType, &op.TargetID, &op.Status,
 			&op.Stage, &stages, &op.InitiatedBy, &op.Error,
-			&op.CreatedAt, &op.StartedAt, &op.CompletedAt); err == nil {
+			&created, &started, &completed); err == nil {
+			op.CreatedAt, op.StartedAt, op.CompletedAt = nullStr(created), nullStr(started), nullStr(completed)
 			_ = json.Unmarshal([]byte(stages), &op.Stages)
 			if op.Stages == nil {
 				op.Stages = []Stage{}

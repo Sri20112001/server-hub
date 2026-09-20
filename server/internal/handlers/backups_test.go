@@ -60,17 +60,15 @@ func TestExtractRejectsZipSlip(t *testing.T) {
 
 func TestRollbackEndpoint(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	db, err := database.Open(t.TempDir() + "/rb.db")
+	db, err := database.OpenDatabase("", t.TempDir()+"/rb.db")
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { db.Close() })
 	_, _ = db.Exec(`INSERT INTO users (username, password_hash, role) VALUES ('admin','x','admin')`)
-	res, _ := db.Exec(`INSERT INTO projects (name) VALUES ('p1')`)
-	pid, _ := res.LastInsertId()
-	res, _ = db.Exec(`INSERT INTO deployments (project_id,commit_sha,branch,trigger,status) VALUES (?,?,?,?,?)`,
+	pid, _ := db.InsertID(`INSERT INTO projects (name) VALUES ('p1')`)
+	depID, _ := db.InsertID(`INSERT INTO deployments (project_id,commit_sha,branch,trigger,status) VALUES (?,?,?,?,?)`,
 		pid, "abc123", "main", "manual", "SUCCESS")
-	depID, _ := res.LastInsertId()
 
 	r := gin.New()
 	depH := &DeploymentHandler{DB: db, Broker: nil}

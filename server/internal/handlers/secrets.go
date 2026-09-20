@@ -10,12 +10,13 @@ import (
 	"serverhub/internal/audit"
 	"serverhub/internal/config"
 	"serverhub/internal/crypto"
+	"serverhub/internal/database"
 	"serverhub/internal/middleware"
 	"serverhub/internal/models"
 )
 
 type SecretHandler struct {
-	DB  *sql.DB
+	DB  *database.DB
 	Cfg *config.Config
 }
 
@@ -48,14 +49,14 @@ func (h *SecretHandler) List(c *gin.Context) {
 	for rows.Next() {
 		var m models.SecretMeta
 		var svc sql.NullInt64
-		var updated string
+		var updated sql.NullString
 		if err := rows.Scan(&m.ID, &m.ProjectID, &m.Name, &m.Environment, &svc, &updated); err == nil {
 			if svc.Valid {
 				v := svc.Int64
 				m.ServiceID = &v
 			}
 			m.Configured = true
-			m.UpdatedAt = updated
+			m.UpdatedAt = nullStr(updated)
 			out = append(out, m)
 		}
 	}
@@ -96,8 +97,8 @@ func (h *SecretHandler) Upsert(c *gin.Context) {
 		svc = *body.ServiceID
 	}
 	_, err = h.DB.Exec(`INSERT INTO secrets (project_id,name,environment,service_id,encrypted_value,nonce,updated_at)
-		VALUES (?,?,?,?,?,?,datetime('now'))
-		ON CONFLICT(project_id, environment, name) DO UPDATE SET encrypted_value=excluded.encrypted_value, nonce=excluded.nonce, service_id=excluded.service_id, updated_at=datetime('now')`,
+		VALUES (?,?,?,?,?,?,CURRENT_TIMESTAMP)
+		ON CONFLICT(project_id, environment, name) DO UPDATE SET encrypted_value=excluded.encrypted_value, nonce=excluded.nonce, service_id=excluded.service_id, updated_at=CURRENT_TIMESTAMP`,
 		pid, body.Name, body.Environment, svc, ct, nonce)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -149,7 +150,7 @@ func (h *SecretHandler) Update(c *gin.Context) {
 	if body.ServiceID != nil {
 		svc = *body.ServiceID
 	}
-	_, err = h.DB.Exec(`UPDATE secrets SET encrypted_value=?, nonce=?, environment=?, service_id=?, updated_at=datetime('now') WHERE id=?`,
+	_, err = h.DB.Exec(`UPDATE secrets SET encrypted_value=?, nonce=?, environment=?, service_id=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`,
 		ct, nonce, env, svc, id)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})

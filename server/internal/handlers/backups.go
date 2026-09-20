@@ -17,6 +17,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"serverhub/internal/audit"
+	"serverhub/internal/database"
 	"serverhub/internal/events"
 	"serverhub/internal/middleware"
 	"serverhub/internal/ops"
@@ -26,7 +27,7 @@ import (
 // archives plus a metadata manifest, and restores them on demand.
 // Restore overwrites live files: HIGH RISK, confirmation-gated.
 type BackupsHandler struct {
-	DB     *sql.DB
+	DB     *database.DB
 	Broker *events.Broker
 	Dir    string
 }
@@ -71,7 +72,9 @@ func (h *BackupsHandler) List(c *gin.Context) {
 	out := []backupRow{}
 	for rows.Next() {
 		var b backupRow
-		if err := rows.Scan(&b.ID, &b.ProjectID, &b.Kind, &b.Path, &b.SizeBytes, &b.Status, &b.CreatedAt); err == nil {
+		var created sql.NullString
+		if err := rows.Scan(&b.ID, &b.ProjectID, &b.Kind, &b.Path, &b.SizeBytes, &b.Status, &created); err == nil {
+			b.CreatedAt = nullStr(created)
 			b.Path = filepath.Base(b.Path)
 			out = append(out, b)
 		}
@@ -151,14 +154,13 @@ func (h *BackupsHandler) runBackup(opID string, pid int64, name, deployPath, act
 	meta, _ := json.Marshal(h.manifest(pid, name, deployPath))
 	_ = meta // stored inside logs for operator visibility
 	logs := fmt.Sprintf("snapshot %s (%d bytes)\nmanifest: %s", filepath.Base(archive), size, string(meta))
-	res, err := h.DB.Exec(`INSERT INTO backups (project_id,kind,path,size_bytes,status,logs)
+	bid, err := h.DB.InsertID(`INSERT INTO backups (project_id,kind,path,size_bytes,status,logs)
 		VALUES (?, 'snapshot', ?, ?, 'SUCCESS', ?)`, pid, archive, size, logs)
 	if err != nil {
 		_ = os.Remove(archive)
 		fail("cannot record backup: " + err.Error())
 		return
 	}
-	bid, _ := res.LastInsertId()
 	_ = ops.Finish(h.DB, opID, "SUCCESS", "")
 	audit.Write(h.DB, actor, "backup", "backup", strconv.FormatInt(bid, 10), "ok",
 		fmt.Sprintf("project=%s size=%d", name, size))
@@ -189,12 +191,14 @@ func (h *BackupsHandler) Get(c *gin.Context) {
 		return
 	}
 	var b backupRow
+	var created sql.NullString
 	if err := h.DB.QueryRow(`SELECT id,project_id,kind,path,size_bytes,status,created_at
 		FROM backups WHERE id=?`, id).
-		Scan(&b.ID, &b.ProjectID, &b.Kind, &b.Path, &b.SizeBytes, &b.Status, &b.CreatedAt); err != nil {
+		Scan(&b.ID, &b.ProjectID, &b.Kind, &b.Path, &b.SizeBytes, &b.Status, &created); err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "backup not found"})
 		return
 	}
+	b.CreatedAt = nullStr(created)
 	b.Path = filepath.Base(b.Path)
 	c.JSON(http.StatusOK, b)
 }

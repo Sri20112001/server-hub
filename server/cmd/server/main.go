@@ -1,19 +1,20 @@
 package main
 
 import (
-	"database/sql"
 	"log"
 	"net/http"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 	"golang.org/x/crypto/bcrypt"
 
+	"serverhub/internal/applog"
 	"serverhub/internal/config"
 	"serverhub/internal/database"
 	"serverhub/internal/dockerx"
@@ -39,13 +40,21 @@ func main() {
 		log.Println("WARNING: JWT_SECRET is short — use at least 32 characters in production.")
 	}
 
-	db, err := database.Open(cfg.DBPath)
+	// GORM is the ORM. DATABASE_URL set => Postgres (production);
+	// unset => SQLite at DB_PATH (local dev / tests).
+	db, err := database.OpenDatabase(cfg.DatabaseURL, cfg.DBPath)
 	if err != nil {
 		log.Fatalf("open db: %v", err)
+	}
+	gdb := db.GDB
+	log.Printf("database dialect: %s", db.Dialect)
+	if _, err := applog.Prune(gdb, cfg.LogRetentionDays); err != nil {
+		log.Printf("log prune: %v", err)
 	}
 	if err := ensureAdmin(db, cfg.AdminUser, cfg.AdminPass); err != nil {
 		log.Fatalf("seed admin: %v", err)
 	}
+	applog.Info(gdb, "system", "serverhub boot (dialect="+db.Dialect+")")
 
 	dockerClient := dockerx.New()
 	broker := events.NewBroker()
@@ -69,8 +78,21 @@ func main() {
 		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
 		AllowCredentials: true,
 	}))
+	r.Use(middleware.RequestLog(gdb))
 
-	r.GET("/health", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"status": "ok"}) })
+	startTime := time.Now()
+	r.GET("/health", func(c *gin.Context) {
+		dbStatus := "up"
+		if err := db.Ping(); err != nil {
+			dbStatus = "down"
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"status":    "ok",
+			"timestamp": time.Now().UTC().Format(time.RFC3339),
+			"uptimeSec": int64(time.Since(startTime).Seconds()),
+			"checks":    gin.H{"db": dbStatus},
+		})
+	})
 
 	authH := &handlers.AuthHandler{DB: db, Cfg: cfg}
 	r.POST("/server-hub/api/auth/login", authH.Login)
@@ -159,6 +181,10 @@ func main() {
 		api.GET("/backups/:id", backH.Get)
 		api.DELETE("/backups/:id", backH.Delete)
 		api.POST("/backups/:id/restore", backH.Restore)
+
+		// Central log store: single place for all activity + future aggregator.
+		logsH := &handlers.LogsHandler{GDB: gdb}
+		api.GET("/logs", logsH.List)
 	}
 
 	// Container exec session (single-use token auth, no session cookie).
@@ -206,7 +232,7 @@ func backupDir() string {
 	return "./data/backups"
 }
 
-func ensureAdmin(db *sql.DB, username, password string) error {	var count int
+func ensureAdmin(db *database.DB, username, password string) error {	var count int
 	if err := db.QueryRow(`SELECT COUNT(*) FROM users WHERE username=?`, username).Scan(&count); err != nil {
 		return err
 	}

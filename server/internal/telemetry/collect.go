@@ -4,7 +4,6 @@
 package telemetry
 
 import (
-	"database/sql"
 	"fmt"
 	"math"
 	"strings"
@@ -16,6 +15,7 @@ import (
 	"github.com/shirou/gopsutil/v3/net"
 
 	"serverhub/internal/audit"
+	"serverhub/internal/database"
 	"serverhub/internal/events"
 )
 
@@ -32,7 +32,7 @@ type Thresholds struct {
 	Disk float64
 }
 
-func StartLoop(db *sql.DB, broker *events.Broker, th Thresholds) {
+func StartLoop(db *database.DB, broker *events.Broker, th Thresholds) {
 	go func() {
 		t := time.NewTicker(interval)
 		defer t.Stop()
@@ -56,7 +56,7 @@ type reading struct {
 	diskRead, diskWrite             uint64
 }
 
-func checkThresholds(db *sql.DB, broker *events.Broker, th Thresholds, r reading, above map[string]bool, first bool) {
+func checkThresholds(db *database.DB, broker *events.Broker, th Thresholds, r reading, above map[string]bool, first bool) {
 	levels := map[string]struct {
 		value float64
 		limit float64
@@ -85,7 +85,7 @@ func checkThresholds(db *sql.DB, broker *events.Broker, th Thresholds, r reading
 	}
 }
 
-func sample(db *sql.DB) reading {
+func sample(db *database.DB) reading {
 	var r reading
 	if p, err := cpu.Percent(time.Second, false); err == nil && len(p) > 0 {
 		r.cpu = p[0]
@@ -115,11 +115,22 @@ func sample(db *sql.DB) reading {
 			r.diskWrite += c.WriteBytes
 		}
 	}
-	_, _ = db.Exec(`INSERT OR REPLACE INTO server_snapshots
-		(ts, cpu, mem_pct, mem_used_mb, disk_pct, net_rx, net_tx, disk_read, disk_write)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		time.Now().Unix(), r.cpu, r.memPct, r.memUsedMB, r.diskPct, clampU64(r.rx),
-		clampU64(r.tx), clampU64(r.diskRead), clampU64(r.diskWrite))
+	if db.Dialect == "postgres" {
+		_, _ = db.Exec(`INSERT INTO server_snapshots
+			(ts, cpu, mem_pct, mem_used_mb, disk_pct, net_rx, net_tx, disk_read, disk_write)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+			ON CONFLICT (ts) DO UPDATE SET cpu=EXCLUDED.cpu, mem_pct=EXCLUDED.mem_pct,
+			mem_used_mb=EXCLUDED.mem_used_mb, disk_pct=EXCLUDED.disk_pct, net_rx=EXCLUDED.net_rx,
+			net_tx=EXCLUDED.net_tx, disk_read=EXCLUDED.disk_read, disk_write=EXCLUDED.disk_write`,
+			time.Now().Unix(), r.cpu, r.memPct, r.memUsedMB, r.diskPct, clampU64(r.rx),
+			clampU64(r.tx), clampU64(r.diskRead), clampU64(r.diskWrite))
+	} else {
+		_, _ = db.Exec(`INSERT OR REPLACE INTO server_snapshots
+			(ts, cpu, mem_pct, mem_used_mb, disk_pct, net_rx, net_tx, disk_read, disk_write)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			time.Now().Unix(), r.cpu, r.memPct, r.memUsedMB, r.diskPct, clampU64(r.rx),
+			clampU64(r.tx), clampU64(r.diskRead), clampU64(r.diskWrite))
+	}
 	return r
 }
 

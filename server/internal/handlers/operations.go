@@ -1,17 +1,17 @@
 package handlers
 
 import (
-	"database/sql"
 	"net/http"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
 
+	"serverhub/internal/database"
 	"serverhub/internal/ops"
 )
 
 type OperationsHandler struct {
-	DB *sql.DB
+	DB *database.DB
 }
 
 // GET /server-hub/api/operations?limit=50

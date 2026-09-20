@@ -416,15 +416,15 @@ export function DashboardPage({ setOnline }: { setOnline: (v: boolean) => void }
   const docked = data.projects.filter((p) => toFleetStatus(p.status) === "docked").length;
 
   return (
-    <main className="w-full max-w-[1240px] mx-auto px-10 max-md:px-4 pt-24 pb-36">
+    <main className="w-full max-w-7xl mx-auto px-10 max-md:px-4 pt-24 pb-36">
       {/* masthead */}
       <div className="flex items-end justify-between gap-4 flex-wrap">
         <div>
-          <div className="flex items-center gap-2 flex-wrap text-accent-deep dark:text-ember mb-1.5">
+          {/* <div className="flex items-center gap-2 flex-wrap text-accent-deep dark:text-ember mb-1.5">
             <span className="w-[7px] h-[7px] rounded-full bg-accent-deep dark:bg-ember" />
             <Kicker>Bridge console · Station 04</Kicker>
-          </div>
-          <h1 className="font-head text-[32px] font-bold tracking-[-0.03em] leading-[1.2] max-md:text-[26px]">
+          </div> */}
+          <h1 className="font-head text-[32px] capitalize font-bold tracking-[-0.03em] leading-[1.2] max-md:text-[26px]">
             {greeting()}, {user?.username ?? "Captain"}.
           </h1>
           <p className="text-muted dark:text-fog mt-1.5">

@@ -8,12 +8,13 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"serverhub/internal/audit"
+	"serverhub/internal/database"
 	"serverhub/internal/middleware"
 	"serverhub/internal/models"
 )
 
 type ServiceHandler struct {
-	DB *sql.DB
+	DB *database.DB
 }
 
 var allowedServiceTypes = map[string]bool{
@@ -25,9 +26,11 @@ func scanService(row interface{ Scan(dest ...interface{}) error }) (models.Servi
 	var s models.Service
 	var internalPort, hostPort sql.NullInt64
 	var responseTime sql.NullInt64
+	var lastHealthAt sql.NullString
 	err := row.Scan(&s.ID, &s.ProjectID, &s.Name, &s.Type, &s.ContainerName,
 		&internalPort, &hostPort, &s.HealthURL, &s.DockerServiceName, &s.Status,
-		&s.LastHealth, &s.LastHealthAt, &responseTime)
+		&s.LastHealth, &lastHealthAt, &responseTime)
+	s.LastHealthAt = nullStr(lastHealthAt)
 	if internalPort.Valid {
 		v := int(internalPort.Int64)
 		s.InternalPort = &v
@@ -60,7 +63,9 @@ func (h *ServiceHandler) ListByProject(c *gin.Context) {
 		var s models.Service
 		var ip, hp sql.NullInt64
 		var rt sql.NullInt64
-		if err := rows.Scan(&s.ID, &s.ProjectID, &s.Name, &s.Type, &s.ContainerName, &ip, &hp, &s.HealthURL, &s.DockerServiceName, &s.Status, &s.LastHealth, &s.LastHealthAt, &rt); err == nil {
+		var lastHealthAt sql.NullString
+		if err := rows.Scan(&s.ID, &s.ProjectID, &s.Name, &s.Type, &s.ContainerName, &ip, &hp, &s.HealthURL, &s.DockerServiceName, &s.Status, &s.LastHealth, &lastHealthAt, &rt); err == nil {
+			s.LastHealthAt = nullStr(lastHealthAt)
 			if ip.Valid {
 				v := int(ip.Int64)
 				s.InternalPort = &v
@@ -104,14 +109,13 @@ func (h *ServiceHandler) Create(c *gin.Context) {
 	if s.HostPort != nil {
 		hp = *s.HostPort
 	}
-	res, err := h.DB.Exec(`INSERT INTO services (project_id,name,type,container_name,internal_port,host_port,health_url,docker_service_name,status)
+	id, err := h.DB.InsertID(`INSERT INTO services (project_id,name,type,container_name,internal_port,host_port,health_url,docker_service_name,status)
 		VALUES (?,?,?,?,?,?,?,?, 'unknown')`,
 		pid, s.Name, s.Type, s.ContainerName, ip, hp, s.HealthURL, s.DockerServiceName)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	id, _ := res.LastInsertId()
 	u, _ := middleware.CurrentUser(c)
 	audit.Write(h.DB, u, "create", "service", strconv.FormatInt(id, 10), "ok", s.Name)
 	h.getByID(c, id)

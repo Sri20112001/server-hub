@@ -10,13 +10,14 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"serverhub/internal/config"
+	"serverhub/internal/database"
 	"serverhub/internal/dockerx"
 	"serverhub/internal/models"
 	"serverhub/internal/serverinfo"
 )
 
 type SystemHandler struct {
-	DB     *sql.DB
+	DB     *database.DB
 	Docker *dockerx.Client
 	Cfg    *config.Config
 }
@@ -54,7 +55,8 @@ func (h *SystemHandler) ProjectHealth(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid project id"})
 		return
 	}
-	var status, healthURL, updated string
+	var status, healthURL string
+	var updated sql.NullString
 	err = h.DB.QueryRow(`SELECT status, health_url, updated_at FROM projects WHERE id=?`, pid).
 		Scan(&status, &healthURL, &updated)
 	if err != nil {
@@ -69,7 +71,9 @@ func (h *SystemHandler) ProjectHealth(c *gin.Context) {
 			var s models.Service
 			var ip, hp sql.NullInt64
 			var rt sql.NullInt64
-			if err := rows.Scan(&s.ID, &s.ProjectID, &s.Name, &s.Type, &s.ContainerName, &ip, &hp, &s.HealthURL, &s.DockerServiceName, &s.Status, &s.LastHealth, &s.LastHealthAt, &rt); err == nil {
+			var lastHealthAt sql.NullString
+			if err := rows.Scan(&s.ID, &s.ProjectID, &s.Name, &s.Type, &s.ContainerName, &ip, &hp, &s.HealthURL, &s.DockerServiceName, &s.Status, &s.LastHealth, &lastHealthAt, &rt); err == nil {
+				s.LastHealthAt = nullStr(lastHealthAt)
 				if ip.Valid {
 					v := int(ip.Int64)
 					s.InternalPort = &v
@@ -115,7 +119,7 @@ func (h *SystemHandler) ProjectHealth(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{
 		"projectId": pid, "status": status, "liveStatus": live,
-		"healthUrl": healthURL, "updatedAt": updated,
+		"healthUrl": healthURL, "updatedAt": nullStr(updated),
 		"responseTimeMs": rtMs, "lastCheck": lastCheck,
 		"services": services,
 	})
@@ -171,7 +175,9 @@ func (h *SystemHandler) Dashboard(c *gin.Context) {
 		defer rows.Close()
 		for rows.Next() {
 			var p models.Project
-			if err := rows.Scan(&p.ID, &p.Name, &p.Description, &p.Repository, &p.Branch, &p.Environment, &p.DeploymentPath, &p.ComposeFile, &p.GatewayPrefix, &p.HealthURL, &p.Status, &p.CreatedAt, &p.UpdatedAt); err == nil {
+			var created, updated sql.NullString
+			if err := rows.Scan(&p.ID, &p.Name, &p.Description, &p.Repository, &p.Branch, &p.Environment, &p.DeploymentPath, &p.ComposeFile, &p.GatewayPrefix, &p.HealthURL, &p.Status, &created, &updated); err == nil {
+				p.CreatedAt, p.UpdatedAt = nullStr(created), nullStr(updated)
 				plist = append(plist, p)
 			}
 		}
@@ -205,7 +211,9 @@ func (h *SystemHandler) Audit(c *gin.Context) {
 	out := []models.AuditLog{}
 	for rows.Next() {
 		var a models.AuditLog
-		if err := rows.Scan(&a.ID, &a.Actor, &a.Action, &a.Resource, &a.ResourceID, &a.Timestamp, &a.Result, &a.Metadata); err == nil {
+		var ts sql.NullString
+		if err := rows.Scan(&a.ID, &a.Actor, &a.Action, &a.Resource, &a.ResourceID, &ts, &a.Result, &a.Metadata); err == nil {
+			a.Timestamp = nullStr(ts)
 			out = append(out, a)
 		}
 	}

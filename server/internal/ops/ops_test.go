@@ -7,7 +7,7 @@ import (
 )
 
 func TestLifecycle(t *testing.T) {
-	db, err := database.Open(t.TempDir() + "/ops.db")
+	db, err := database.OpenDatabase("", t.TempDir()+"/ops.db")
 	if err != nil {
 		t.Fatal(err)
 	}

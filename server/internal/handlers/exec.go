@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"crypto/rand"
-	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"io"
@@ -15,6 +14,7 @@ import (
 	"github.com/gorilla/websocket"
 
 	"serverhub/internal/audit"
+	"serverhub/internal/database"
 	"serverhub/internal/dockerx"
 	"serverhub/internal/events"
 	"serverhub/internal/middleware"
@@ -25,7 +25,7 @@ import (
 // Docker exec → WebSocket → xterm. No host shell is ever exposed; every
 // session is audit-logged and requires explicit confirmation to start.
 type ExecHandler struct {
-	DB     *sql.DB
+	DB     *database.DB
 	Docker *dockerx.Client
 	Broker *events.Broker
 }

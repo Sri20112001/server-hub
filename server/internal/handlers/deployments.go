@@ -14,6 +14,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"serverhub/internal/audit"
+	"serverhub/internal/database"
 	"serverhub/internal/events"
 	"serverhub/internal/middleware"
 	"serverhub/internal/models"
@@ -21,7 +22,7 @@ import (
 )
 
 type DeploymentHandler struct {
-	DB     *sql.DB
+	DB     *database.DB
 	Broker *events.Broker
 }
 
@@ -61,7 +62,9 @@ func scanDeployments(rows *sql.Rows) []models.Deployment {
 	for rows.Next() {
 		var d models.Deployment
 		var dur sql.NullInt64
-		if err := rows.Scan(&d.ID, &d.ProjectID, &d.CommitSHA, &d.Branch, &d.Trigger, &d.Status, &d.StartedAt, &d.CompletedAt, &dur, &d.Logs); err == nil {
+		var started, completed sql.NullString
+		if err := rows.Scan(&d.ID, &d.ProjectID, &d.CommitSHA, &d.Branch, &d.Trigger, &d.Status, &started, &completed, &dur, &d.Logs); err == nil {
+			d.StartedAt, d.CompletedAt = nullStr(started), nullStr(completed)
 			if dur.Valid {
 				v := dur.Int64
 				d.DurationSec = &v
@@ -70,6 +73,20 @@ func scanDeployments(rows *sql.Rows) []models.Deployment {
 		}
 	}
 	return out
+}
+
+func scanDeploymentRow(row interface {
+	Scan(dest ...interface{}) error
+}, d *models.Deployment) {
+	var dur sql.NullInt64
+	var started, completed sql.NullString
+	if err := row.Scan(&d.ID, &d.ProjectID, &d.CommitSHA, &d.Branch, &d.Trigger, &d.Status, &started, &completed, &dur, &d.Logs); err == nil {
+		d.StartedAt, d.CompletedAt = nullStr(started), nullStr(completed)
+		if dur.Valid {
+			v := dur.Int64
+			d.DurationSec = &v
+		}
+	}
 }
 
 // Wipe deletes the entire deployment history. Audit-logged; projects,
@@ -108,19 +125,16 @@ func (h *DeploymentHandler) Create(c *gin.Context) {
 	if body.Status == "" {
 		body.Status = "SUCCESS"
 	}
-	res, err := h.DB.Exec(`INSERT INTO deployments (project_id,commit_sha,branch,trigger,status,started_at,completed_at,logs) VALUES (?,?,?,?,?,datetime('now'),datetime('now'),?)`,
+	id, err := h.DB.InsertID(`INSERT INTO deployments (project_id,commit_sha,branch,trigger,status,started_at,completed_at,logs) VALUES (?,?,?,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,?)`,
 		pid, body.CommitSHA, body.Branch, body.Trigger, body.Status, body.Logs)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	id, _ := res.LastInsertId()
 	u, _ := middleware.CurrentUser(c)
 	audit.Write(h.DB, u, "record-deployment", "deployment", strconv.FormatInt(id, 10), "ok", body.CommitSHA)
 	var d models.Deployment
-	var dur sql.NullInt64
-	_ = h.DB.QueryRow(`SELECT id,project_id,commit_sha,branch,trigger,status,started_at,completed_at,duration_sec,logs FROM deployments WHERE id=?`, id).
-		Scan(&d.ID, &d.ProjectID, &d.CommitSHA, &d.Branch, &d.Trigger, &d.Status, &d.StartedAt, &d.CompletedAt, &dur, &d.Logs)
+	scanDeploymentRow(h.DB.QueryRow(`SELECT id,project_id,commit_sha,branch,trigger,status,started_at,completed_at,duration_sec,logs FROM deployments WHERE id=?`, id), &d)
 	c.JSON(http.StatusCreated, d)
 }
 
@@ -151,9 +165,8 @@ func (h *DeploymentHandler) Deploy(c *gin.Context) {
 	}
 	u, _ := middleware.CurrentUser(c)
 
-	res, _ := h.DB.Exec(`INSERT INTO deployments (project_id,commit_sha,branch,trigger,status,started_at) VALUES (?,?,?,?, 'RUNNING', datetime('now'))`,
+	deployID, _ := h.DB.InsertID(`INSERT INTO deployments (project_id,commit_sha,branch,trigger,status,started_at) VALUES (?,?,?,?, 'RUNNING', CURRENT_TIMESTAMP)`,
 		pid, body.CommitSHA, branch, "manual@serverhub")
-	deployID, _ := res.LastInsertId()
 	audit.Write(h.DB, u, "deploy", "project", strconv.FormatInt(pid, 10), "started", body.CommitSHA)
 
 	op, err := ops.Create(h.DB, "deploy", "project", strconv.FormatInt(pid, 10), u, deployStages)
@@ -165,9 +178,7 @@ func (h *DeploymentHandler) Deploy(c *gin.Context) {
 	go h.runDeploy(op.ID, deployID, pid, name, deployPath, composeFile, u, body.CommitSHA, healthURL)
 
 	var d models.Deployment
-	var dur sql.NullInt64
-	_ = h.DB.QueryRow(`SELECT id,project_id,commit_sha,branch,trigger,status,started_at,completed_at,duration_sec,logs FROM deployments WHERE id=?`, deployID).
-		Scan(&d.ID, &d.ProjectID, &d.CommitSHA, &d.Branch, &d.Trigger, &d.Status, &d.StartedAt, &d.CompletedAt, &dur, &d.Logs)
+	scanDeploymentRow(h.DB.QueryRow(`SELECT id,project_id,commit_sha,branch,trigger,status,started_at,completed_at,duration_sec,logs FROM deployments WHERE id=?`, deployID), &d)
 	c.JSON(http.StatusAccepted, gin.H{"deployment": d, "operationId": op.ID})
 }
 
@@ -198,14 +209,13 @@ func (h *DeploymentHandler) Rollback(c *gin.Context) {
 		return
 	}
 	u, _ := middleware.CurrentUser(c)
-	res, err := h.DB.Exec(`INSERT INTO deployments (project_id,commit_sha,branch,trigger,status,started_at)
-		VALUES (?,?,?,?, 'RUNNING', datetime('now'))`,
+	newID, err := h.DB.InsertID(`INSERT INTO deployments (project_id,commit_sha,branch,trigger,status,started_at)
+		VALUES (?,?,?,?, 'RUNNING', CURRENT_TIMESTAMP)`,
 		pid, commit, branch, "rollback:"+strconv.FormatInt(depID, 10))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	newID, _ := res.LastInsertId()
 	audit.Write(h.DB, u, "rollback", "deployment", strconv.FormatInt(newID, 10), "started",
 		"target="+strconv.FormatInt(depID, 10)+" commit="+commit)
 	op, err := ops.Create(h.DB, "rollback", "project", strconv.FormatInt(pid, 10), u, deployStages)
@@ -216,15 +226,13 @@ func (h *DeploymentHandler) Rollback(c *gin.Context) {
 	go h.runDeploy(op.ID, newID, pid, name, deployPath, composeFile, u, commit, healthURL)
 
 	var d models.Deployment
-	var dur sql.NullInt64
-	_ = h.DB.QueryRow(`SELECT id,project_id,commit_sha,branch,trigger,status,started_at,completed_at,duration_sec,logs FROM deployments WHERE id=?`, newID).
-		Scan(&d.ID, &d.ProjectID, &d.CommitSHA, &d.Branch, &d.Trigger, &d.Status, &d.StartedAt, &d.CompletedAt, &dur, &d.Logs)
+	scanDeploymentRow(h.DB.QueryRow(`SELECT id,project_id,commit_sha,branch,trigger,status,started_at,completed_at,duration_sec,logs FROM deployments WHERE id=?`, newID), &d)
 	c.JSON(http.StatusAccepted, gin.H{"deployment": d, "operationId": op.ID})
 }
 
 // executeDeploy runs the staged pipeline (pull → up → health check),
 // updating the operation stages and broadcasting events throughout.
-func executeDeploy(db *sql.DB, broker *events.Broker, opID string, deployID, projectID int64, projectName, deployPath, composeFile, actor, commit, healthURL string) {
+func executeDeploy(db *database.DB, broker *events.Broker, opID string, deployID, projectID int64, projectName, deployPath, composeFile, actor, commit, healthURL string) {
 	start := time.Now()
 	emit := func(t string, data interface{}) {
 		if broker != nil {
@@ -237,7 +245,7 @@ func executeDeploy(db *sql.DB, broker *events.Broker, opID string, deployID, pro
 	}
 	fail := func(logs string) {
 		dur := int64(time.Since(start).Seconds())
-		_, _ = db.Exec(`UPDATE deployments SET status='FAILED', completed_at=datetime('now'), duration_sec=?, logs=? WHERE id=?`,
+		_, _ = db.Exec(`UPDATE deployments SET status='FAILED', completed_at=CURRENT_TIMESTAMP, duration_sec=?, logs=? WHERE id=?`,
 			dur, logs, deployID)
 		_ = ops.Finish(db, opID, "FAILED", logs)
 		audit.Write(db, actor, "deploy", "deployment", strconv.FormatInt(deployID, 10), "FAILED", commit)
@@ -298,7 +306,7 @@ func executeDeploy(db *sql.DB, broker *events.Broker, opID string, deployID, pro
 	}
 
 	dur := int64(time.Since(start).Seconds())
-	_, _ = db.Exec(`UPDATE deployments SET status='SUCCESS', completed_at=datetime('now'), duration_sec=?, logs=? WHERE id=?`,
+	_, _ = db.Exec(`UPDATE deployments SET status='SUCCESS', completed_at=CURRENT_TIMESTAMP, duration_sec=?, logs=? WHERE id=?`,
 		dur, buf.String(), deployID)
 	_ = ops.Finish(db, opID, "SUCCESS", "")
 	audit.Write(db, actor, "deploy", "deployment", strconv.FormatInt(deployID, 10), "SUCCESS", commit)
