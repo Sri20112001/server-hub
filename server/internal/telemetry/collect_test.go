@@ -3,17 +3,13 @@ package telemetry
 import (
 	"testing"
 
-	"serverhub/internal/database"
+	"serverhub/internal/testdb"
 )
 
 func TestSampleWritesRow(t *testing.T) {
-	db, err := database.OpenDatabase("", t.TempDir()+"/tel.db")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
+	db := testdb.Open(t)
 	var tbl string
-	if err := db.QueryRow(`SELECT name FROM sqlite_master WHERE name='server_snapshots'`).Scan(&tbl); err != nil {
+	if err := db.QueryRow(`SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename='server_snapshots'`).Scan(&tbl); err != nil {
 		t.Fatalf("table missing: %v", err)
 	}
 	sample(db)

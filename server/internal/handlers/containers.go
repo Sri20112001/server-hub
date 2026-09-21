@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"time"
@@ -9,6 +10,7 @@ import (
 	"github.com/docker/docker/api/types/container"
 	"github.com/gin-gonic/gin"
 
+	"serverhub/internal/applog"
 	"serverhub/internal/audit"
 	"serverhub/internal/database"
 	"serverhub/internal/dockerx"
@@ -96,6 +98,20 @@ func (h *ContainerHandler) Logs(c *gin.Context) {
 		opts.Since = c.Query("since")
 	}
 	if c.Query("follow") == "1" {
+		// SSE live tail. The subscription itself is recorded in the
+		// central DB log store; the streamed bytes remain ephemeral.
+		if h.DB != nil && h.DB.GDB != nil {
+			if u, _ := middleware.CurrentUser(c); true {
+				applog.Write(h.DB.GDB, applog.Entry{
+					Level: "INFO", Source: "container", Actor: u,
+					Action: "tail-logs", Resource: "container", ResourceID: id,
+					Message:  fmt.Sprintf("container %s log tail started (tail=%s)", id, tail),
+					Method:   "GET",
+					Path:     c.Request.URL.Path,
+					Metadata: applog.Truncate("since="+c.Query("since"), 500),
+				})
+			}
+		}
 		// SSE live tail
 		opts.Follow = true
 		reader, err := cli.ContainerLogs(ctx, id, opts)
@@ -129,7 +145,22 @@ func (h *ContainerHandler) Logs(c *gin.Context) {
 	}
 	defer reader.Close()
 	b, _ := io.ReadAll(reader)
-	c.JSON(http.StatusOK, gin.H{"logs": string(stripDockerHeader(b))})
+	text := string(stripDockerHeader(b))
+	// Persist the fetched snapshot to the central DB log store so container
+	// output is not only ephemeral Docker-daemon state. The tail sample is
+	// truncated to bound row size; the fetch itself is always recorded.
+	if h.DB != nil && h.DB.GDB != nil {
+		u, _ := middleware.CurrentUser(c)
+		applog.Write(h.DB.GDB, applog.Entry{
+			Level: "INFO", Source: "container", Actor: u,
+			Action: "fetch-logs", Resource: "container", ResourceID: id,
+			Message:  fmt.Sprintf("container %s logs fetched (%d bytes, tail=%s)", id, len(text), tail),
+			Method:   "GET",
+			Path:     c.Request.URL.Path,
+			Metadata: applog.Truncate(text, 16000),
+		})
+	}
+	c.JSON(http.StatusOK, gin.H{"logs": text})
 }
 
 func stripDockerHeader(b []byte) []byte {

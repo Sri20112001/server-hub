@@ -16,6 +16,7 @@ import (
 	"serverhub/internal/database"
 	"serverhub/internal/dockerx"
 	"serverhub/internal/middleware"
+	"serverhub/internal/testdb"
 )
 
 const testEncKey = "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff"
@@ -23,13 +24,9 @@ const testEncKey = "00112233445566778899aabbccddeeff00112233445566778899aabbccdd
 func testSetup(t *testing.T) (*database.DB, *config.Config, *gin.Engine) {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
-	db, err := database.OpenDatabase("", t.TempDir()+"/test.db")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { db.Close() })
+	db := testdb.Open(t)
 	hash, _ := bcrypt.GenerateFromPassword([]byte("testpass123"), bcrypt.MinCost)
-	_, err = db.Exec(`INSERT INTO users (username, password_hash, role) VALUES ('admin', ?, 'admin')`, string(hash))
+	_, err := db.Exec(`INSERT INTO users (username, password_hash, role) VALUES ('admin', ?, 'admin')`, string(hash))
 	if err != nil {
 		t.Fatal(err)
 	}

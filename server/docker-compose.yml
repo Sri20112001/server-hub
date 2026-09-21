@@ -34,7 +34,6 @@ services:
         condition: service_healthy
     environment:
       PORT: "4000"
-      DB_PATH: /app/data/serverhub.db
       DATABASE_URL: postgres://${POSTGRES_USER:-serverhub}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/${POSTGRES_DB:-serverhub}?sslmode=disable
       LOG_RETENTION_DAYS: ${LOG_RETENTION_DAYS:-30}
       JWT_SECRET: ${JWT_SECRET}

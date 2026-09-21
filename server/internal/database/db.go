@@ -3,60 +3,36 @@ package database
 import (
 	"database/sql"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 
-	"github.com/glebarez/sqlite"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
 
-// DB is the dialect-aware handle used across ServerHub. GORM is the ORM
-// (schema via AutoMigrate, app_logs writes, future aggregator queries) while
-// Exec/Query/QueryRow keep the existing raw-SQL call sites working on both
-// SQLite (local dev / tests) and Postgres (production, DATABASE_URL set).
+// DB is the Postgres handle used across ServerHub. GORM is the ORM
+// (schema via CreateTable, app_logs writes, aggregator queries) while
+// Exec/Query/QueryRow keep the existing raw-SQL call sites working with
+// ? placeholders (rebound to $n for Postgres).
 type DB struct {
-	GDB     *gorm.DB
-	SQL     *sql.DB
-	Dialect string // "sqlite" | "postgres"
+	GDB *gorm.DB
+	SQL *sql.DB
 }
 
-// OpenDatabase opens the store. databaseURL set => Postgres; else SQLite at
-// dbPath (pure Go, no CGO). AutoMigrate is non-destructive on existing DBs.
-func OpenDatabase(databaseURL, dbPath string) (*DB, error) {
-	dialect := "sqlite"
-	var (
-		gdb *gorm.DB
-		err error
-	)
-	if databaseURL != "" {
-		dialect = "postgres"
-		gdb, err = gorm.Open(postgres.Open(databaseURL), &gorm.Config{
-			TranslateError: true,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("open postgres: %w", err)
-		}
-	} else {
-		dir := filepath.Dir(dbPath)
-		if dir != "" && dir != "." {
-			if err := os.MkdirAll(dir, 0o755); err != nil {
-				return nil, fmt.Errorf("mkdir data dir: %w", err)
-			}
-		}
-		gdb, err = gorm.Open(sqlite.Open(dbPath), &gorm.Config{
-			TranslateError: true,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("open sqlite: %w", err)
-		}
+// OpenDatabase opens the Postgres store at databaseURL (required) and
+// ensures schema plus append-only log triggers. There is no embedded
+// fallback: DATABASE_URL must be set.
+func OpenDatabase(databaseURL string) (*DB, error) {
+	if databaseURL == "" {
+		return nil, fmt.Errorf("DATABASE_URL is required (postgres-only; set e.g. postgres://serverhub:changeme@localhost:5432/serverhub?sslmode=disable)")
 	}
-	// Create missing tables only — never rebuild existing ones. Plain
-	// AutoMigrate recreates legacy SQLite tables (e.g. users) via a temp
-	// table and drops NOT NULL columns in the copy, destroying data.
-	// Existing tables already match what the raw-SQL layer expects.
+	gdb, err := gorm.Open(postgres.Open(databaseURL), &gorm.Config{
+		TranslateError: true,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("open postgres: %w", err)
+	}
+	// Create missing tables only — never rebuild existing ones.
 	for _, m := range []any{
 		&User{},
 		&Project{},
@@ -81,21 +57,71 @@ func OpenDatabase(databaseURL, dbPath string) (*DB, error) {
 	if err != nil {
 		return nil, err
 	}
-	if dialect == "sqlite" {
-		sqldb.SetMaxOpenConns(1)
-		if _, err := sqldb.Exec("PRAGMA journal_mode=WAL;"); err != nil {
-			return nil, err
-		}
-		if _, err := sqldb.Exec("PRAGMA foreign_keys=ON;"); err != nil {
-			return nil, err
-		}
+	db := &DB{GDB: gdb, SQL: sqldb}
+	// Log tables are append-only: once written, rows can never be updated
+	// or deleted. Enforced at the DB layer so no API, prune job, or raw SQL
+	// path can tamper with history.
+	if err := db.ensureLogImmutability(); err != nil {
+		return nil, err
 	}
-	return &DB{GDB: gdb, SQL: sqldb, Dialect: dialect}, nil
+	return db, nil
 }
 
-// Rebind converts ? placeholders to $n for Postgres; no-op for SQLite.
+// ensureLogImmutability installs append-only guards on every table that
+// carries log/history data:
+//
+//	app_logs, audit_logs      -> no UPDATE, no DELETE (fully immutable)
+//	deployments, backups,
+//	operations, server_snapshots -> no DELETE (history cannot be wiped;
+//	UPDATE still allowed so running pipelines can progress
+//	RUNNING -> SUCCESS/FAILED and record their output)
+func (d *DB) ensureLogImmutability() error {
+	// Single helper: any guarded mutation raises instead of applying.
+	if _, err := d.SQL.Exec(`CREATE OR REPLACE FUNCTION serverhub_reject_log_mutation()
+		RETURNS trigger AS $$
+		BEGIN
+			RAISE EXCEPTION 'Table % is append-only and cannot be modified (operation: %)', TG_TABLE_NAME, TG_OP;
+			RETURN NULL;
+		END;
+		$$ LANGUAGE plpgsql`); err != nil {
+		return fmt.Errorf("create reject function: %w", err)
+	}
+	exec := func(q string) error {
+		if _, err := d.SQL.Exec(q); err != nil {
+			return err
+		}
+		return nil
+	}
+	// Fully immutable log tables: block UPDATE and DELETE.
+	for _, tbl := range []string{"app_logs", "audit_logs"} {
+		trg := tbl + "_no_update_delete"
+		if err := exec(`DROP TRIGGER IF EXISTS ` + trg + ` ON ` + tbl); err != nil {
+			return err
+		}
+		if err := exec(`CREATE TRIGGER ` + trg +
+			` BEFORE UPDATE OR DELETE ON ` + tbl +
+			` FOR EACH ROW EXECUTE FUNCTION serverhub_reject_log_mutation()`); err != nil {
+			return fmt.Errorf("create trigger %s: %w", trg, err)
+		}
+	}
+	// Delete-protected history tables.
+	for _, tbl := range []string{"deployments", "backups", "operations", "server_snapshots"} {
+		trg := tbl + "_no_delete"
+		if err := exec(`DROP TRIGGER IF EXISTS ` + trg + ` ON ` + tbl); err != nil {
+			return err
+		}
+		if err := exec(`CREATE TRIGGER ` + trg +
+			` BEFORE DELETE ON ` + tbl +
+			` FOR EACH ROW EXECUTE FUNCTION serverhub_reject_log_mutation()`); err != nil {
+			return fmt.Errorf("create trigger %s: %w", trg, err)
+		}
+	}
+	return nil
+}
+
+// Rebind converts ? placeholders to $n for Postgres.
 func (d *DB) Rebind(q string) string {
-	if d == nil || d.Dialect != "postgres" {
+	if d == nil {
 		return q
 	}
 	var sb strings.Builder
@@ -124,21 +150,14 @@ func (d *DB) QueryRow(query string, args ...any) *sql.Row {
 	return d.SQL.QueryRow(d.Rebind(query), args...)
 }
 
-// InsertID runs an INSERT and returns the new row id. Postgres has no
-// LastInsertId, so RETURNING id is used there.
+// InsertID runs an INSERT and returns the new row id via RETURNING id
+// (Postgres has no LastInsertId).
 func (d *DB) InsertID(query string, args ...any) (int64, error) {
-	if d.Dialect == "postgres" {
-		var id int64
-		if err := d.SQL.QueryRow(d.Rebind(query+" RETURNING id"), args...).Scan(&id); err != nil {
-			return 0, err
-		}
-		return id, nil
-	}
-	res, err := d.SQL.Exec(query, args...)
-	if err != nil {
+	var id int64
+	if err := d.SQL.QueryRow(d.Rebind(query+" RETURNING id"), args...).Scan(&id); err != nil {
 		return 0, err
 	}
-	return res.LastInsertId()
+	return id, nil
 }
 
 func (d *DB) Ping() error { return d.SQL.Ping() }

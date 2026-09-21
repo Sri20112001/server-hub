@@ -178,6 +178,11 @@ func (h *ExecHandler) Attach(c *gin.Context) {
 		return
 	}
 	defer ws.Close()
+	// The session I/O itself streams over the socket, but session open/close
+	// are stored in the DB (audit -> mirrored to app_logs) so every shell
+	// has a permanent record.
+	audit.Write(h.DB, g.actor, "exec-open", "container", g.container, "ok", "shell="+g.shell)
+	defer audit.Write(h.DB, g.actor, "exec-close", "container", g.container, "ok", "shell="+g.shell)
 	_ = ws.SetReadDeadline(time.Now().Add(10 * time.Minute))
 
 	// Resize + input from the browser.

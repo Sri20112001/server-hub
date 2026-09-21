@@ -20,9 +20,9 @@ import (
 )
 
 const (
-	interval    = 60 * time.Second
-	retention   = 7 * 24 * time.Hour
-	pruneEveryN = 10
+	interval = 60 * time.Second
+	// Telemetry snapshots are history and append-only like all other logs:
+	// retained forever, never pruned, never updated in place.
 )
 
 // Thresholds configures resource alert levels (percent).
@@ -36,16 +36,10 @@ func StartLoop(db *database.DB, broker *events.Broker, th Thresholds) {
 	go func() {
 		t := time.NewTicker(interval)
 		defer t.Stop()
-		ticks := 0
 		above := map[string]bool{}
 		checkThresholds(db, broker, th, sample(db), above, true)
 		for range t.C {
-			ticks++
 			checkThresholds(db, broker, th, sample(db), above, false)
-			if ticks%pruneEveryN == 0 {
-				_, _ = db.Exec(`DELETE FROM server_snapshots WHERE ts < ?`,
-					time.Now().Add(-retention).Unix())
-			}
 		}
 	}()
 }
@@ -115,22 +109,14 @@ func sample(db *database.DB) reading {
 			r.diskWrite += c.WriteBytes
 		}
 	}
-	if db.Dialect == "postgres" {
-		_, _ = db.Exec(`INSERT INTO server_snapshots
-			(ts, cpu, mem_pct, mem_used_mb, disk_pct, net_rx, net_tx, disk_read, disk_write)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-			ON CONFLICT (ts) DO UPDATE SET cpu=EXCLUDED.cpu, mem_pct=EXCLUDED.mem_pct,
-			mem_used_mb=EXCLUDED.mem_used_mb, disk_pct=EXCLUDED.disk_pct, net_rx=EXCLUDED.net_rx,
-			net_tx=EXCLUDED.net_tx, disk_read=EXCLUDED.disk_read, disk_write=EXCLUDED.disk_write`,
-			time.Now().Unix(), r.cpu, r.memPct, r.memUsedMB, r.diskPct, clampU64(r.rx),
-			clampU64(r.tx), clampU64(r.diskRead), clampU64(r.diskWrite))
-	} else {
-		_, _ = db.Exec(`INSERT OR REPLACE INTO server_snapshots
-			(ts, cpu, mem_pct, mem_used_mb, disk_pct, net_rx, net_tx, disk_read, disk_write)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			time.Now().Unix(), r.cpu, r.memPct, r.memUsedMB, r.diskPct, clampU64(r.rx),
-			clampU64(r.tx), clampU64(r.diskRead), clampU64(r.diskWrite))
-	}
+	// Append-only: first write wins. ON CONFLICT DO NOTHING so a retry
+	// never overwrites history (UPDATE is not used).
+	_, _ = db.Exec(`INSERT INTO server_snapshots
+		(ts, cpu, mem_pct, mem_used_mb, disk_pct, net_rx, net_tx, disk_read, disk_write)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT (ts) DO NOTHING`,
+		time.Now().Unix(), r.cpu, r.memPct, r.memUsedMB, r.diskPct, clampU64(r.rx),
+		clampU64(r.tx), clampU64(r.diskRead), clampU64(r.diskWrite))
 	return r
 }
 

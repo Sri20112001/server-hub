@@ -10,7 +10,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"serverhub/internal/database"
+	"serverhub/internal/testdb"
 )
 
 func TestTarGzRoundtrip(t *testing.T) {
@@ -60,11 +60,7 @@ func TestExtractRejectsZipSlip(t *testing.T) {
 
 func TestRollbackEndpoint(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	db, err := database.OpenDatabase("", t.TempDir()+"/rb.db")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { db.Close() })
+	db := testdb.Open(t)
 	_, _ = db.Exec(`INSERT INTO users (username, password_hash, role) VALUES ('admin','x','admin')`)
 	pid, _ := db.InsertID(`INSERT INTO projects (name) VALUES ('p1')`)
 	depID, _ := db.InsertID(`INSERT INTO deployments (project_id,commit_sha,branch,trigger,status) VALUES (?,?,?,?,?)`,

@@ -1,4 +1,4 @@
-# ServerHub — Backend API (Go + Gin + SQLite)
+# ServerHub — Backend API (Go + Gin + Postgres)
 
 Backend-only implementation of the ServerHub control plane (see repo spec).
 Frontend is intentionally **not** included.
@@ -42,12 +42,13 @@ POST /server-hub/api/discovery/import  {name} (register ship + stations; compose
 GET /server-hub/api/health  GET /server-hub/api/projects/:id/health
 GET /server-hub/api/deployments  GET/POST /server-hub/api/projects/:id/deployments  POST /server-hub/api/projects/:id/deploy
 POST /server-hub/api/projects/:id/deployments/:depId/rollback (re-run compose for a past launch)
-DELETE /server-hub/api/deployments (wipe history, audit-logged)
-GET /server-hub/api/telemetry?range=15m|1h|6h|24h  GET /server-hub/api/telemetry/latest (per-minute host samples, 7d retention)
+DELETE /server-hub/api/deployments (disabled: 410 — deployment history is append-only and cannot be wiped; attempts are audit-logged)
+GET /server-hub/api/telemetry?range=15m|1h|6h|24h  GET /server-hub/api/telemetry/latest (per-minute host samples, retained forever — append-only)
 GET /server-hub/api/events (SSE live bus: deployment.*, container.*, project.*, health.changed, gateway.reloaded, backup.*, telemetry.threshold, discovery.completed)
 GET /server-hub/api/operations?limit=50  GET /server-hub/api/operations/:id (unified progress for deploys, restarts, backups…)
 POST /server-hub/api/containers/:id/exec?confirm=true {shell} (single-use token) → WS /server-hub/api/exec/:token (docker-exec PTY, audit-logged)
 GET/POST /server-hub/api/projects/:id/backups  GET/DELETE /server-hub/api/backups/:id  POST /server-hub/api/backups/:id/restore?confirm=true (tar.gz snapshots + manifest)
+GET /server-hub/api/logs (central append-only app_logs store — all activity, read-only)
 GET/POST /server-hub/api/projects/:id/secrets  PUT /server-hub/api/secrets/:id (rotate)  DELETE /server-hub/api/secrets/:id  POST /server-hub/api/secrets/:id/reveal
 GET/POST /server-hub/api/gateway/routes  PUT/DELETE /server-hub/api/gateway/routes/:id  POST /server-hub/api/gateway/validate  POST /server-hub/api/gateway/reload
 GET /server-hub/api/server  GET /server-hub/api/dashboard  GET /server-hub/api/audit
@@ -57,7 +58,15 @@ POST /server-hub/api/webhooks/github (public, HMAC-signed — see below)
 
 Notes:
 
-- Secrets API returns metadata only; values are AES-256-GCM encrypted in SQLite and
+- All logs live in the DB and are append-only: every audit event is mirrored
+  into the central `app_logs` table; `app_logs`/`audit_logs` reject UPDATE and
+  DELETE via Postgres triggers, and `deployments`/`backups`/
+  `operations`/`server_snapshots` reject DELETE. There is no prune/wipe:
+  `applog.Prune` is a no-op, `DELETE /deployments` returns 410, backup delete
+  reclaims only the archive file (the DB row + logs are retained as DELETED),
+  and telemetry snapshots use insert-only writes. `GET /logs` and `GET /audit`
+  are read-only.
+- Secrets API returns metadata only; values are AES-256-GCM encrypted at rest in Postgres and
   revealed only via `POST /server-hub/api/secrets/:id/reveal` (audit-logged, value never in logs).
   Rotate with `PUT /server-hub/api/secrets/:id {value}`.
 - Docker is read-only except lifecycle/deploy endpoints. Stop/restart (container and
@@ -81,15 +90,21 @@ cd server
 docker compose up --build -d
 ```
 
-Mounts: `./data` (SQLite), `/var/run/docker.sock` (ro), Caddyfile (ro).
+Mounts: `./data` (backups), `/var/run/docker.sock` (ro), Caddyfile (ro).
 
 ## Env
 
-See `.env.example`. `SERVERHUB_ENCRYPTION_KEY` must be stable 64-char hex in production.
+See `.env.example`. `DATABASE_URL` is required (Postgres is the only
+supported database). `SERVERHUB_ENCRYPTION_KEY` must be stable 64-char hex
+in production.
 
 ## Tests
 
+DB-backed tests need a live Postgres; each test gets an isolated
+`serverhub_test_*` database that is dropped afterwards. Without a reachable
+Postgres the DB tests skip (set `TEST_DATABASE_URL` to run them):
+
 ```bash
 cd server
-go test ./...
+TEST_DATABASE_URL=postgres://serverhub:changeme@localhost:5432/postgres?sslmode=disable go test ./...
 ```

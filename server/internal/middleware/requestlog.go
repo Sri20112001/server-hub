@@ -9,8 +9,11 @@ import (
 	"serverhub/internal/applog"
 )
 
-// RequestLog persists one app_logs row per HTTP request (source=api).
-// Health probes and SSE streams are skipped to avoid log spam.
+// RequestLog persists one app_logs row per HTTP request (source=api) into
+// the append-only central log store. Liveness probes (/health) and
+// long-lived SSE streams (/server-hub/api/events) are intentionally not
+// stored per-hit (they would flood the immutable store); their state
+// transitions remain fully logged via audit -> app_logs mirroring.
 func RequestLog(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()

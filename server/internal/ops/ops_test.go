@@ -3,15 +3,11 @@ package ops
 import (
 	"testing"
 
-	"serverhub/internal/database"
+	"serverhub/internal/testdb"
 )
 
 func TestLifecycle(t *testing.T) {
-	db, err := database.OpenDatabase("", t.TempDir()+"/ops.db")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
+	db := testdb.Open(t)
 
 	op, err := Create(db, "deploy", "project", "1", "admin", []string{"Pull", "Up"})
 	if err != nil {

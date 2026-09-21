@@ -10,9 +10,9 @@ import (
 	"golang.org/x/crypto/bcrypt"
 
 	"serverhub/internal/config"
-	"serverhub/internal/database"
 	"serverhub/internal/dockerx"
 	"serverhub/internal/middleware"
+	"serverhub/internal/testdb"
 )
 
 func strReader(s string) *strings.Reader { return strings.NewReader(s) }
@@ -21,11 +21,7 @@ func contains(hay, needle string) bool   { return strings.Contains(hay, needle) 
 func discoverySetup(t *testing.T) (*gin.Engine, *config.Config) {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
-	db, err := database.OpenDatabase("", t.TempDir()+"/disc.db")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { db.Close() })
+	db := testdb.Open(t)
 	hash, _ := bcrypt.GenerateFromPassword([]byte("testpass123"), bcrypt.MinCost)
 	_, _ = db.Exec(`INSERT INTO users (username, password_hash, role) VALUES ('admin', ?, 'admin')`, string(hash))
 	cfg := &config.Config{

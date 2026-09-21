@@ -11,6 +11,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"serverhub/internal/applog"
 	"serverhub/internal/audit"
 	"serverhub/internal/database"
 	"serverhub/internal/events"
@@ -85,9 +86,21 @@ func (h *ProjectLifecycle) run(c *gin.Context, action string, needConfirm bool, 
 			})
 		}
 	}
+	projectID := uint(pid)
 	fail := func(msg string, logs string) {
 		_ = ops.Finish(h.DB, op.ID, "FAILED", msg)
 		audit.Write(h.DB, u, action, "project", strconv.FormatInt(pid, 10), "failed", msg)
+		// Persist the full compose output to the central DB log store
+		// (previously it only went back in the HTTP response).
+		if h.DB != nil && h.DB.GDB != nil {
+			applog.Write(h.DB.GDB, applog.Entry{
+				Level: "ERROR", Source: "project", Actor: u, Action: action,
+				Resource: "project", ResourceID: strconv.FormatInt(pid, 10),
+				ProjectID: &projectID,
+				Message:   fmt.Sprintf("project %s %s failed: %s", name, action, msg),
+				Metadata:  applog.Truncate(logs, 16000),
+			})
+		}
 		emit(false, msg)
 		c.JSON(http.StatusBadGateway, gin.H{"error": msg, "logs": logs, "operationId": op.ID})
 	}
@@ -112,6 +125,16 @@ func (h *ProjectLifecycle) run(c *gin.Context, action string, needConfirm bool, 
 	}
 	_ = ops.Finish(h.DB, op.ID, "SUCCESS", "")
 	audit.Write(h.DB, u, action, "project", strconv.FormatInt(pid, 10), "ok", "op="+op.ID)
+	// Persist the compose output to the central DB log store (append-only).
+	if h.DB != nil && h.DB.GDB != nil {
+		applog.Write(h.DB.GDB, applog.Entry{
+			Level: "INFO", Source: "project", Actor: u, Action: action,
+			Resource: "project", ResourceID: strconv.FormatInt(pid, 10),
+			ProjectID: &projectID,
+			Message:   fmt.Sprintf("project %s %s ok (op=%s)", name, action, op.ID),
+			Metadata:  applog.Truncate(buf.String(), 16000),
+		})
+	}
 	emit(true, "op="+op.ID)
 	c.JSON(http.StatusOK, gin.H{"ok": true, "projectId": pid, "action": action, "logs": buf.String(), "operationId": op.ID})
 }

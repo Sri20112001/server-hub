@@ -1,9 +1,12 @@
 // Package applog is the central activity/log store for ServerHub.
-// Every significant event lands in app_logs via GORM so a future
-// log-aggregator UI (or external collector) has one table to tail.
+// Every significant event lands in app_logs so the log-aggregator UI
+// (or external collector) has one table to tail. app_logs is append-only:
+// DB triggers reject UPDATE and DELETE, and this package intentionally
+// exposes no mutating operation besides INSERT (see Query for reads).
 //
 // Levels: DEBUG | INFO | WARN | ERROR
-// Sources: api | deploy | health | auth | backup | discovery | system | webhook
+// Sources: api | deploy | health | auth | backup | discovery | system |
+// webhook | container | exec | project | service | secret | monitor | server
 package applog
 
 import (
@@ -111,12 +114,19 @@ func Query(db *gorm.DB, f Filter) ([]database.AppLog, error) {
 	return out, nil
 }
 
-// Prune deletes rows older than retainDays (0 = keep forever).
-func Prune(db *gorm.DB, retainDays int) (int64, error) {
-	if retainDays <= 0 {
-		return 0, nil
+// Prune is retained for backward compatibility but is intentionally a
+// no-op: app_logs is append-only and must never be deleted or altered
+// (DB triggers reject DELETE/UPDATE). Retention is always "keep forever".
+// It returns 0 rows affected regardless of retainDays.
+func Prune(_ *gorm.DB, _ int) (int64, error) {
+	return 0, nil
+}
+
+// Truncate caps oversized log payloads before persisting so a single huge
+// output (e.g. container tail, compose run) cannot bloat the DB row.
+func Truncate(s string, max int) string {
+	if max <= 0 || len(s) <= max {
+		return s
 	}
-	cutoff := time.Now().UTC().AddDate(0, 0, -retainDays)
-	res := db.Where("timestamp < ?", cutoff).Delete(&database.AppLog{})
-	return res.RowsAffected, res.Error
+	return s[:max] + "...(truncated)"
 }

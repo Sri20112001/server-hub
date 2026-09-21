@@ -10,9 +10,8 @@ import (
 )
 
 type Config struct {
-	Port          string
-	DBPath        string
-	DatabaseURL   string // Postgres DSN. If set, Postgres is used; else SQLite at DBPath.
+	Port        string
+	DatabaseURL string // Required Postgres DSN, e.g. postgres://serverhub:changeme@localhost:5432/serverhub?sslmode=disable.
 	JWTSecret     string
 	EncryptionKey string // hex-encoded 32 bytes
 	CookieSecure  bool
@@ -26,7 +25,9 @@ type Config struct {
 	AlertRAM      float64
 	AlertDisk     float64
 	HealthIntervalSec int
-	LogRetentionDays  int // app_logs retention; 0 = keep forever
+	// LogRetentionDays is deprecated and ignored: all log tables are
+	// append-only and retained forever (DB triggers reject DELETE/UPDATE).
+	LogRetentionDays int
 }
 
 func getenv(key, def string) string {
@@ -72,9 +73,8 @@ func Load() *Config {
 	secure := getenv("COOKIE_SECURE", "false") == "true"
 	retention, _ := strconv.Atoi(getenv("LOG_RETENTION_DAYS", "30"))
 	return &Config{
-		Port:            getenv("PORT", "4000"),
-		DBPath:          getenv("DB_PATH", "./data/serverhub.db"),
-		DatabaseURL:     os.Getenv("DATABASE_URL"),
+		Port:        getenv("PORT", "4000"),
+		DatabaseURL: os.Getenv("DATABASE_URL"),
 		JWTSecret:       getenv("JWT_SECRET", "change-me-in-production-min-32-chars"),
 		EncryptionKey:   encKey,
 		CookieSecure:    secure,

@@ -13,6 +13,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 	"golang.org/x/crypto/bcrypt"
+	"gorm.io/gorm"
 
 	"serverhub/internal/applog"
 	"serverhub/internal/config"
@@ -33,6 +34,9 @@ func main() {
 	}
 	cfg := config.Load()
 
+	// Startup warnings go to stdout now; DB mirrors are written after the
+	// database opens below (see bootWarningsToDB) so every warning is also
+	// stored in app_logs.
 	if os.Getenv("SERVERHUB_ENCRYPTION_KEY") == "" {
 		log.Println("WARNING: SERVERHUB_ENCRYPTION_KEY not set — using ephemeral key. Secrets will NOT survive restarts. Set a stable 64-char hex key in production.")
 	}
@@ -40,21 +44,27 @@ func main() {
 		log.Println("WARNING: JWT_SECRET is short — use at least 32 characters in production.")
 	}
 
-	// GORM is the ORM. DATABASE_URL set => Postgres (production);
-	// unset => SQLite at DB_PATH (local dev / tests).
-	db, err := database.OpenDatabase(cfg.DatabaseURL, cfg.DBPath)
+	// Postgres is the only store. DATABASE_URL is required; the server
+	// fails fast without it.
+	db, err := database.OpenDatabase(cfg.DatabaseURL)
 	if err != nil {
 		log.Fatalf("open db: %v", err)
 	}
 	gdb := db.GDB
-	log.Printf("database dialect: %s", db.Dialect)
-	if _, err := applog.Prune(gdb, cfg.LogRetentionDays); err != nil {
-		log.Printf("log prune: %v", err)
+	log.Printf("connected to postgres")
+	// Log tables are append-only and retained forever: no pruning, no
+	// wipe, no delete. LOG_RETENTION_DAYS is ignored (see config).
+	if cfg.LogRetentionDays > 0 {
+		log.Printf("log retention: append-only mode, ignoring LOG_RETENTION_DAYS=%d (logs kept forever)", cfg.LogRetentionDays)
+		applog.Warn(gdb, "system", "append-only mode: ignoring LOG_RETENTION_DAYS, logs kept forever")
 	}
 	if err := ensureAdmin(db, cfg.AdminUser, cfg.AdminPass); err != nil {
 		log.Fatalf("seed admin: %v", err)
 	}
-	applog.Info(gdb, "system", "serverhub boot (dialect="+db.Dialect+")")
+	// Mirror boot + startup warnings to the central DB log store
+	// (stdout alone is not enough — all logs must live in the DB).
+	bootWarningsToDB(gdb)
+	applog.Info(gdb, "system", "serverhub boot (postgres)")
 
 	dockerClient := dockerx.New()
 	broker := events.NewBroker()
@@ -197,6 +207,7 @@ func main() {
 	// Serve frontend if FRONTEND_DIR is set (e.g. /app/client/dist)
 	if frontendDir := os.Getenv("FRONTEND_DIR"); frontendDir != "" {
 		log.Printf("Serving static frontend from %s", frontendDir)
+		applog.Info(gdb, "system", "serving static frontend from "+frontendDir)
 		// Map Vite's base path /server-hub/assets to the physical assets folder
 		r.Static("/server-hub/assets", filepath.Join(frontendDir, "assets"))
 		r.StaticFile("/server-hub/favicon.png", filepath.Join(frontendDir, "favicon.png"))
@@ -217,11 +228,33 @@ func main() {
 		})
 	}
 
-	log.Printf("ServerHub API listening on :%s (db=%s docker=%v)", cfg.Port, cfg.DBPath, dockerClient.Available())
+	log.Printf("ServerHub API listening on :%s (db=postgres docker=%v)", cfg.Port, dockerClient.Available())
 	log.Printf("CORS allowed origins: %v", origins)
+	applog.Info(gdb, "system", "API listening (db=postgres docker="+boolStr(dockerClient.Available())+")")
 	if err := r.Run(":" + cfg.Port); err != nil {
+		applog.Error(gdb, "system", "server exited: "+err.Error())
 		log.Fatal(err)
 	}
+}
+
+// bootWarningsToDB mirrors process-environment warnings into app_logs so
+// they are stored in the DB, not just stdout.
+func bootWarningsToDB(gdb *gorm.DB) {
+	if os.Getenv("SERVERHUB_ENCRYPTION_KEY") == "" {
+		applog.Warn(gdb, "system", "startup warning: SERVERHUB_ENCRYPTION_KEY not set — using ephemeral key")
+	}
+	// JWTSecret length is checked by the caller config; mirror generically
+	// without leaking the value.
+	if v := os.Getenv("JWT_SECRET"); v != "" && len(v) < 32 {
+		applog.Warn(gdb, "auth", "startup warning: JWT_SECRET is short — use at least 32 characters in production")
+	}
+}
+
+func boolStr(b bool) string {
+	if b {
+		return "true"
+	}
+	return "false"
 }
 
 // backupDir resolves BACKUP_DIR or defaults next to the database.

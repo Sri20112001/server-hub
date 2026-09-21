@@ -89,19 +89,15 @@ func scanDeploymentRow(row interface {
 	}
 }
 
-// Wipe deletes the entire deployment history. Audit-logged; projects,
-// services and secrets are untouched. High-risk: the frontend gates this
-// behind typed confirmation.
+// Wipe is disabled: deployment history contains log records and the
+// deployments table is delete-protected (DB trigger rejects DELETE).
+// The attempt itself is audit-logged (append-only) and a 410 is returned
+// so old clients fail closed instead of silently deleting history.
 func (h *DeploymentHandler) Wipe(c *gin.Context) {
-	res, err := h.DB.Exec(`DELETE FROM deployments`)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-	n, _ := res.RowsAffected()
 	u, _ := middleware.CurrentUser(c)
-	audit.Write(h.DB, u, "wipe", "deployments", "", "ok", strconv.FormatInt(n, 10)+" rows")
-	c.JSON(http.StatusOK, gin.H{"ok": true, "deleted": n})
+	audit.Write(h.DB, u, "wipe-blocked", "deployments", "", "blocked",
+		"deployment history is append-only and cannot be wiped")
+	c.JSON(http.StatusGone, gin.H{"error": "deployment history is append-only and cannot be wiped"})
 }
 
 func (h *DeploymentHandler) Create(c *gin.Context) {

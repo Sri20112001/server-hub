@@ -2,8 +2,8 @@ package database
 
 import "time"
 
-// GORM entities mirror the existing SQLite schema so AutoMigrate works on
-// both Postgres (production) and SQLite (local dev / tests). The API DTOs in
+// GORM entities define the Postgres schema (created via CreateTable for
+// missing tables; existing tables are never rebuilt). The API DTOs in
 // internal/models stay untouched; these are persistence-only.
 
 // TableName overrides keep GORM from pluralizing differently.
@@ -166,7 +166,7 @@ type AppLog struct {
 	ResourceID string    `gorm:"default:''" json:"resourceId"`
 	ProjectID  *uint     `gorm:"index" json:"projectId"`
 	Message    string    `gorm:"not null" json:"message"`
-	Metadata   string    `gorm:"default:''" json:"metadata"` // JSON string; JSONB on postgres via GORM? kept text for sqlite compat
+	Metadata   string    `gorm:"default:''" json:"metadata"` // JSON string (text column, kept for existing installs)
 	RequestID  string    `gorm:"index;default:''" json:"requestId"`
 	Method     string    `gorm:"default:''" json:"method"`
 	Path       string    `gorm:"index;default:''" json:"path"`

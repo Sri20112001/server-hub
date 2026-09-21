@@ -203,7 +203,10 @@ func (h *BackupsHandler) Get(c *gin.Context) {
 	c.JSON(http.StatusOK, b)
 }
 
-// DELETE /server-hub/api/backups/:id
+// DELETE /server-hub/api/backups/:id — retention-safe delete.
+// The backups table is delete-protected (DB trigger rejects DELETE) because
+// each row carries log data. Deleting therefore reclaims the archive file
+// from disk but PRESERVES the DB row (marked DELETED) and its logs forever.
 func (h *BackupsHandler) Delete(c *gin.Context) {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -212,15 +215,18 @@ func (h *BackupsHandler) Delete(c *gin.Context) {
 	}
 	var path string
 	var pid int64
-	if err := h.DB.QueryRow(`SELECT project_id, path FROM backups WHERE id=?`, id).
-		Scan(&pid, &path); err != nil {
+	var status string
+	if err := h.DB.QueryRow(`SELECT project_id, path, status FROM backups WHERE id=?`, id).
+		Scan(&pid, &path, &status); err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "backup not found"})
 		return
 	}
+	// Reclaim disk; the DB row + logs stay.
 	_ = os.Remove(path)
-	_, _ = h.DB.Exec(`DELETE FROM backups WHERE id=?`, id)
+	_, _ = h.DB.Exec(`UPDATE backups SET status='DELETED' WHERE id=?`, id)
 	u, _ := middleware.CurrentUser(c)
-	audit.Write(h.DB, u, "delete", "backup", strconv.FormatInt(id, 10), "ok", "")
+	audit.Write(h.DB, u, "delete", "backup", strconv.FormatInt(id, 10), "ok",
+		"archive file removed; record retained (status=DELETED)")
 	h.emit("backup.deleted", map[string]interface{}{"projectId": pid, "backupId": id})
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
