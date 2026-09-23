@@ -53,6 +53,7 @@ export const api = {
 
   // projects
   projects: () => req<import("./types").Project[]>("/server-hub/api/projects"),
+  project: (id: number) => req<import("./types").Project>(`/server-hub/api/projects/${id}`),
   createProject: (p: Partial<import("./types").Project>) =>
     req<import("./types").Project>("/server-hub/api/projects", { method: "POST", body: JSON.stringify(p) }),
   projectAction: (id: number, action: "start" | "stop" | "restart", confirm = false) =>
