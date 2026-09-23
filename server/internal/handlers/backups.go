@@ -20,6 +20,7 @@ import (
 	"serverhub/internal/database"
 	"serverhub/internal/events"
 	"serverhub/internal/middleware"
+	"serverhub/internal/notify"
 	"serverhub/internal/ops"
 )
 
@@ -116,6 +117,7 @@ func (h *BackupsHandler) runBackup(opID string, pid int64, name, deployPath, act
 		h.emit("backup.failed", map[string]interface{}{
 			"projectId": pid, "project": name, "operationId": opID, "error": msg,
 		})
+		notify.Send(h.DB, notify.EventBackupFailed, "Backup failed: "+name, msg)
 	}
 	if deployPath == "" {
 		fail("no deployment_path configured")
@@ -270,6 +272,7 @@ func (h *BackupsHandler) Restore(c *gin.Context) {
 			h.emit("backup.restoreFailed", map[string]interface{}{
 				"projectId": pid, "backupId": id, "operationId": op.ID, "error": rerr.Error(),
 			})
+			notify.Send(h.DB, notify.EventBackupFailed, "Restore failed: "+name, rerr.Error())
 			return
 		}
 		_ = ops.Finish(h.DB, op.ID, "SUCCESS", "")

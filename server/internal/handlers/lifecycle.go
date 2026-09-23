@@ -16,6 +16,7 @@ import (
 	"serverhub/internal/database"
 	"serverhub/internal/events"
 	"serverhub/internal/middleware"
+	"serverhub/internal/notify"
 	"serverhub/internal/ops"
 )
 
@@ -49,15 +50,20 @@ func (h *ProjectLifecycle) run(c *gin.Context, action string, needConfirm bool, 
 		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("%sing a project is high-risk: retry with ?confirm=true or body {\"confirm\": true}", action)})
 		return
 	}
+	code, body := h.runOne(u, pid, action, composeArgs)
+	c.JSON(code, body)
+}
+
+// runOne executes one lifecycle action. Shared by the single-project routes
+// and the bulk endpoint; responses keep the single-route shape.
+func (h *ProjectLifecycle) runOne(u string, pid int64, action string, composeArgs []string) (int, gin.H) {
 	var name, deployPath string
 	if err := h.DB.QueryRow(`SELECT name, deployment_path FROM projects WHERE id=?`, pid).Scan(&name, &deployPath); err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "project not found"})
-		return
+		return http.StatusNotFound, gin.H{"error": "project not found"}
 	}
 	if deployPath == "" {
 		audit.Write(h.DB, u, action, "project", strconv.FormatInt(pid, 10), "failed", "no deployment_path configured")
-		c.JSON(http.StatusBadRequest, gin.H{"error": "no deployment_path configured for this project"})
-		return
+		return http.StatusBadRequest, gin.H{"error": "no deployment_path configured for this project"}
 	}
 	if _, err := os.Stat(filepath.Join(deployPath, "docker-compose.yml")); err != nil {
 		// Fall back to whatever compose file the project declares.
@@ -68,15 +74,13 @@ func (h *ProjectLifecycle) run(c *gin.Context, action string, needConfirm bool, 
 		}
 		if _, err := os.Stat(filepath.Join(deployPath, composeFile)); err != nil {
 			audit.Write(h.DB, u, action, "project", strconv.FormatInt(pid, 10), "failed", "compose file missing")
-			c.JSON(http.StatusBadRequest, gin.H{"error": "compose file not found in deployment_path"})
-			return
+			return http.StatusBadRequest, gin.H{"error": "compose file not found in deployment_path"}
 		}
 	}
 	var buf bytes.Buffer
 	op, err := ops.Create(h.DB, "project."+action, "project", strconv.FormatInt(pid, 10), u, []string{action})
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not track operation"})
-		return
+		return http.StatusInternalServerError, gin.H{"error": "could not track operation"}
 	}
 	emit := func(ok bool, detail string) {
 		if h.Broker != nil {
@@ -87,7 +91,7 @@ func (h *ProjectLifecycle) run(c *gin.Context, action string, needConfirm bool, 
 		}
 	}
 	projectID := uint(pid)
-	fail := func(msg string, logs string) {
+	fail := func(msg string, logs string) (int, gin.H) {
 		_ = ops.Finish(h.DB, op.ID, "FAILED", msg)
 		audit.Write(h.DB, u, action, "project", strconv.FormatInt(pid, 10), "failed", msg)
 		// Persist the full compose output to the central DB log store
@@ -102,7 +106,9 @@ func (h *ProjectLifecycle) run(c *gin.Context, action string, needConfirm bool, 
 			})
 		}
 		emit(false, msg)
-		c.JSON(http.StatusBadGateway, gin.H{"error": msg, "logs": logs, "operationId": op.ID})
+		notify.Send(h.DB, notify.EventProjectFailed,
+			fmt.Sprintf("Project %s failed: %s", name, action), msg)
+		return http.StatusBadGateway, gin.H{"error": msg, "logs": logs, "operationId": op.ID}
 	}
 	_ = ops.Start(h.DB, op.ID)
 	_ = ops.SetStage(h.DB, op.ID, 0, false, "")
@@ -119,8 +125,7 @@ func (h *ProjectLifecycle) run(c *gin.Context, action string, needConfirm bool, 
 		legacy.Stderr = &buf
 		if err2 := legacy.Run(); err2 != nil {
 			_ = ops.SetStage(h.DB, op.ID, 0, true, "")
-			fail(fmt.Sprintf("docker compose %s failed", action), buf.String())
-			return
+			return fail(fmt.Sprintf("docker compose %s failed", action), buf.String())
 		}
 	}
 	_ = ops.Finish(h.DB, op.ID, "SUCCESS", "")
@@ -136,5 +141,71 @@ func (h *ProjectLifecycle) run(c *gin.Context, action string, needConfirm bool, 
 		})
 	}
 	emit(true, "op="+op.ID)
-	c.JSON(http.StatusOK, gin.H{"ok": true, "projectId": pid, "action": action, "logs": buf.String(), "operationId": op.ID})
+	return http.StatusOK, gin.H{"ok": true, "projectId": pid, "action": action, "logs": buf.String(), "operationId": op.ID}
+}
+
+var bulkLifecycleActions = map[string]struct {
+	needConfirm bool
+	args        []string
+}{
+	"start":   {false, []string{"up", "-d", "--remove-orphans"}},
+	"stop":    {true, []string{"stop"}},
+	"restart": {true, []string{"restart"}},
+}
+
+// POST /server-hub/api/projects/bulk-lifecycle — run one lifecycle action
+// across many projects: {ids: [...], action: start|stop|restart, confirm}.
+// stop/restart are high-risk and require confirm=true, mirroring the single
+// routes. Runs sequentially and reports per-project results.
+func (h *ProjectLifecycle) Bulk(c *gin.Context) {
+	var body struct {
+		IDs     []int64 `json:"ids"`
+		Action  string  `json:"action"`
+		Confirm bool    `json:"confirm"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil || len(body.IDs) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "ids (non-empty) and action are required"})
+		return
+	}
+	spec, ok := bulkLifecycleActions[body.Action]
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "unknown action (want start, stop or restart)"})
+		return
+	}
+	if spec.needConfirm && !body.Confirm {
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("%sing projects is high-risk: retry with {\"confirm\": true}", body.Action)})
+		return
+	}
+	u, _ := middleware.CurrentUser(c)
+	results := []gin.H{}
+	succeeded := 0
+	seen := map[int64]bool{}
+	for _, pid := range body.IDs {
+		if seen[pid] {
+			continue
+		}
+		seen[pid] = true
+		var name string
+		_ = h.DB.QueryRow(`SELECT name FROM projects WHERE id=?`, pid).Scan(&name)
+		code, resp := h.runOne(u, pid, body.Action, spec.args)
+		entry := gin.H{"id": pid, "name": name, "ok": code == http.StatusOK}
+		if code == http.StatusOK {
+			succeeded++
+			if op, ok := resp["operationId"].(string); ok {
+				entry["operationId"] = op
+			}
+		} else {
+			if msg, ok := resp["error"].(string); ok {
+				entry["error"] = msg
+			}
+		}
+		results = append(results, entry)
+	}
+	audit.Write(h.DB, u, "bulk-"+body.Action, "project", "", "ok",
+		"succeeded="+strconv.Itoa(succeeded)+"/"+strconv.Itoa(len(results)))
+	c.JSON(http.StatusOK, gin.H{
+		"ok": true, "action": body.Action,
+		"succeeded": succeeded, "failed": len(results) - succeeded,
+		"results": results,
+	})
 }

@@ -17,6 +17,7 @@ import (
 	"serverhub/internal/audit"
 	"serverhub/internal/database"
 	"serverhub/internal/events"
+	"serverhub/internal/notify"
 )
 
 const (
@@ -71,6 +72,7 @@ func checkThresholds(db *database.DB, broker *events.Broker, th Thresholds, r re
 		}
 		msg := fmt.Sprintf("host %s reached %.1f%% (threshold %.0f%%)", name, l.value, l.limit)
 		audit.Write(db, "monitor", "threshold", "server", name, "firing", msg)
+		notify.Send(db, notify.EventThreshold, "Resource pressure: "+msg, "")
 		if broker != nil {
 			broker.Publish("telemetry.threshold", map[string]interface{}{
 				"resource": name, "value": l.value, "threshold": l.limit,

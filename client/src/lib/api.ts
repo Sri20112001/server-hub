@@ -61,6 +61,24 @@ export const api = {
       `/server-hub/api/projects/${id}/${action}${confirm ? "?confirm=true" : ""}`,
       { method: "POST" },
     ),
+  // Bulk lifecycle: one action across many ships (stop/restart need confirm).
+  bulkLifecycle: (ids: number[], action: "start" | "stop" | "restart", confirm = false) =>
+    req<import("./types").BulkLifecycleResult>("/server-hub/api/projects/bulk-lifecycle", {
+      method: "POST",
+      body: JSON.stringify({ ids, action, confirm }),
+    }),
+  // Notification channels (Telegram / email) for failure + pressure signals.
+  notifySettings: () =>
+    req<import("./types").NotifySettings>("/server-hub/api/settings/notifications"),
+  saveNotifySettings: (body: object) =>
+    req<{ ok: boolean }>("/server-hub/api/settings/notifications", {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
+  testNotify: () =>
+    req<{ telegram: string; email: string }>("/server-hub/api/settings/notifications/test", {
+      method: "POST",
+    }),
 
   // services & deployments
   services: (projectId: number) =>

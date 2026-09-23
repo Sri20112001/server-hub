@@ -168,6 +168,7 @@ func main() {
 		api.POST("/projects/:id/start", lifeH.Start)
 		api.POST("/projects/:id/stop", lifeH.Stop)
 		api.POST("/projects/:id/restart", lifeH.Restart)
+		api.POST("/projects/bulk-lifecycle", lifeH.Bulk)
 
 		secH := &handlers.SecretHandler{DB: db, Cfg: cfg}
 		api.GET("/projects/:id/secrets", secH.List)
@@ -203,6 +204,12 @@ func main() {
 		api.POST("/databases/browse", dbH.Browse)
 		api.POST("/databases/connect", dbH.Connect)
 		api.POST("/databases/register", dbH.Register)
+
+		// Notification channels (Telegram / email) for failure + pressure signals.
+		ntH := &handlers.NotificationsHandler{DB: db}
+		api.GET("/settings/notifications", ntH.Get)
+		api.PUT("/settings/notifications", ntH.Update)
+		api.POST("/settings/notifications/test", ntH.Test)
 	}
 
 	// Container exec session (single-use token auth, no session cookie).

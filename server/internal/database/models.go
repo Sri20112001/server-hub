@@ -186,6 +186,16 @@ type DbRegistration struct {
 
 func (DbRegistration) TableName() string { return "db_registrations" }
 
+// AppSetting is a simple key/value store for server configuration edited via
+// the API (notification channels, etc.). Secrets are stored encrypted with
+// an "enc:" prefix; everything else is plaintext.
+type AppSetting struct {
+	Key   string `gorm:"primaryKey" json:"key"`
+	Value string `gorm:"not null;default:''" json:"value"`
+}
+
+func (AppSetting) TableName() string { return "app_settings" }
+
 // AppLog is the central activity/log store for the future log-aggregator UI.
 // Every significant event (HTTP requests, deploys, health transitions,
 // auth, backups) lands here with a level + source + optional project link.

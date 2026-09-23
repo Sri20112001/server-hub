@@ -746,11 +746,13 @@ export function ShipCard({
   services,
   last,
   onOpen,
+  selection,
 }: {
   project: Project;
   services: Service[];
   last: Deployment | undefined;
   onOpen: () => void;
+  selection?: { checked: boolean; onToggle: () => void };
 }) {
   const f = toFleetStatus(project.status);
   return (
@@ -760,6 +762,16 @@ export function ShipCard({
     >
       <div className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-2 flex-wrap">
+          {selection && (
+            <input
+              type="checkbox"
+              checked={selection.checked}
+              onChange={selection.onToggle}
+              onClick={(e) => e.stopPropagation()}
+              aria-label={`Select ${project.name}`}
+              className="w-4 h-4 accent-current cursor-pointer"
+            />
+          )}
           <span className={`w-2 h-2 rounded-full ${DOT_TONE[f]}`} />
           <span className="font-head font-bold text-[17px]">{project.name}</span>
         </div>

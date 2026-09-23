@@ -18,6 +18,7 @@ import (
 	"serverhub/internal/events"
 	"serverhub/internal/middleware"
 	"serverhub/internal/models"
+	"serverhub/internal/notify"
 	"serverhub/internal/ops"
 )
 
@@ -247,6 +248,8 @@ func executeDeploy(db *database.DB, broker *events.Broker, opID string, deployID
 		audit.Write(db, actor, "deploy", "deployment", strconv.FormatInt(deployID, 10), "FAILED", commit)
 		base["durationSec"] = dur
 		emit("deployment.failed", base)
+		notify.Send(db, notify.EventDeployFailed,
+			fmt.Sprintf("Deploy failed: %s @ %s", projectName, commit), logs)
 	}
 	_ = ops.Start(db, opID)
 	emit("deployment.started", base)

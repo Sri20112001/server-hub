@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { BellRing, Check, Eye, EyeOff, TriangleAlert } from "lucide-react";
+import { BellRing, Check, Eye, EyeOff, Send, TriangleAlert } from "lucide-react";
 import { api } from "../../lib/api";
-import type { ServerInfo } from "../../lib/types";
+import type { NotifySettings, ServerInfo } from "../../lib/types";
 import { fmtUptime } from "../../lib/format";
 import { useAuth, useUi } from "../../stores/store";
 import { ConfirmModal, Field, Kicker, Toggle, SettingsSkeleton } from "../../components/ui";
@@ -38,6 +38,11 @@ export function SettingsPage({ setOnline }: { setOnline: (v: boolean) => void })
   const [showPw, setShowPw] = useState(false);
   const [confirmWipe, setConfirmWipe] = useState(false);
   const [confirmRestart, setConfirmRestart] = useState(false);
+  const [notify, setNotify] = useState<NotifySettings | null>(null);
+  const [ntBusy, setNtBusy] = useState(false);
+  const [ntTest, setNtTest] = useState<{ telegram: string; email: string } | null>(null);
+  const [tgToken, setTgToken] = useState("");
+  const [smtpPass, setSmtpPass] = useState("");
 
   useEffect(() => {
     api
@@ -48,6 +53,7 @@ export function SettingsPage({ setOnline }: { setOnline: (v: boolean) => void })
       })
       .catch(() => setOnline(false))
       .finally(() => setLoading(false));
+    api.notifySettings().then(setNotify).catch(() => setNotify(null));
   }, [setOnline]);
 
   const flip = (key: keyof Alerts) => {
@@ -80,6 +86,50 @@ export function SettingsPage({ setOnline }: { setOnline: (v: boolean) => void })
   };
 
   const apiUrl = (import.meta.env.VITE_API_URL as string | undefined) ?? "http://localhost:4000";
+
+  const patchNotify = (patch: Partial<NotifySettings>) =>
+    setNotify((n) => (n ? { ...n, ...patch } : n));
+
+  const saveNotify = async () => {
+    if (!notify) return;
+    setNtBusy(true);
+    try {
+      await api.saveNotifySettings({
+        enabled: notify.enabled,
+        events: notify.events,
+        telegram: { enabled: notify.telegram.enabled, chatId: notify.telegram.chatId, token: tgToken || undefined },
+        email: {
+          enabled: notify.email.enabled,
+          host: notify.email.host,
+          port: notify.email.port,
+          username: notify.email.username,
+          from: notify.email.from,
+          to: notify.email.to,
+          tls: notify.email.tls,
+          password: smtpPass || undefined,
+        },
+      });
+      setTgToken("");
+      setSmtpPass("");
+      setNtTest(null);
+      pushToast("Notification routing saved.");
+      const fresh = await api.notifySettings();
+      setNotify(fresh);
+    } catch (err) {
+      pushToast(err instanceof Error ? err.message : "Save failed", true);
+    } finally {
+      setNtBusy(false);
+    }
+  };
+
+  const probeNotify = async () => {
+    try {
+      const r = await api.testNotify();
+      setNtTest(r);
+    } catch (err) {
+      pushToast(err instanceof Error ? err.message : "Probe failed", true);
+    }
+  };
 
   if (loading) {
     return <SettingsSkeleton />;
@@ -259,6 +309,177 @@ export function SettingsPage({ setOnline }: { setOnline: (v: boolean) => void })
           onFlip={() => flip("highUsage")}
           last
         />
+      </section>
+
+      {/* Notifications (server-side: Telegram / email on failures) */}
+      <section className={`${"bg-white dark:bg-panel border border-line dark:border-edge rounded-card p-5"} mt-4`}>
+        <div className="flex items-start justify-between gap-3 mb-4">
+          <div>
+            <h2 className="text-lg">Notifications</h2>
+            <p className="text-muted dark:text-fog text-[13px]">Server-side signals to Telegram and email when things break — no browser needed.</p>
+          </div>
+          {notify && (
+            <Toggle checked={notify.enabled} onChange={() => patchNotify({ enabled: !notify.enabled })} label="Notifications master switch" />
+          )}
+        </div>
+        {!notify ? (
+          <p className="text-muted dark:text-fog text-[13px]">Loading notification settings…</p>
+        ) : (
+          <>
+            <AlertRow
+              title="Deploy failed"
+              hint="Ping on failed dispatches"
+              on={notify.events.deployFailed}
+              onFlip={() => patchNotify({ events: { ...notify.events, deployFailed: !notify.events.deployFailed } })}
+            />
+            <AlertRow
+              title="Resource pressure"
+              hint="Ping on CPU/RAM/disk threshold crossings"
+              on={notify.events.threshold}
+              onFlip={() => patchNotify({ events: { ...notify.events, threshold: !notify.events.threshold } })}
+            />
+            <AlertRow
+              title="Backup failed"
+              hint="Ping on failed snapshots and restores"
+              on={notify.events.backupFailed}
+              onFlip={() => patchNotify({ events: { ...notify.events, backupFailed: !notify.events.backupFailed } })}
+            />
+            <AlertRow
+              title="Project action failed"
+              hint="Ping on failed wake/nap/restart"
+              on={notify.events.projectFailed}
+              onFlip={() => patchNotify({ events: { ...notify.events, projectFailed: !notify.events.projectFailed } })}
+              last
+            />
+
+            <h3 className="font-medium text-sm mt-5 mb-2">Telegram</h3>
+            <div className="flex items-center justify-between gap-4 py-2">
+              <span className="text-[13px] text-muted dark:text-fog">Enabled (needs bot token + chat id)</span>
+              <Toggle
+                checked={notify.telegram.enabled}
+                onChange={() => patchNotify({ telegram: { ...notify.telegram, enabled: !notify.telegram.enabled } })}
+                label="Telegram channel"
+              />
+            </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 mt-1">
+              <Field label="Bot token">
+                <input
+                  className="w-full bg-white dark:bg-panel border border-line dark:border-edge rounded-input font-body text-[13px] text-ink dark:text-bone px-3 py-2.5 outline-none focus:border-accent dark:focus:border-ember placeholder:text-stone dark:placeholder:text-fog font-mono"
+                  type="password"
+                  value={tgToken}
+                  onChange={(e) => setTgToken(e.target.value)}
+                  placeholder={notify.telegram.hasToken ? "Stored — leave blank to keep" : "123456:ABC-DEF…"}
+                  autoComplete="new-password"
+                />
+              </Field>
+              <Field label="Chat id">
+                <input
+                  className="w-full bg-white dark:bg-panel border border-line dark:border-edge rounded-input font-body text-[13px] text-ink dark:text-bone px-3 py-2.5 outline-none focus:border-accent dark:focus:border-ember placeholder:text-stone dark:placeholder:text-fog font-mono"
+                  value={notify.telegram.chatId}
+                  onChange={(e) => patchNotify({ telegram: { ...notify.telegram, chatId: e.target.value } })}
+                  placeholder="123456789 (from @userinfobot)"
+                  autoComplete="off"
+                />
+              </Field>
+            </div>
+
+            <h3 className="font-medium text-sm mt-5 mb-2">Email (SMTP)</h3>
+            <div className="flex items-center justify-between gap-4 py-2">
+              <span className="text-[13px] text-muted dark:text-fog">Enabled</span>
+              <Toggle
+                checked={notify.email.enabled}
+                onChange={() => patchNotify({ email: { ...notify.email, enabled: !notify.email.enabled } })}
+                label="Email channel"
+              />
+            </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 mt-1">
+              <Field label="SMTP host">
+                <input
+                  className="w-full bg-white dark:bg-panel border border-line dark:border-edge rounded-input font-body text-[13px] text-ink dark:text-bone px-3 py-2.5 outline-none focus:border-accent dark:focus:border-ember placeholder:text-stone dark:placeholder:text-fog font-mono"
+                  value={notify.email.host}
+                  onChange={(e) => patchNotify({ email: { ...notify.email, host: e.target.value } })}
+                  placeholder="smtp.gmail.com"
+                  autoComplete="off"
+                />
+              </Field>
+              <Field label="Port">
+                <input
+                  className="w-full bg-white dark:bg-panel border border-line dark:border-edge rounded-input font-body text-[13px] text-ink dark:text-bone px-3 py-2.5 outline-none focus:border-accent dark:focus:border-ember placeholder:text-stone dark:placeholder:text-fog font-mono"
+                  value={notify.email.port}
+                  onChange={(e) => patchNotify({ email: { ...notify.email, port: e.target.value } })}
+                  placeholder="587"
+                  autoComplete="off"
+                />
+              </Field>
+              <Field label="Username">
+                <input
+                  className="w-full bg-white dark:bg-panel border border-line dark:border-edge rounded-input font-body text-[13px] text-ink dark:text-bone px-3 py-2.5 outline-none focus:border-accent dark:focus:border-ember placeholder:text-stone dark:placeholder:text-fog font-mono"
+                  value={notify.email.username}
+                  onChange={(e) => patchNotify({ email: { ...notify.email, username: e.target.value } })}
+                  placeholder="you@example.com"
+                  autoComplete="off"
+                />
+              </Field>
+              <Field label="Password">
+                <input
+                  className="w-full bg-white dark:bg-panel border border-line dark:border-edge rounded-input font-body text-[13px] text-ink dark:text-bone px-3 py-2.5 outline-none focus:border-accent dark:focus:border-ember placeholder:text-stone dark:placeholder:text-fog font-mono"
+                  type="password"
+                  value={smtpPass}
+                  onChange={(e) => setSmtpPass(e.target.value)}
+                  placeholder={notify.email.hasPassword ? "Stored — leave blank to keep" : "app password"}
+                  autoComplete="new-password"
+                />
+              </Field>
+              <Field label="From">
+                <input
+                  className="w-full bg-white dark:bg-panel border border-line dark:border-edge rounded-input font-body text-[13px] text-ink dark:text-bone px-3 py-2.5 outline-none focus:border-accent dark:focus:border-ember placeholder:text-stone dark:placeholder:text-fog font-mono"
+                  value={notify.email.from}
+                  onChange={(e) => patchNotify({ email: { ...notify.email, from: e.target.value } })}
+                  placeholder="serverhub@example.com"
+                  autoComplete="off"
+                />
+              </Field>
+              <Field label="To">
+                <input
+                  className="w-full bg-white dark:bg-panel border border-line dark:border-edge rounded-input font-body text-[13px] text-ink dark:text-bone px-3 py-2.5 outline-none focus:border-accent dark:focus:border-ember placeholder:text-stone dark:placeholder:text-fog font-mono"
+                  value={notify.email.to}
+                  onChange={(e) => patchNotify({ email: { ...notify.email, to: e.target.value } })}
+                  placeholder="you@example.com"
+                  autoComplete="off"
+                />
+              </Field>
+            </div>
+            <div className="flex items-center justify-between gap-4 py-2 mt-1">
+              <span className="text-[13px] text-muted dark:text-fog">Use TLS (off = plain, on = STARTTLS or :465 implicit)</span>
+              <Toggle
+                checked={notify.email.tls}
+                onChange={() => patchNotify({ email: { ...notify.email, tls: !notify.email.tls } })}
+                label="SMTP TLS"
+              />
+            </div>
+
+            <div className="flex items-center gap-2 flex-wrap mt-4">
+              <button
+                className="inline-flex items-center gap-2 rounded-input text-[13px] font-medium px-4 py-2 cursor-pointer border border-transparent whitespace-nowrap transition-colors duration-150 disabled:opacity-55 disabled:cursor-not-allowed bg-accent dark:bg-ember text-white dark:text-black hover:bg-accent-hover dark:hover:bg-ember-hover"
+                disabled={ntBusy}
+                onClick={() => void saveNotify()}
+              >
+                <Check size={13} /> {ntBusy ? "Saving…" : "Save routing"}
+              </button>
+              <button
+                className="inline-flex items-center gap-2 rounded-input text-[13px] font-medium px-4 py-2 cursor-pointer border whitespace-nowrap transition-colors duration-150 disabled:opacity-55 disabled:cursor-not-allowed bg-white dark:bg-panel border-line dark:border-edge text-ink dark:text-bone hover:bg-paper dark:hover:bg-emboss"
+                onClick={() => void probeNotify()}
+              >
+                <Send size={13} /> Send test
+              </button>
+            </div>
+            {ntTest && (
+              <p className="font-mono text-xs text-muted dark:text-fog mt-2">
+                telegram: {ntTest.telegram} · email: {ntTest.email}
+              </p>
+            )}
+          </>
+        )}
       </section>
 
       {/* Danger Zone */}

@@ -176,6 +176,30 @@ export interface DbTarget {
   password?: string;
 }
 
+export interface BulkLifecycleResult {
+  ok: boolean;
+  action: string;
+  succeeded: number;
+  failed: number;
+  results: { id: number; name: string; ok: boolean; error?: string; operationId?: string }[];
+}
+
+export interface NotifySettings {
+  enabled: boolean;
+  events: { deployFailed: boolean; threshold: boolean; backupFailed: boolean; projectFailed: boolean };
+  telegram: { enabled: boolean; chatId: string; hasToken: boolean };
+  email: {
+    enabled: boolean;
+    host: string;
+    port: string;
+    username: string;
+    from: string;
+    to: string;
+    tls: boolean;
+    hasPassword: boolean;
+  };
+}
+
 export interface ImportAllResult {
   ok: boolean;
   imported: number;
