@@ -143,6 +143,10 @@ pipeline {
         SERVERHUB_ENCRYPTION_KEY = credentials('serverhub-encryption-key')
         ADMIN_PASSWORD         = credentials('serverhub-admin-password')
         GITHUB_WEBHOOK_SECRET  = credentials('serverhub-webhook-secret')
+        // Host port for the compose Postgres. 5432 is taken on this host by a
+        // non-Docker listener, so we bind 5434 instead. The app itself talks
+        // to Postgres over the compose network (postgres:5432), unaffected.
+        POSTGRES_PORT          = '5434'
       }
       steps {
         dir('server') {
