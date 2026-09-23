@@ -112,7 +112,7 @@ func (h *WebhookHandler) GitHub(c *gin.Context) {
 	for rows.Next() {
 		var m match
 		var repo, trackedBranch string
-		var auto int
+		var auto bool
 		if err := rows.Scan(&m.id, &m.name, &repo, &trackedBranch, &m.deployPath, &m.composeFile, &m.healthURL, &auto); err != nil {
 			continue
 		}
@@ -125,7 +125,7 @@ func (h *WebhookHandler) GitHub(c *gin.Context) {
 		if !repoMatch {
 			continue
 		}
-		m.autoDeploy = auto == 1
+		m.autoDeploy = auto
 		matched = append(matched, m)
 	}
 	results := []gin.H{}

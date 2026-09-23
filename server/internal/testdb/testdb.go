@@ -14,10 +14,10 @@ import (
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
+	"net/url"
 	"os"
 	"testing"
 
-	"github.com/jackc/pgx/v5"
 	_ "github.com/jackc/pgx/v5/stdlib"
 
 	"serverhub/internal/database"
@@ -32,17 +32,31 @@ func baseDSN() string {
 	return "postgres://serverhub:changeme@localhost:5432/postgres?sslmode=disable"
 }
 
+// dsnWithDatabase returns base but pointed at the given database name.
+// NOTE: pgx's Config.ConnString() returns the *original* connection string
+// and ignores later field mutations (it caches connString), so we must
+// rebuild the DSN ourselves — mutating cfg.Database then calling
+// ConnString() silently keeps the old dbname and all tests end up sharing
+// the maintenance database.
+func dsnWithDatabase(base, dbName string) string {
+	u, err := url.Parse(base)
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		return base
+	}
+	u.Path = "/" + dbName
+	return u.String()
+}
+
 // Open creates a fresh isolated test database and returns an open handle.
 // The database is dropped when the test finishes.
 func Open(t *testing.T) *database.DB {
 	t.Helper()
 
-	cfg, err := pgx.ParseConfig(baseDSN())
-	if err != nil {
+	base := baseDSN()
+	if _, err := url.Parse(base); err != nil {
 		t.Fatalf("parse postgres DSN: %v", err)
 	}
-	cfg.Database = "postgres" // maintenance DB for CREATE/DROP DATABASE
-	maintenanceDSN := cfg.ConnString()
+	maintenanceDSN := dsnWithDatabase(base, "postgres") // for CREATE/DROP DATABASE
 
 	admin, err := sql.Open("pgx", maintenanceDSN)
 	if err != nil {
@@ -54,15 +68,22 @@ func Open(t *testing.T) *database.DB {
 	}
 
 	name := "serverhub_test_" + randHex(4)
-	if _, err := admin.Exec("CREATE DATABASE " + name); err != nil {
+	if _, err := admin.Exec(`CREATE DATABASE "` + name + `"`); err != nil {
 		t.Fatalf("create test database: %v", err)
 	}
 
-	cfg.Database = name
-	db, err := database.OpenDatabase(cfg.ConnString())
+	db, err := database.OpenDatabase(dsnWithDatabase(base, name))
 	if err != nil {
-		_, _ = admin.Exec("DROP DATABASE " + name)
+		_, _ = admin.Exec(`DROP DATABASE "` + name + `"`)
 		t.Fatalf("open test database: %v", err)
+	}
+
+	// Sanity check: fail fast if isolation broke and we landed back on a
+	// shared database instead of the fresh one.
+	var got string
+	if err := db.QueryRow(`SELECT current_database()`).Scan(&got); err != nil || got != name {
+		_, _ = admin.Exec(`DROP DATABASE "` + name + `"`)
+		t.Fatalf("test isolation broken: connected to %q, want %q (err=%v)", got, name, err)
 	}
 
 	t.Cleanup(func() {
@@ -72,7 +93,7 @@ func Open(t *testing.T) *database.DB {
 			return
 		}
 		defer drop.Close()
-		_, _ = drop.Exec("DROP DATABASE " + name)
+		_, _ = drop.Exec(`DROP DATABASE "` + name + `"`)
 	})
 	return db
 }

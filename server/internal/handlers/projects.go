@@ -21,12 +21,12 @@ func scanProject(row interface {
 	Scan(dest ...interface{}) error
 }) (models.Project, error) {
 	var p models.Project
-	var autoDeploy int
+	var autoDeploy bool
 	var created, updated sql.NullString
 	err := row.Scan(&p.ID, &p.Name, &p.Description, &p.Repository, &p.Branch,
 		&p.Environment, &p.DeploymentPath, &p.ComposeFile, &p.GatewayPrefix,
 		&p.HealthURL, &p.Status, &autoDeploy, &created, &updated)
-	p.AutoDeploy = autoDeploy == 1
+	p.AutoDeploy = autoDeploy
 	p.CreatedAt, p.UpdatedAt = nullStr(created), nullStr(updated)
 	return p, err
 }
@@ -41,12 +41,12 @@ func (h *ProjectHandler) List(c *gin.Context) {
 	out := []models.Project{}
 	for rows.Next() {
 		var p models.Project
-		var autoDeploy int
+		var autoDeploy bool
 		var created, updated sql.NullString
 		if err := rows.Scan(&p.ID, &p.Name, &p.Description, &p.Repository, &p.Branch,
 			&p.Environment, &p.DeploymentPath, &p.ComposeFile, &p.GatewayPrefix,
 			&p.HealthURL, &p.Status, &autoDeploy, &created, &updated); err == nil {
-			p.AutoDeploy = autoDeploy == 1
+			p.AutoDeploy = autoDeploy
 			p.CreatedAt, p.UpdatedAt = nullStr(created), nullStr(updated)
 			out = append(out, p)
 		}
@@ -71,7 +71,7 @@ func (h *ProjectHandler) Create(c *gin.Context) {
 	}
 	id, err := h.DB.InsertID(`INSERT INTO projects (name,description,repository,branch,environment,deployment_path,compose_file,gateway_prefix,health_url,status,auto_deploy)
 		VALUES (?,?,?,?,?,?,?,?,?,'unknown',?)`,
-		p.Name, p.Description, p.Repository, p.Branch, p.Environment, p.DeploymentPath, p.ComposeFile, p.GatewayPrefix, p.HealthURL, boolToInt(p.AutoDeploy))
+		p.Name, p.Description, p.Repository, p.Branch, p.Environment, p.DeploymentPath, p.ComposeFile, p.GatewayPrefix, p.HealthURL, p.AutoDeploy)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -111,7 +111,7 @@ func (h *ProjectHandler) Update(c *gin.Context) {
 		return
 	}
 	_, err = h.DB.Exec(`UPDATE projects SET name=?,description=?,repository=?,branch=?,environment=?,deployment_path=?,compose_file=?,gateway_prefix=?,health_url=?,auto_deploy=?,updated_at=CURRENT_TIMESTAMP WHERE id=?`,
-		p.Name, p.Description, p.Repository, p.Branch, p.Environment, p.DeploymentPath, p.ComposeFile, p.GatewayPrefix, p.HealthURL, boolToInt(p.AutoDeploy), id)
+		p.Name, p.Description, p.Repository, p.Branch, p.Environment, p.DeploymentPath, p.ComposeFile, p.GatewayPrefix, p.HealthURL, p.AutoDeploy, id)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

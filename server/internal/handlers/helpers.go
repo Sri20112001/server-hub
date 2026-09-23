@@ -20,13 +20,6 @@ func (h *ContainerHandler) rawClient() (*client.Client, error) {
 
 var _ = sql.ErrNoRows
 
-func boolToInt(b bool) int {
-	if b {
-		return 1
-	}
-	return 0
-}
-
 // nullStr reads nullable timestamp/text columns into plain strings.
 func nullStr(ns sql.NullString) string {
 	if ns.Valid {
