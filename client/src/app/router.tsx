@@ -5,6 +5,7 @@ import { DashboardPage } from "../features/dashboard/DashboardPage";
 import { FleetPage } from "../features/dashboard/FleetPage";
 import { DatabasesPage } from "../features/dashboard/DatabasesPage";
 import { ProjectDetailsPage } from "../features/dashboard/ProjectDetailsPage";
+import { TelemetryPage } from "../features/dashboard/TelemetryPage";
 import { SettingsPage } from "../features/settings/SettingsPage";
 import { LoginPage } from "../features/auth/LoginPage";
 import { NotFoundPage } from "../features/core/NotFoundPage";
@@ -73,6 +74,14 @@ export function AppRouter() {
                 element: (
                   <Protected>
                     <SettingsPage setOnline={setOnline} />
+                  </Protected>
+                ),
+              },
+              {
+                path: "telemetry",
+                element: (
+                  <Protected>
+                    <TelemetryPage />
                   </Protected>
                 ),
               },

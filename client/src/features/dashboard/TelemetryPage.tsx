@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Activity } from "lucide-react";
+
 import { api } from "../../lib/api";
 import type {
   ContainerStat,
@@ -8,7 +8,7 @@ import type {
   TelemetryPoint,
 } from "../../lib/types";
 import { fmtRate, fmtUptime } from "../../lib/format";
-import { Kicker, Modal } from "../../components/ui";
+import { Kicker } from "../../components/ui";
 
 const RANGES = ["15m", "1h", "6h", "24h"] as const;
 
@@ -188,7 +188,7 @@ function pressureDot(level: string): string {
   return "bg-moss";
 }
 
-export function TelemetryModal({ onClose }: { onClose: () => void }) {
+export function TelemetryPage() {
   const [range, setRange] = useState<(typeof RANGES)[number]>("1h");
   const [points, setPoints] = useState<TelemetryPoint[]>([]);
   const [loading, setLoading] = useState(true);
@@ -257,15 +257,24 @@ export function TelemetryModal({ onClose }: { onClose: () => void }) {
   }, [points]);
 
   return (
-    <Modal onClose={onClose}>
-      <div className="flex items-center gap-2 flex-wrap mb-1">
-        <Activity size={16} />
-        <h3 className="text-[18px]">Host telemetry</h3>
+    <main className="w-full max-w-7xl mx-auto px-10 max-md:px-4 pt-24 pb-36">
+      <div className="flex items-end justify-between gap-4 flex-wrap mb-8">
+        <div>
+          <h1 className="font-head text-[32px] capitalize font-bold tracking-[-0.03em] leading-[1.2] max-md:text-[26px]">
+            Telemetry.
+          </h1>
+          <p className="text-muted dark:text-fog mt-1.5">
+            Host resources and metrics
+          </p>
+        </div>
       </div>
-      <p className="text-muted dark:text-fog text-[13px] mb-4">
-        One sample per minute, kept for 7 days. Ranges switch the charts.
-      </p>
-      <div className="grid grid-cols-4 gap-1 p-1 rounded-xl bg-paper dark:bg-abyss border border-line dark:border-edge mb-4">
+
+      <div className="flex items-center gap-2 flex-wrap mb-4">
+        <p className="text-muted dark:text-fog text-[13px]">
+          One sample per minute, kept for 7 days. Ranges switch the charts.
+        </p>
+      </div>
+      <div className="grid grid-cols-4 gap-1 p-1 rounded-xl bg-paper dark:bg-abyss border border-line dark:border-edge mb-8 max-w-sm">
         {RANGES.map((r) => (
           <button
             key={r}
@@ -283,7 +292,7 @@ export function TelemetryModal({ onClose }: { onClose: () => void }) {
         ))}
       </div>
 
-      <div className="flex flex-col gap-5 max-h-[62vh] overflow-y-auto pr-1">
+      <div className="flex flex-col gap-5">
         {loading ? (
           <div className="text-muted dark:text-fog text-[13px]">Tuning the dials…</div>
         ) : points.length === 0 ? (
@@ -675,15 +684,6 @@ export function TelemetryModal({ onClose }: { onClose: () => void }) {
           </Section>
         )}
       </div>
-
-      <div className="flex items-center gap-2 flex-wrap justify-end mt-4">
-        <button
-          className="inline-flex items-center gap-2 rounded-input text-[13px] font-medium px-4 py-2 cursor-pointer border border-transparent whitespace-nowrap transition-colors duration-150 disabled:opacity-55 disabled:cursor-not-allowed bg-white dark:bg-panel border-line dark:border-edge text-ink dark:text-bone hover:bg-paper dark:hover:bg-emboss"
-          onClick={onClose}
-        >
-          Close
-        </button>
-      </div>
-    </Modal>
+    </main>
   );
 }

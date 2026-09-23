@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Outlet, useLocation, useNavigate, Link } from "react-router";
 import {
+  Activity,
   Database,
   FolderGit2,
   LayoutGrid,
@@ -74,6 +75,12 @@ function CommandPalette({ onClose }: { onClose: () => void }) {
         title: "Browse databases",
         sub: "page",
         run: () => nav("/databases"),
+      },
+      {
+        icon: <Activity size={15} />,
+        title: "View Host Telemetry",
+        sub: "page",
+        run: () => nav("/telemetry"),
       },
       {
         icon: <SlidersHorizontal size={15} />,
@@ -276,6 +283,17 @@ export function AppShell({ online }: { online: boolean }) {
         >
           <Database size={19} />
           {loc.pathname === "/databases" && (
+            <span className="absolute bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-accent dark:bg-ember" />
+          )}
+        </button>
+        <button
+          className={dockBtn(loc.pathname === "/telemetry")}
+          title="Telemetry"
+          aria-label="Telemetry"
+          onClick={() => onDock("/telemetry")}
+        >
+          <Activity size={19} />
+          {loc.pathname === "/telemetry" && (
             <span className="absolute bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-accent dark:bg-ember" />
           )}
         </button>

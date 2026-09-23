@@ -39,7 +39,6 @@ import type { BusEvent } from "../../lib/types";
 import { ConfirmModal, EmptyState, Field, Kicker, Meter, Modal, StatusPill, DashboardSkeleton } from "../../components/ui";
 import { ProjectDrawer } from "./ProjectDrawer";
 import { DiscoveryModal } from "./DiscoveryModal";
-import { TelemetryModal } from "./TelemetryModal";
 
 /* ---------- small pieces ---------- */
 
@@ -187,7 +186,6 @@ export function DashboardPage({ setOnline }: { setOnline: (v: boolean) => void }
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
   const [showScan, setShowScan] = useState(false);
-  const [showTelemetry, setShowTelemetry] = useState(false);
   const [confirmWipe, setConfirmWipe] = useState(false);
   const prevHealth = useRef<Map<number, string> | null>(null);
   const prevDepIds = useRef<Set<number> | null>(null);
@@ -484,7 +482,7 @@ export function DashboardPage({ setOnline }: { setOnline: (v: boolean) => void }
           kicker="Server load"
           icon={<Activity size={15} />}
           foot={<span>{data.dockerAvailable ? "Shipyard connected" : "Shipyard unreachable"}</span>}
-          onClick={() => setShowTelemetry(true)}
+          onClick={() => nav("/telemetry")}
         >
           <Meter label="CPU" pct={data.server.cpuPercent} display={`${Math.round(data.server.cpuPercent)}%`} />
           <Meter label="RAM" pct={data.server.memPercent} display={`${Math.round(data.server.memPercent)}%`} />
@@ -689,8 +687,6 @@ export function DashboardPage({ setOnline }: { setOnline: (v: boolean) => void }
       {showCreate && <CreateShipModal onClose={() => setShowCreate(false)} onCreated={() => void load()} />}
 
       {showScan && <DiscoveryModal onClose={() => setShowScan(false)} onImported={() => void load()} />}
-
-      {showTelemetry && <TelemetryModal onClose={() => setShowTelemetry(false)} />}
 
       {selected && (
         <ProjectDrawer
