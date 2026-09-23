@@ -152,6 +152,40 @@ type ServerSnapshot struct {
 
 func (ServerSnapshot) TableName() string { return "server_snapshots" }
 
+// DbServer stores a known database server plus its (encrypted) credentials.
+// Detection itself is live (Docker labels, host port probes, registered
+// services); this table only persists what the user saved via Connect so
+// browsing and health checks work without retyping passwords.
+type DbServer struct {
+	ID                uint      `gorm:"primaryKey;autoIncrement" json:"id"`
+	Key               string    `gorm:"uniqueIndex;not null" json:"key"` // source|engine|host|port|container
+	Engine            string    `gorm:"not null" json:"engine"`          // postgres | mysql | redis | mongo
+	Source            string    `gorm:"not null;default:''" json:"source"`
+	Host              string    `gorm:"not null;default:''" json:"host"`
+	Port              int       `gorm:"not null;default:0" json:"port"`
+	Container         string    `gorm:"not null;default:''" json:"container"`
+	Username          string    `gorm:"not null;default:''" json:"username"`
+	EncryptedPassword string    `gorm:"not null;default:''" json:"-"`
+	Nonce             string    `gorm:"not null;default:''" json:"-"`
+	DefaultDB         string    `gorm:"not null;default:''" json:"defaultDb"`
+	UpdatedAt         time.Time `gorm:"default:CURRENT_TIMESTAMP" json:"updatedAt"`
+}
+
+func (DbServer) TableName() string { return "db_servers" }
+
+// DbRegistration links one chosen database to the service row created for it,
+// so re-scans can show "registered" instead of offering it again.
+type DbRegistration struct {
+	ID        uint      `gorm:"primaryKey;autoIncrement" json:"id"`
+	ServerKey string    `gorm:"not null;uniqueIndex:idx_dbreg_server_db" json:"serverKey"`
+	Database  string    `gorm:"not null;uniqueIndex:idx_dbreg_server_db" json:"database"`
+	ProjectID uint      `gorm:"not null;index" json:"projectId"`
+	ServiceID uint      `gorm:"not null" json:"serviceId"`
+	CreatedAt time.Time `gorm:"default:CURRENT_TIMESTAMP" json:"createdAt"`
+}
+
+func (DbRegistration) TableName() string { return "db_registrations" }
+
 // AppLog is the central activity/log store for the future log-aggregator UI.
 // Every significant event (HTTP requests, deploys, health transitions,
 // auth, backups) lands here with a level + source + optional project link.

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Outlet, useLocation, useNavigate, Link } from "react-router";
 import {
+  Database,
   FolderGit2,
   LayoutGrid,
   LogOut,
@@ -67,6 +68,12 @@ function CommandPalette({ onClose }: { onClose: () => void }) {
         title: "View all ships",
         sub: "page",
         run: () => nav("/fleet"),
+      },
+      {
+        icon: <Database size={15} />,
+        title: "Browse databases",
+        sub: "page",
+        run: () => nav("/databases"),
       },
       {
         icon: <SlidersHorizontal size={15} />,
@@ -258,6 +265,17 @@ export function AppShell({ online }: { online: boolean }) {
         >
           <Ship size={19} />
           {loc.pathname === "/fleet" && (
+            <span className="absolute bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-accent dark:bg-ember" />
+          )}
+        </button>
+        <button
+          className={dockBtn(loc.pathname === "/databases")}
+          title="Databases"
+          aria-label="Databases"
+          onClick={() => onDock("/databases")}
+        >
+          <Database size={19} />
+          {loc.pathname === "/databases" && (
             <span className="absolute bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-accent dark:bg-ember" />
           )}
         </button>

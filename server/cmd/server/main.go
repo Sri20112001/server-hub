@@ -196,6 +196,13 @@ func main() {
 		// Central log store: single place for all activity + future aggregator.
 		logsH := &handlers.LogsHandler{GDB: gdb}
 		api.GET("/logs", logsH.List)
+
+		// Databases: auto-detect servers, browse, save connections, register.
+		dbH := &handlers.DatabasesHandler{DB: db, Docker: dockerClient, Cfg: cfg}
+		api.GET("/databases/servers", dbH.Servers)
+		api.POST("/databases/browse", dbH.Browse)
+		api.POST("/databases/connect", dbH.Connect)
+		api.POST("/databases/register", dbH.Register)
 	}
 
 	// Container exec session (single-use token auth, no session cookie).

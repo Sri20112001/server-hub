@@ -147,6 +147,35 @@ export const api = {
       { method: "POST" },
     ),
 
+  // databases: auto-detected servers (Docker, host ports, fleet services).
+  // Browse lists what's inside; connect saves the credential; register
+  // turns ticked databases into services under a project.
+  dbServers: () =>
+    req<{ servers: import("./types").DbServerInfo[]; dockerAvailable: boolean }>(
+      "/server-hub/api/databases/servers",
+    ),
+  browseDatabases: (t: import("./types").DbTarget) =>
+    req<{ databases: import("./types").DbItem[]; authRequired: boolean }>(
+      "/server-hub/api/databases/browse",
+      { method: "POST", body: JSON.stringify(t) },
+    ),
+  connectDatabase: (t: import("./types").DbTarget) =>
+    req<{ ok: boolean; key: string; hasCreds: boolean; databases: number }>(
+      "/server-hub/api/databases/connect",
+      { method: "POST", body: JSON.stringify(t) },
+    ),
+  registerDatabases: (
+    projectId: number,
+    server: import("./types").DbTarget,
+    databases: string[],
+    username?: string,
+    password?: string,
+  ) =>
+    req<{ ok: boolean; registered: { database: string; serviceId: number }[]; skipped: string[] }>(
+      "/server-hub/api/databases/register",
+      { method: "POST", body: JSON.stringify({ projectId, server, databases, username, password }) },
+    ),
+
   // central activity log (single place for all logs; feeds future aggregator UI)
   logs: (params?: { level?: string; source?: string; search?: string; projectId?: number; limit?: number; offset?: number }) => {
     const q = new URLSearchParams();

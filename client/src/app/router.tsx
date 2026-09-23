@@ -3,6 +3,7 @@ import { createBrowserRouter, Navigate, RouterProvider } from "react-router";
 import { AppShell } from "../components/chrome";
 import { DashboardPage } from "../features/dashboard/DashboardPage";
 import { FleetPage } from "../features/dashboard/FleetPage";
+import { DatabasesPage } from "../features/dashboard/DatabasesPage";
 import { SettingsPage } from "../features/settings/SettingsPage";
 import { LoginPage } from "../features/auth/LoginPage";
 import { NotFoundPage } from "../features/core/NotFoundPage";
@@ -47,6 +48,14 @@ export function AppRouter() {
                 element: (
                   <Protected>
                     <FleetPage setOnline={setOnline} />
+                  </Protected>
+                ),
+              },
+              {
+                path: "databases",
+                element: (
+                  <Protected>
+                    <DatabasesPage setOnline={setOnline} />
                   </Protected>
                 ),
               },
