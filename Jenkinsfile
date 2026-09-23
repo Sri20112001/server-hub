@@ -1,9 +1,12 @@
 // ServerHub CI/CD — Jenkins declarative pipeline.
 //
 // Replaces .github/workflows/backend.yml (removed). The agent is expected to
-// have Docker + Docker Compose, Go (>= 1.26) and Node 20 on PATH, and to BE
-// the deploy target (same-machine `docker compose up`, like the old
-// self-hosted GitHub runner).
+// have Docker, Go (>= 1.26) and Node 20 on PATH, and to BE the deploy target
+// (same-machine `docker compose up`, like the old self-hosted GitHub runner).
+// Works both on a bare-metal agent and from a containerized Jenkins with the
+// Docker socket mounted: the pipeline self-provisions a Compose binary if the
+// `docker compose` plugin is missing, and reaches the throwaway test Postgres
+// via its bridge IP (localhost inside a Jenkins container is the wrong host).
 //
 // Required Jenkins "Secret text" credentials (Manage Jenkins → Credentials):
 //   serverhub-postgres-password   POSTGRES_PASSWORD for compose + test DB
@@ -31,8 +34,10 @@ pipeline {
 
   environment {
     // Throwaway Postgres used ONLY by `go test` (each test creates and drops
-    // its own serverhub_test_* database inside it). Mapped to host 5433 so it
-    // never clashes with dev/prod Postgres on 5432.
+    // its own serverhub_test_* database inside it). Published on host 5433 so
+    // it never clashes with dev/prod Postgres on 5432. The Test stage
+    // overrides TEST_DATABASE_URL with the container bridge IP written by the
+    // Start test database stage; this default is only a fallback.
     TEST_PG_CONTAINER = 'jenkins-serverhub-pg'
     TEST_DATABASE_URL = 'postgres://serverhub:changeme@localhost:5433/postgres?sslmode=disable'
   }
@@ -41,6 +46,29 @@ pipeline {
     stage('Checkout') {
       steps {
         checkout scm
+      }
+    }
+
+    stage('Prepare') {
+      steps {
+        sh '''
+          set -e
+          # Ensure a `docker compose` implementation exists. Prefer the plugin;
+          # otherwise fetch the standalone binary once into the workspace.
+          if docker compose version >/dev/null 2>&1; then
+            echo "docker compose" > .jenkins-compose
+          else
+            mkdir -p .jenkins-bin
+            if [ ! -x .jenkins-bin/docker-compose ]; then
+              curl -SL "https://github.com/docker/compose/releases/download/v2.29.7/docker-compose-linux-$(uname -m)" \
+                -o .jenkins-bin/docker-compose
+              chmod +x .jenkins-bin/docker-compose
+            fi
+            echo "$WORKSPACE/.jenkins-bin/docker-compose" > .jenkins-compose
+          fi
+          echo "compose: $(cat .jenkins-compose)"
+          $(cat .jenkins-compose) version
+        '''
       }
     }
 
@@ -63,6 +91,12 @@ pipeline {
             sleep 2
           done
           docker exec "$TEST_PG_CONTAINER" pg_isready -U serverhub
+          # Reachable address for the tests: inside a Jenkins container,
+          # localhost is the Jenkins container itself, so use the bridge IP
+          # (also reachable from a bare-metal agent on Linux).
+          PG_IP="$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$TEST_PG_CONTAINER")"
+          echo "postgres://serverhub:changeme@${PG_IP}:5432/postgres?sslmode=disable" > .jenkins-test-db-url
+          echo "testdb: $(cat .jenkins-test-db-url)"
         '''
       }
     }
@@ -78,7 +112,14 @@ pipeline {
     stage('Test') {
       steps {
         dir('server') {
-          sh 'go test ./... -count=1 -timeout 300s'
+          sh '''
+            set -e
+            if [ -f "$WORKSPACE/.jenkins-test-db-url" ]; then
+              export TEST_DATABASE_URL="$(cat "$WORKSPACE/.jenkins-test-db-url")"
+            fi
+            echo "TEST_DATABASE_URL=$TEST_DATABASE_URL"
+            go test ./... -count=1 -timeout 300s
+          '''
         }
       }
     }
@@ -86,7 +127,11 @@ pipeline {
     stage('Build') {
       steps {
         dir('server') {
-          sh 'docker compose build'
+          sh '''
+            set -e
+            COMPOSE="$(cat "$WORKSPACE/.jenkins-compose")"
+            $COMPOSE build
+          '''
         }
       }
     }
@@ -103,8 +148,9 @@ pipeline {
         dir('server') {
           sh '''
             set -e
+            COMPOSE="$(cat "$WORKSPACE/.jenkins-compose")"
 
-            docker compose down --remove-orphans >/dev/null 2>&1 || true
+            $COMPOSE down --remove-orphans >/dev/null 2>&1 || true
 
             # Clean up any stale container holding host port 4000
             HOLDER="$(docker ps --format '{{.Names}} {{.Image}} {{.Ports}}' 2>/dev/null | grep '4000->4000' || true)"
@@ -134,10 +180,14 @@ pipeline {
               fi
             fi
 
-            docker compose up -d
+            $COMPOSE up -d
             docker image prune -f
             sleep 8
-            curl -s -f http://localhost:4000/health || echo "No health endpoint found or server taking longer to start"
+            # From a containerized Jenkins, localhost is the wrong host, so
+            # fall back to probing from inside the app container (busybox wget).
+            ( curl -s -f http://localhost:4000/health 2>/dev/null \
+              || docker exec serverhub wget -q -O- http://localhost:4000/health ) \
+              || echo "No health endpoint found or server taking longer to start"
           '''
         }
       }
