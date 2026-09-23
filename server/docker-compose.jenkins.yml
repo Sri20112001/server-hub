@@ -1,0 +1,17 @@
+# Jenkins-only override for docker-compose.yml.
+#
+# Used ONLY in CI (`COMPOSE_FILE=docker-compose.yml:docker-compose.jenkins.yml`).
+# The Jenkins agent runs inside a container, so the `./data` bind mount from
+# the base file cannot work: the Docker daemon resolves bind sources on the
+# HOST, where the Jenkins workspace path does not exist. This override swaps
+# it for a named volume (overriding `volumes` replaces the whole list, hence
+# docker.sock is repeated here). Local dev keeps using `./data` via the base
+# file alone.
+services:
+  serverhub:
+    volumes:
+      - serverhub-data:/app/data
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+volumes:
+  serverhub-data:

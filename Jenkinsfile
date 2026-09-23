@@ -40,6 +40,10 @@ pipeline {
     // Start test database stage; this default is only a fallback.
     TEST_PG_CONTAINER = 'jenkins-serverhub-pg'
     TEST_DATABASE_URL = 'postgres://serverhub:changeme@localhost:5433/postgres?sslmode=disable'
+    // Base compose file plus the Jenkins override (named volume instead of
+    // the ./data bind mount, which the host daemon cannot resolve from
+    // inside a Jenkins container). Used by Build and Deploy stages.
+    COMPOSE_FILE = 'docker-compose.yml:docker-compose.jenkins.yml'
   }
 
   stages {
