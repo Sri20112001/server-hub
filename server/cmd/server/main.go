@@ -141,6 +141,7 @@ func main() {
 		discH := &handlers.DiscoveryHandler{DB: db, Docker: dockerClient, Cfg: cfg, Broker: broker}
 		api.GET("/discovery", discH.Scan)
 		api.POST("/discovery/import", discH.Import)
+		api.POST("/discovery/import-all", discH.ImportAll)
 
 		sysH := &handlers.SystemHandler{DB: db, Docker: dockerClient, Cfg: cfg}
 		api.GET("/health", sysH.Health)

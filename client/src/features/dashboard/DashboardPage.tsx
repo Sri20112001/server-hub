@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "react-router";
+import { useNavigate, useSearchParams } from "react-router";
 import {
   Activity,
+  ArrowRight,
   Clock,
   GitBranch,
   Hash,
@@ -18,6 +19,7 @@ import {
   toFleetStatus,
   type DashboardData,
   type Deployment,
+  type DiscoveryResult,
   type FleetStatus,
   type Project,
   type Service,
@@ -171,10 +173,14 @@ function CreateShipModal({ onClose, onCreated }: { onClose: () => void; onCreate
 
 /* ---------- page ---------- */
 
+// Fleet preview stays compact; the full registry lives on the Fleet page.
+export const FLEET_PREVIEW_LIMIT = 6;
+
 export function DashboardPage({ setOnline }: { setOnline: (v: boolean) => void }) {
   const { user } = useAuth();
   const pushToast = useUi((s) => s.pushToast);
   const [params, setParams] = useSearchParams();
+  const nav = useNavigate();
   const [data, setData] = useState<DashboardData | null>(null);
   const [servicesByProject, setServicesByProject] = useState<Record<number, Service[]>>({});
   const [feed, setFeed] = useState<string[]>([]);
@@ -221,11 +227,36 @@ export function DashboardPage({ setOnline }: { setOnline: (v: boolean) => void }
     }
   }, [setOnline]);
 
+  // Auto-sync on app load: scan the shipyard once and import everything
+  // unregistered, so no Docker find is ever missed and nobody has to click
+  // Scan → Import one by one. Silent unless something actually joined.
+  // Import-all is idempotent, so re-running on every mount is safe.
+  const autoSync = useCallback(async () => {
+    try {
+      const r: DiscoveryResult = await api.discovery();
+      const pending =
+        r.projects.filter((p) => !p.registered).length +
+        (r.filesystem ?? []).filter((f) => !f.registered).length;
+      if (pending === 0) return;
+      const res = await api.importAllDiscovered();
+      if (res.imported > 0) {
+        pushToast(
+          `${res.imported} ship${res.imported === 1 ? "" : "s"} auto-registered with ${res.servicesAdded} station${res.servicesAdded === 1 ? "" : "s"}.`,
+        );
+        await load();
+      }
+    } catch {
+      // Offline, logged out, or Docker unreachable — stay silent;
+      // manual Scan and New Ship keep working.
+    }
+  }, [load, pushToast]);
+
   useEffect(() => {
     void load();
+    void autoSync();
     const t = window.setInterval(() => void load(), 30000);
     return () => window.clearInterval(t);
-  }, [load]);
+  }, [load, autoSync]);
 
   // Live signals: refresh the workbench and toast on deployments,
   // container/project lifecycle, gateway reloads, backups and threshold
@@ -536,17 +567,29 @@ export function DashboardPage({ setOnline }: { setOnline: (v: boolean) => void }
           hint="Dispatch your first project to see it charted here."
         />
       ) : (
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {data.projects.map((p) => (
-            <ShipCard
-              key={p.id}
-              project={p}
-              services={servicesByProject[p.id] ?? []}
-              last={recentByProject.get(p.id)}
-              onOpen={() => setParams({ project: String(p.id) })}
-            />
-          ))}
-        </div>
+        <>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {data.projects.slice(0, FLEET_PREVIEW_LIMIT).map((p) => (
+              <ShipCard
+                key={p.id}
+                project={p}
+                services={servicesByProject[p.id] ?? []}
+                last={recentByProject.get(p.id)}
+                onOpen={() => setParams({ project: String(p.id) })}
+              />
+            ))}
+          </div>
+          {data.projects.length > FLEET_PREVIEW_LIMIT && (
+            <div className="flex justify-center mt-5">
+              <button
+                className="inline-flex items-center gap-2 rounded-input font-medium cursor-pointer border whitespace-nowrap transition-colors duration-150 bg-white dark:bg-panel border-line dark:border-edge text-ink dark:text-bone hover:bg-paper dark:hover:bg-emboss px-4 py-2 text-[13px]"
+                onClick={() => nav("/fleet")}
+              >
+                View all {data.projects.length} ships <ArrowRight size={14} />
+              </button>
+            </div>
+          )}
+        </>
       )}
 
       {/* recent launches */}
@@ -698,7 +741,7 @@ function HealthRow({ label, count, tag, pip }: { label: string; count: number; t
   );
 }
 
-function ShipCard({
+export function ShipCard({
   project,
   services,
   last,

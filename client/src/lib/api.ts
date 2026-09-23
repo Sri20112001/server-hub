@@ -89,6 +89,12 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ name }),
     }),
+  // Bulk import: registers every unregistered Docker + directory find at
+  // once. Idempotent — already-registered ships are skipped server-side.
+  importAllDiscovered: () =>
+    req<import("./types").ImportAllResult>("/server-hub/api/discovery/import-all", {
+      method: "POST",
+    }),
 
   // secrets (metadata only; values only via reveal)
   secrets: (projectId: number) =>

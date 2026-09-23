@@ -1,8 +1,11 @@
 package handlers
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -36,6 +39,75 @@ func discoverySetup(t *testing.T) (*gin.Engine, *config.Config) {
 	api.GET("/discovery", discH.Scan)
 	api.POST("/discovery/import", discH.Import)
 	return r, cfg
+}
+
+func TestImportAllEndpoint(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	db := testdb.Open(t)
+	// One unregistered project visible via the filesystem scan
+	// (no Docker daemon in tests, so Docker finds contribute nothing).
+	root := t.TempDir()
+	proj := filepath.Join(root, "beacon")
+	if err := os.MkdirAll(proj, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(proj, "docker-compose.yml"),
+		[]byte("services:\n  web:\n    image: x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg := &config.Config{ScanRoots: []string{root}}
+	discH := &DiscoveryHandler{DB: db, Docker: dockerx.New(), Cfg: cfg}
+
+	r := gin.New()
+	r.POST("/discovery/import-all", discH.ImportAll)
+
+	post := func() map[string]interface{} {
+		req := httptest.NewRequest("POST", "/discovery/import-all", nil)
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+		if w.Code != http.StatusOK {
+			t.Fatalf("import-all: %d %s", w.Code, w.Body.String())
+		}
+		var out map[string]interface{}
+		if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil {
+			t.Fatal(err)
+		}
+		return out
+	}
+
+	first := post()
+	if got, _ := first["imported"].(float64); got < 1 {
+		t.Fatalf("expected at least 1 import, got %s", w2s(first))
+	}
+	found := false
+	if arr, ok := first["projects"].([]interface{}); ok {
+		for _, p := range arr {
+			if m, ok := p.(map[string]interface{}); ok && m["name"] == "beacon" {
+				found = true
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("beacon missing from import-all result: %s", w2s(first))
+	}
+	var pid int64
+	if err := db.QueryRow(`SELECT id FROM projects WHERE name='beacon'`).Scan(&pid); err != nil {
+		t.Fatalf("project row missing: %v", err)
+	}
+	var services int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM services WHERE project_id=?`, pid).Scan(&services); err != nil || services < 1 {
+		t.Fatalf("service rows missing: n=%d err=%v", services, err)
+	}
+	// Second call is a no-op: everything already registered.
+	second := post()
+	if second["imported"] != float64(0) {
+		t.Fatalf("expected idempotent re-import, got %s", w2s(second))
+	}
+}
+
+func w2s(v interface{}) string {
+	b, _ := json.Marshal(v)
+	return string(b)
 }
 
 func TestGuessType(t *testing.T) {

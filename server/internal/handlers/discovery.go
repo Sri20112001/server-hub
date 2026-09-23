@@ -194,8 +194,61 @@ func (h *DiscoveryHandler) Import(c *gin.Context) {
 	}
 	name := strings.TrimSpace(body.Name)
 	u, _ := middleware.CurrentUser(c)
+	res, code, errMsg := h.importProject(u, name, true)
+	if errMsg != "" {
+		c.JSON(code, gin.H{"error": errMsg})
+		return
+	}
+	c.JSON(http.StatusOK, res)
+}
 
-	// Re-run the scan server-side so the client can't inject arbitrary rows.
+// POST /server-hub/api/discovery/import-all — import every unregistered
+// Docker + filesystem find in one call (backs the dashboard auto-scan
+// "Import all" action, so fleets register without one-by-one clicking).
+// Idempotent: already-registered projects are skipped.
+func (h *DiscoveryHandler) ImportAll(c *gin.Context) {
+	u, _ := middleware.CurrentUser(c)
+	seen := map[string]bool{}
+	var names []string
+	for _, g := range h.scanDocker() {
+		if !g.Registered && !seen[g.Name] {
+			seen[g.Name] = true
+			names = append(names, g.Name)
+		}
+	}
+	for _, f := range h.scanFS() {
+		if !f.Registered && !seen[f.Name] {
+			seen[f.Name] = true
+			names = append(names, f.Name)
+		}
+	}
+	imported := []gin.H{}
+	failed := []gin.H{}
+	total := 0
+	for _, n := range names {
+		res, code, errMsg := h.importProject(u, n, false)
+		if errMsg != "" {
+			failed = append(failed, gin.H{"name": n, "error": errMsg, "code": code})
+			continue
+		}
+		imported = append(imported, gin.H{"id": res["id"], "name": n, "servicesAdded": res["servicesAdded"]})
+		if v, ok := res["servicesAdded"].(int); ok {
+			total += v
+		}
+	}
+	// No broker event here: the caller (dashboard auto-sync) toasts from the
+	// response and reloads directly, so a broadcast would double-notify.
+	c.JSON(http.StatusOK, gin.H{
+		"ok": true, "imported": len(imported), "servicesAdded": total,
+		"projects": imported, "failed": failed,
+	})
+}
+
+// importProject runs the shared single-project import: re-run the scan
+// server-side so the client can't inject arbitrary rows, then create the
+// project + missing service rows. Returns the response payload, or a status
+// code + error message on failure.
+func (h *DiscoveryHandler) importProject(actor, name string, publish bool) (gin.H, int, string) {
 	// Filesystem finds are tried first (exact path match wins on servers
 	// where compose labels and directory names agree).
 	var deployPath, composeFile string
@@ -216,12 +269,10 @@ func (h *DiscoveryHandler) Import(c *gin.Context) {
 	} else {
 		detected, err := h.detect(name)
 		if err != nil {
-			c.JSON(http.StatusServiceUnavailable, gin.H{"error": err.Error()})
-			return
+			return nil, http.StatusServiceUnavailable, err.Error()
 		}
 		if detected == nil {
-			c.JSON(http.StatusNotFound, gin.H{"error": "no such project in the shipyard scan"})
-			return
+			return nil, http.StatusNotFound, "no such project in the shipyard scan"
 		}
 		deployPath, composeFile, services = detected.DeploymentPath, detected.ComposeFile, detected.Services
 	}
@@ -233,11 +284,10 @@ func (h *DiscoveryHandler) Import(c *gin.Context) {
 			VALUES (?, 'main', 'production', ?, ?, 'unknown')`,
 			name, deployPath, composeFile)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-			return
+			return nil, http.StatusInternalServerError, err.Error()
 		}
 		pid = newID
-		audit.Write(h.DB, u, "import", "project", strconv.FormatInt(pid, 10), "ok", name)
+		audit.Write(h.DB, actor, "import", "project", strconv.FormatInt(pid, 10), "ok", name)
 	}
 	added := 0
 	for _, s := range services {
@@ -252,9 +302,9 @@ func (h *DiscoveryHandler) Import(c *gin.Context) {
 			added++
 		}
 	}
-	audit.Write(h.DB, u, "import", "services", strconv.FormatInt(pid, 10), "ok",
+	audit.Write(h.DB, actor, "import", "services", strconv.FormatInt(pid, 10), "ok",
 		strconv.Itoa(added)+" added")
-	if h.Broker != nil {
+	if publish && h.Broker != nil {
 		h.Broker.Publish("discovery.completed", map[string]interface{}{
 			"projectId": pid, "project": name, "servicesAdded": added,
 		})
@@ -262,11 +312,11 @@ func (h *DiscoveryHandler) Import(c *gin.Context) {
 	var branch, env, status string
 	_ = h.DB.QueryRow(`SELECT branch,environment,deployment_path,compose_file,status FROM projects WHERE id=?`, pid).
 		Scan(&branch, &env, &deployPath, &composeFile, &status)
-	c.JSON(http.StatusOK, gin.H{
+	return gin.H{
 		"id": pid, "name": name, "branch": branch, "environment": env,
 		"deploymentPath": deployPath, "composeFile": composeFile,
 		"status": status, "servicesAdded": added,
-	})
+	}, http.StatusOK, ""
 }
 
 func (h *DiscoveryHandler) detectFS(name string) *scanfs.FoundProject {

@@ -43,6 +43,31 @@ export function DiscoveryModal({
     }
   };
 
+  const unregistered =
+    (projects ?? []).filter((p) => !p.registered).length +
+    (filesystem ?? []).filter((f) => !f.registered).length;
+
+  const importAll = async () => {
+    setBusy("__all");
+    try {
+      const r = await api.importAllDiscovered();
+      pushToast(
+        r.imported === 0
+          ? "Fleet already up to date."
+          : `${r.imported} ship${r.imported === 1 ? "" : "s"} joined the fleet with ${r.servicesAdded} station${r.servicesAdded === 1 ? "" : "s"}.`,
+      );
+      onImported();
+      const fresh = await api.discovery();
+      setProjects(fresh.projects);
+      setFilesystem(fresh.filesystem ?? []);
+      setDockerAvailable(fresh.dockerAvailable);
+    } catch (e) {
+      pushToast(e instanceof Error ? e.message : "Import failed", true);
+    } finally {
+      setBusy(null);
+    }
+  };
+
   return (
     <Modal onClose={onClose}>
       <div className="flex items-center gap-2 flex-wrap">
@@ -52,6 +77,16 @@ export function DiscoveryModal({
       <p className="text-muted dark:text-fog text-[13px] mt-1 mb-4">
         Detected from Docker compose labels and server directories. Importing registers the ship and its stations — no typing.
       </p>
+
+      {!err && projects !== null && unregistered > 1 && (
+        <button
+          className="inline-flex items-center gap-2 rounded-input text-[13px] font-medium px-4 py-2 cursor-pointer border border-transparent whitespace-nowrap transition-colors duration-150 disabled:opacity-55 disabled:cursor-not-allowed bg-accent dark:bg-ember text-white dark:text-black hover:bg-accent-hover dark:hover:bg-ember-hover mb-4"
+          disabled={busy !== null}
+          onClick={() => void importAll()}
+        >
+          <Download size={13} /> {busy === "__all" ? "Importing…" : `Import all ${unregistered} ships`}
+        </button>
+      )}
 
       {err && (
         <div className="bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-900 text-red-800 dark:text-red-200 rounded-input px-3 py-2.5 text-[13px]">

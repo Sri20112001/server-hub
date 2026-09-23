@@ -144,6 +144,14 @@ export interface FoundProject {
   registered: boolean;
 }
 
+export interface ImportAllResult {
+  ok: boolean;
+  imported: number;
+  servicesAdded: number;
+  projects: { id: number; name: string; servicesAdded: number }[];
+  failed: { name: string; error: string }[];
+}
+
 export interface TelemetryPoint {
   ts: number;
   cpu: number;
