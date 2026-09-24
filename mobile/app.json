@@ -1,0 +1,40 @@
+{
+  "expo": {
+    "name": "Server Hub",
+    "slug": "serverhub-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "serverhub",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "backgroundColor": "#121316"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#121316"
+      },
+      "package": "com.serverhub.mobile",
+      "permissions": [
+        "USE_BIOMETRIC",
+        "USE_FINGERPRINT",
+        "RECEIVE_BOOT_COMPLETED",
+        "VIBRATE"
+      ]
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Allow Server Hub to use Face ID for authentication."
+        }
+      ],
+      "expo-notifications",
+      "expo-asset"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}

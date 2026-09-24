@@ -15,9 +15,16 @@
 //   serverhub-admin-password      ADMIN_PASSWORD (seeded on first boot)
 //   serverhub-webhook-secret      GITHUB_WEBHOOK_SECRET (optional but recommended;
 //                                 leave empty only if you don't use GitHub webhooks)
+//   expo-token                    EXPO_TOKEN for EAS Android builds (only needed
+//                                 when BUILD_MOBILE=true; see below)
 //
 // Optional environment (configure on the job or agent if you need non-defaults):
 //   FRONTEND_URL, SCAN_ROOTS, ALERT_* — fall back to docker-compose defaults.
+//   EXPO_PUBLIC_API_URL — backend URL baked into the mobile EAS build
+//                         (default: http://localhost:4000).
+//   BUILD_MOBILE — set to 'true' to run the Mobile EAS Build stage
+//                  (default 'false': Mobile CI still runs type-check + lint,
+//                  only the cloud EAS build is skipped).
 //
 // Job setup: New Item → Pipeline → "Pipeline script from SCM",
 // SCM: Git, Script Path: Jenkinsfile. Trigger via webhook or polling as usual.
@@ -44,6 +51,9 @@ pipeline {
     // the ./data bind mount, which the host daemon cannot resolve from
     // inside a Jenkins container). Used by Build and Deploy stages.
     COMPOSE_FILE = 'docker-compose.yml:docker-compose.jenkins.yml'
+    // Set to 'true' on the job to also run a cloud EAS Android build.
+    BUILD_MOBILE = 'false'
+    EXPO_PUBLIC_API_URL = 'http://localhost:4000'
   }
 
   stages {
@@ -73,6 +83,50 @@ pipeline {
           echo "compose: $(cat .jenkins-compose)"
           $(cat .jenkins-compose) version
         '''
+      }
+    }
+
+    stage('Client CI') {
+      steps {
+        dir('client') {
+          sh '''
+            set -e
+            npm ci --no-audit --no-fund
+            npm run lint
+            npm run build
+          '''
+        }
+      }
+    }
+
+    stage('Mobile CI') {
+      steps {
+        dir('mobile') {
+          sh '''
+            set -e
+            npm ci --no-audit --no-fund
+            npm run type-check
+            npm run lint
+          '''
+        }
+      }
+    }
+
+    stage('Mobile EAS Build') {
+      when {
+        environment name: 'BUILD_MOBILE', value: 'true'
+      }
+      steps {
+        dir('mobile') {
+          withCredentials([string(credentialsId: 'expo-token', variable: 'EXPO_TOKEN')]) {
+            sh '''
+              set -e
+              export EXPO_TOKEN="$EXPO_TOKEN"
+              export EXPO_PUBLIC_API_URL="$EXPO_PUBLIC_API_URL"
+              npx -y eas-cli@latest build --platform android --profile preview --non-interactive
+            '''
+          }
+        }
       }
     }
 
