@@ -57,7 +57,7 @@ pipeline {
     // inside a Jenkins container). Used by Build and Deploy stages.
     COMPOSE_FILE = 'docker-compose.yml:docker-compose.jenkins.yml'
     // Set to 'true' on the job to also run a cloud EAS Android build.
-    BUILD_MOBILE = 'false'
+    BUILD_MOBILE = 'true'
     // Baked into the JS bundle at build time (EXPO_PUBLIC_* are static).
     // For EAS cloud builds this MUST be a URL the phone can reach directly
     // (public IP/domain or VPN) — localhost/LAN IPs only work for local

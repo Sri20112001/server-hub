@@ -1,5 +1,5 @@
 import "../global.css";
-import React, { useEffect } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -17,6 +17,7 @@ import {
 import * as SplashScreen from "expo-splash-screen";
 import { useAuthStore } from "../src/stores/authStore";
 import { useBiometricStore } from "../src/stores/biometricStore";
+import { AnimatedSplash } from "../src/components/AnimatedSplash";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -40,6 +41,8 @@ export default function RootLayout() {
     SpaceGrotesk_700Bold,
     JetBrainsMono_400Regular,
   });
+  const [introDone, setIntroDone] = useState(false);
+  const handleIntroDone = useCallback(() => setIntroDone(true), []);
 
   useEffect(() => {
     void hydrate();
@@ -47,13 +50,18 @@ export default function RootLayout() {
   }, [hydrate, loadBiometric]);
 
   useEffect(() => {
-    // Keep splash up until fonts are loaded AND auth check is done
+    // Swap the native splash for the animated intro once fonts are loaded
+    // AND the auth check is done.
     if (fontsLoaded && checked) {
       void SplashScreen.hideAsync();
     }
   }, [fontsLoaded, checked]);
 
   if (!fontsLoaded || !checked) return null;
+
+  if (!introDone) {
+    return <AnimatedSplash onDone={handleIntroDone} />;
+  }
 
   return (
     <QueryClientProvider client={queryClient}>

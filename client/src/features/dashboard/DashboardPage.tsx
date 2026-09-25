@@ -191,6 +191,57 @@ export function DashboardPage({ setOnline }: { setOnline: (v: boolean) => void }
   const prevDepIds = useRef<Set<number> | null>(null);
   const prevHot = useRef(false);
 
+  // Browser alerts for health transitions / fresh successful launches /
+  // resource pressure, gated by Settings → Alerts toggles. First poll only
+  // arms the baselines so it never spams on page load.
+  // Declared (and memoized) before `load` so the dependency is stable.
+  const notifyTransitions = useCallback((dash: DashboardData) => {
+    let prefs = { deployFinished: true, healthChanged: true, highUsage: false };
+    try {
+      prefs = {
+        deployFinished: true,
+        healthChanged: true,
+        highUsage: false,
+        ...JSON.parse(localStorage.getItem("serverhub.alerts") ?? "{}"),
+      };
+    } catch {
+      /* keep defaults */
+    }
+    const cur = new Map(dash.projects.map((p) => [p.id, toFleetStatus(p.status)]));
+    if (prevHealth.current !== null && prefs.healthChanged) {
+      for (const [id, st] of cur) {
+        const before = prevHealth.current.get(id);
+        if (before !== undefined && before !== st && st !== "docked") {
+          const name = dash.projects.find((p) => p.id === id)?.name ?? `#${id}`;
+          pushToast(
+            `${name} is ${fleetLabel[st]}.`,
+            st === "lost" || st === "choppy",
+          );
+        }
+      }
+    }
+    prevHealth.current = cur;
+
+    const ids = new Set(dash.recentDeployments.map((d) => d.id));
+    if (prevDepIds.current !== null && prefs.deployFinished) {
+      for (const d of dash.recentDeployments) {
+        if (!prevDepIds.current.has(d.id) && d.status === "SUCCESS") {
+          const name =
+            dash.projects.find((p) => p.id === d.projectId)?.name ?? `#${d.projectId}`;
+          pushToast(`Launch succeeded: ${name} @ ${d.commitSha || "unknown"}.`);
+          break;
+        }
+      }
+    }
+    prevDepIds.current = ids;
+
+    const hot = dash.server.cpuPercent > 85 || dash.server.memPercent > 85;
+    if (hot && !prevHot.current && prefs.highUsage) {
+      pushToast("Decks hot — CPU or RAM above 85%.", true);
+    }
+    prevHot.current = hot;
+  }, [pushToast]);
+
   const load = useCallback(async () => {
     try {
       const [dash, audit] = await Promise.all([api.dashboard(), api.audit(9)]);
@@ -223,7 +274,7 @@ export function DashboardPage({ setOnline }: { setOnline: (v: boolean) => void }
     } finally {
       setLoading(false);
     }
-  }, [setOnline]);
+  }, [setOnline, notifyTransitions]);
 
   // Auto-sync on app load: scan the shipyard once and import everything
   // unregistered, so no Docker find is ever missed and nobody has to click
@@ -250,6 +301,8 @@ export function DashboardPage({ setOnline }: { setOnline: (v: boolean) => void }
   }, [load, pushToast]);
 
   useEffect(() => {
+    // Intentional: initial load + poll subscription in one mount effect.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void load();
     void autoSync();
     const t = window.setInterval(() => void load(), 30000);
@@ -344,60 +397,12 @@ export function DashboardPage({ setOnline }: { setOnline: (v: boolean) => void }
   // Opened from the command palette ("Scan shipyard" action).
   useEffect(() => {
     if (params.get("scan") !== null) {
+      // Intentional: consume the one-shot ?scan URL param on mount.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setShowScan(true);
       setParams({}, { replace: true });
     }
   }, [params, setParams]);
-
-  // Browser alerts for health transitions / fresh successful launches /
-  // resource pressure, gated by Settings → Alerts toggles. First poll only
-  // arms the baselines so it never spams on page load.
-  const notifyTransitions = (dash: DashboardData) => {
-    let prefs = { deployFinished: true, healthChanged: true, highUsage: false };
-    try {
-      prefs = {
-        deployFinished: true,
-        healthChanged: true,
-        highUsage: false,
-        ...JSON.parse(localStorage.getItem("serverhub.alerts") ?? "{}"),
-      };
-    } catch {
-      /* keep defaults */
-    }
-    const cur = new Map(dash.projects.map((p) => [p.id, toFleetStatus(p.status)]));
-    if (prevHealth.current !== null && prefs.healthChanged) {
-      for (const [id, st] of cur) {
-        const before = prevHealth.current.get(id);
-        if (before !== undefined && before !== st && st !== "docked") {
-          const name = dash.projects.find((p) => p.id === id)?.name ?? `#${id}`;
-          pushToast(
-            `${name} is ${fleetLabel[st]}.`,
-            st === "lost" || st === "choppy",
-          );
-        }
-      }
-    }
-    prevHealth.current = cur;
-
-    const ids = new Set(dash.recentDeployments.map((d) => d.id));
-    if (prevDepIds.current !== null && prefs.deployFinished) {
-      for (const d of dash.recentDeployments) {
-        if (!prevDepIds.current.has(d.id) && d.status === "SUCCESS") {
-          const name =
-            dash.projects.find((p) => p.id === d.projectId)?.name ?? `#${d.projectId}`;
-          pushToast(`Launch succeeded: ${name} @ ${d.commitSha || "unknown"}.`);
-          break;
-        }
-      }
-    }
-    prevDepIds.current = ids;
-
-    const hot = dash.server.cpuPercent > 85 || dash.server.memPercent > 85;
-    if (hot && !prevHot.current && prefs.highUsage) {
-      pushToast("Decks hot — CPU or RAM above 85%.", true);
-    }
-    prevHot.current = hot;
-  };
 
   const projectById = useMemo(() => {
     const m = new Map<number, Project>();

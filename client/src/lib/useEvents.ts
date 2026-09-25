@@ -26,7 +26,11 @@ const TYPES = [
 /** Subscribes to the live signal bus (SSE). Reconnects on drop. */
 export function useEvents(onEvent: (ev: BusEvent) => void) {
   const ref = useRef(onEvent);
-  ref.current = onEvent;
+
+  useEffect(() => {
+    // Keep the latest handler without re-subscribing the EventSource.
+    ref.current = onEvent;
+  });
 
   useEffect(() => {
     let es: EventSource | null = null;

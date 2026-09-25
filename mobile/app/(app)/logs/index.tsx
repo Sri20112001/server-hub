@@ -306,7 +306,7 @@ export default function LogsScreen() {
           <FlatList
             data={logs ?? []}
             keyExtractor={(l) => String(l.id)}
-            contentContainerStyle={{ paddingVertical: 4, paddingBottom: 24 }}
+            contentContainerStyle={{ flexGrow: 1, paddingVertical: 4, paddingBottom: 24 }}
             refreshControl={
               <RefreshControl
                 refreshing={isRefetching}
@@ -318,11 +318,13 @@ export default function LogsScreen() {
               <LogLine log={item} index={index} />
             )}
             ListEmptyComponent={
-              <EmptyState
-                title="No log entries"
-                hint="Waiting for stdout/stderr stream packets."
-                dark
-              />
+              <View className="flex-1 items-center justify-center py-12">
+                <EmptyState
+                  title="No log entries"
+                  hint="Waiting for stdout/stderr stream packets."
+                  dark
+                />
+              </View>
             }
           />
         )}

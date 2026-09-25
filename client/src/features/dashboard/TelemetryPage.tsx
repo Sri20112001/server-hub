@@ -198,6 +198,8 @@ export function TelemetryPage() {
 
   useEffect(() => {
     let alive = true;
+    // Intentional: reset loading state when the range changes (alive-guarded).
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
     api
       .telemetry(range)

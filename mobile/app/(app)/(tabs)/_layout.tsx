@@ -1,6 +1,6 @@
 import React from "react";
 import { Tabs } from "expo-router";
-import { View, Text, Platform, StyleSheet } from "react-native";
+import { View, Text } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   House,
@@ -10,7 +10,6 @@ import {
   Settings as SettingsIcon,
   type LucideIcon,
 } from "lucide-react-native";
-import { colors } from "../../../src/theme/colors";
 
 function TabIcon({
   icon: Icon,
@@ -21,40 +20,30 @@ function TabIcon({
   label: string;
   focused: boolean;
 }) {
-  const activeColor = colors.ember ?? "#ff5c35";
-  const inactiveColor = colors.fog ?? "#71717a";
-
   return (
     <View
-      style={[
-        styles.iconContainer,
-        focused && styles.iconContainerFocused,
-      ]}
+      className={`w-full h-full items-center justify-center relative py-1.5 transition-all ${
+        focused ? "bg-white/[0.07] rounded-2xl border border-white/10" : ""
+      }`}
     >
+      {/* Top Laser Accent Dot for Active Tab */}
       {focused && (
-        <View
-          style={[
-            styles.activeGlow,
-            { backgroundColor: activeColor, shadowColor: activeColor },
-          ]}
-        />
+        <View className="absolute top-1.5 w-4 h-1 rounded-full bg-orange-500 shadow-sm shadow-orange-500" />
       )}
 
+      {/* Tab Icon */}
       <Icon
         size={20}
-        color={focused ? activeColor : inactiveColor}
-        strokeWidth={focused ? 2.5 : 1.75}
+        color={focused ? "#f97316" : "#71717a"}
+        strokeWidth={focused ? 2.4 : 1.8}
       />
 
+      {/* Label */}
       <Text
         numberOfLines={1}
-        style={[
-          styles.label,
-          {
-            color: focused ? "#ffffff" : inactiveColor,
-            fontWeight: focused ? "600" : "400",
-          },
-        ]}
+        className={`text-[10px] tracking-tight font-mono mt-0.5 ${
+          focused ? "text-zinc-100 font-semibold" : "text-zinc-500 font-medium"
+        }`}
       >
         {label}
       </Text>
@@ -73,7 +62,8 @@ export default function TabsLayout() {
         tabBarHideOnKeyboard: true,
         tabBarShowLabel: false,
         tabBarItemStyle: {
-          height: 64,
+          height: 62,
+          padding: 4,
           alignItems: "center",
           justifyContent: "center",
         },
@@ -86,23 +76,23 @@ export default function TabsLayout() {
         tabBarStyle: {
           position: "absolute",
           bottom: bottomOffset,
-          left: 16,
-          right: 16,
-          height: 64,
+          left: 14,
+          right: 14,
+          height: 62,
           paddingTop: 0,
           paddingBottom: 0,
           paddingHorizontal: 6,
-          backgroundColor: "rgba(18, 18, 22, 0.92)",
-          borderRadius: 32,
+          backgroundColor: "rgba(10, 11, 16, 0.94)",
+          borderRadius: 28,
           borderWidth: 1,
           borderColor: "rgba(255, 255, 255, 0.12)",
           borderTopWidth: 1,
-          borderTopColor: "rgba(255, 255, 255, 0.16)",
-          elevation: 12,
+          borderTopColor: "rgba(255, 255, 255, 0.2)",
+          elevation: 20,
           shadowColor: "#000",
-          shadowOffset: { width: 0, height: 10 },
-          shadowOpacity: 0.35,
-          shadowRadius: 20,
+          shadowOffset: { width: 0, height: 12 },
+          shadowOpacity: 0.5,
+          shadowRadius: 24,
         },
       }}
     >
@@ -154,40 +144,3 @@ export default function TabsLayout() {
     </Tabs>
   );
 }
-
-const styles = StyleSheet.create({
-  iconContainer: {
-    width: "100%",
-    height: "100%",
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: 22,
-    gap: 3,
-    position: "relative",
-  },
-  iconContainerFocused: {
-    backgroundColor: "rgba(255, 255, 255, 0.06)",
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.08)",
-  },
-  activeGlow: {
-    position: "absolute",
-    top: 4,
-    width: 20,
-    height: 3,
-    borderRadius: 2,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.8,
-    shadowRadius: 6,
-    elevation: 3,
-  },
-  label: {
-    fontSize: 10,
-    lineHeight: 12,
-    letterSpacing: 0.2,
-    fontFamily: Platform.select({
-      ios: "System",
-      default: "Inter_400Regular",
-    }),
-  },
-});

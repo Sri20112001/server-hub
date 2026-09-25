@@ -10,8 +10,8 @@ interface Props {
 export function EmptyState({ title, hint, dark = false }: Props) {
   return (
     <View
-      className={`rounded-xl border px-4 py-10 items-center justify-center ${
-        dark ? "bg-abyss border-edge" : "bg-paper border-line"
+      className={`rounded-xl px-4 py-10 items-center justify-center ${
+        dark ? "bg-abyss" : "bg-paper"
       }`}
     >
       <Text

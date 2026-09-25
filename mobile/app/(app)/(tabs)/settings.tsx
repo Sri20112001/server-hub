@@ -192,24 +192,6 @@ export default function SettingsScreen() {
           />
         </View>
 
-        <SectionHeader title="Connection" />
-        <View className="bg-panel border-t border-b border-edge">
-          <SettingRow
-            label="API endpoint"
-            hint={
-              (process.env.EXPO_PUBLIC_API_URL as string | undefined) ??
-              "http://localhost:4000"
-            }
-          />
-        </View>
-
-        <SectionHeader title="About" />
-        <View className="bg-panel border-t border-b border-edge">
-          <SettingRow label="App" hint="Server Hub Mobile" />
-          <SettingRow label="Version" hint="1.0.0" />
-          <SettingRow label="Package" hint="com.serverhub.mobile" />
-        </View>
-
         <View className="px-4 mt-6">
           <TouchableOpacity
             onPress={handleLogout}

@@ -106,8 +106,6 @@ function CommandPalette({ onClose }: { onClose: () => void }) {
     return all.filter((i) => i.title.toLowerCase().includes(needle));
   }, [q, projects, nav]);
 
-  useEffect(() => setSel(0), [q]);
-
   const choose = useCallback(
     (i: number) => {
       const item = items[i];
@@ -132,7 +130,10 @@ function CommandPalette({ onClose }: { onClose: () => void }) {
           className="w-full outline-none text-[15px] px-5 py-4 border-x-0 border-t-0 border-b border-line dark:border-edge bg-white dark:bg-panel text-ink dark:text-bone"
           placeholder="Search ships, pages, actions…"
           value={q}
-          onChange={(e) => setQ(e.target.value)}
+          onChange={(e) => {
+            setQ(e.target.value);
+            setSel(0);
+          }}
           onKeyDown={(e) => {
             if (e.key === "Escape") onClose();
             if (e.key === "ArrowDown") {

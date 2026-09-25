@@ -53,7 +53,7 @@ export default function DeploymentsScreen() {
         <FlatList
           data={deployments}
           keyExtractor={(d) => String(d.id)}
-          contentContainerStyle={{ padding: 16, paddingBottom: 32 }}
+          contentContainerStyle={{ flexGrow: 1, padding: 16, paddingBottom: 32 }}
           refreshControl={
             <RefreshControl
               refreshing={isRefetching}
@@ -69,11 +69,13 @@ export default function DeploymentsScreen() {
             />
           )}
           ListEmptyComponent={
-            <EmptyState
-              title="No launches recorded"
-              hint="Deployments will appear here once projects are deployed."
-              dark
-            />
+            <View className="flex-1 items-center justify-center py-12">
+              <EmptyState
+                title="No launches recorded"
+                hint="Deployments will appear here once projects are deployed."
+                dark
+              />
+            </View>
           }
         />
       )}

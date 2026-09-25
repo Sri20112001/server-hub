@@ -15,7 +15,7 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
     ...init,
   });
   if (res.status === 204) return undefined as T;
-  let body: unknown = null;
+  let body: unknown;
   try {
     body = await res.json();
   } catch {

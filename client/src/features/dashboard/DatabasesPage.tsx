@@ -53,6 +53,8 @@ export function DatabasesPage({ setOnline }: { setOnline: (v: boolean) => void }
   }, [setOnline]);
 
   useEffect(() => {
+    // Intentional: fetch-on-mount effect.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadServers();
     api.projects().then(setProjects).catch(() => setProjects([]));
   }, [loadServers]);

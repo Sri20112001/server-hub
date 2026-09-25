@@ -32,6 +32,8 @@ export function LogsViewer({ container }: { container: string }) {
   const esRef = useRef<EventSource | null>(null);
 
   useEffect(() => {
+    // Intentional: reset + resubscribe the SSE stream when its inputs change.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLines([]);
     setError(null);
     if (!live || !container) return;

@@ -128,7 +128,7 @@ export default function FleetScreen() {
         <FlatList
           data={filtered}
           keyExtractor={(p) => String(p.id)}
-          contentContainerStyle={{ padding: 16, paddingBottom: 32 }}
+          contentContainerStyle={{ flexGrow: 1, padding: 16, paddingBottom: 32 }}
           refreshControl={
             <RefreshControl
               refreshing={isRefetching}
@@ -144,15 +144,17 @@ export default function FleetScreen() {
             />
           )}
           ListEmptyComponent={
-            <EmptyState
-              title="No ships found"
-              hint={
-                search
-                  ? "Try a different search term."
-                  : "No ships match the selected filter."
-              }
-              dark
-            />
+            <View className="flex-1 items-center justify-center py-12">
+              <EmptyState
+                title="No ships found"
+                hint={
+                  search
+                    ? "Try a different search term."
+                    : "No ships match the selected filter."
+                }
+                dark
+              />
+            </View>
           }
         />
       )}

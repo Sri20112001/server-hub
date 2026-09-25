@@ -48,6 +48,8 @@ export function ProjectDetailsPage({ setOnline }: { setOnline: (v: boolean) => v
   };
 
   useEffect(() => {
+    // Intentional: refetch when the route id changes.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void reload();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
