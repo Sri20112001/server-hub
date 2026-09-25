@@ -2,7 +2,7 @@ import axios from "axios";
 import * as SecureStore from "expo-secure-store";
 
 export const API_BASE =
-  (process.env.EXPO_PUBLIC_API_URL as string | undefined) ?? "http://localhost:4000";
+  (process.env.EXPO_PUBLIC_API_URL as string | undefined) ?? "http://192.168.1.76:4000";
 
 export const TOKEN_KEY = "serverhub_token";
 export const USER_KEY = "serverhub_user";

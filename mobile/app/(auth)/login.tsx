@@ -11,6 +11,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
+import { Cog } from "lucide-react-native";
 import { useAuthStore } from "../../src/stores/authStore";
 import { colors } from "../../src/theme/colors";
 
@@ -43,7 +44,7 @@ export default function LoginScreen() {
           {/* Logo / header */}
           <View className="items-center mb-8">
             <View className="w-14 h-14 rounded-full bg-ember items-center justify-center mb-4">
-              <Text className="text-black text-2xl font-bold">⚙</Text>
+              <Cog size={28} color={colors.abyss} />
             </View>
             <Text className="font-head font-bold text-[28px] text-bone">
               ServerHub

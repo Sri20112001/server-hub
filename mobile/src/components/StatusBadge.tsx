@@ -17,13 +17,6 @@ const LABEL: Record<FleetStatus, string> = {
   docked: "Docked",
 };
 
-const ICON: Record<FleetStatus, string> = {
-  sailing: "●",
-  choppy: "◐",
-  lost: "○",
-  docked: "◌",
-};
-
 interface Props {
   status: string;
   label?: string;
@@ -53,7 +46,7 @@ export function StatusBadge({ status, label, dark = false }: Props) {
         className={`font-mono text-[11px] ${dark ? "text-bone" : "text-ink"}`}
         accessible={false}
       >
-        {ICON[f]} {text}
+        {text}
       </Text>
     </View>
   );

@@ -10,13 +10,13 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
-import { dashboardApi } from "../../../../src/api/dashboard";
-import { ShipCard } from "../../../../src/components/ShipCard";
-import { SkeletonCard } from "../../../../src/components/SkeletonBox";
-import { ErrorState } from "../../../../src/components/ErrorState";
-import { EmptyState } from "../../../../src/components/EmptyState";
-import { colors } from "../../../../src/theme/colors";
-import { toFleetStatus } from "../../../../src/types";
+import { dashboardApi } from "../../../src/api/dashboard";
+import { ShipCard } from "../../../src/components/ShipCard";
+import { SkeletonCard } from "../../../src/components/SkeletonBox";
+import { ErrorState } from "../../../src/components/ErrorState";
+import { EmptyState } from "../../../src/components/EmptyState";
+import { colors } from "../../../src/theme/colors";
+import { toFleetStatus } from "../../../src/types";
 
 type Filter = "all" | "sailing" | "choppy" | "lost" | "docked";
 
@@ -49,12 +49,12 @@ export default function FleetScreen() {
     return list;
   }, [projects, filter, search]);
 
-  const FILTERS: { key: Filter; label: string }[] = [
+  const FILTERS: { key: Filter; label: string; dot?: string }[] = [
     { key: "all", label: "All" },
-    { key: "sailing", label: "● Sailing" },
-    { key: "choppy", label: "◐ Choppy" },
-    { key: "lost", label: "○ Lost" },
-    { key: "docked", label: "◌ Docked" },
+    { key: "sailing", label: "Sailing", dot: colors.moss },
+    { key: "choppy", label: "Choppy", dot: colors.statusAmber },
+    { key: "lost", label: "Lost", dot: colors.brick },
+    { key: "docked", label: "Docked", dot: colors.stone },
   ];
 
   return (
@@ -86,13 +86,21 @@ export default function FleetScreen() {
               accessibilityLabel={`Filter: ${f.label}`}
               accessibilityState={{ selected: filter === f.key }}
             >
-              <Text
-                className={`font-mono text-[11px] ${
-                  filter === f.key ? "text-black" : "text-fog"
-                }`}
-              >
-                {f.label}
-              </Text>
+              <View className="flex-row items-center gap-1.5">
+                {f.dot && (
+                  <View
+                    style={{ backgroundColor: f.dot }}
+                    className="w-1.5 h-1.5 rounded-full"
+                  />
+                )}
+                <Text
+                  className={`font-mono text-[11px] ${
+                    filter === f.key ? "text-black" : "text-fog"
+                  }`}
+                >
+                  {f.label}
+                </Text>
+              </View>
             </TouchableOpacity>
           ))}
         </View>

@@ -12,10 +12,11 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import * as Haptics from "expo-haptics";
-import { useAuthStore } from "../../../../src/stores/authStore";
-import { useBiometricStore } from "../../../../src/stores/biometricStore";
-import { authApi } from "../../../../src/api/auth";
-import { colors } from "../../../../src/theme/colors";
+import { ArrowRight, X } from "lucide-react-native";
+import { useAuthStore } from "../../../src/stores/authStore";
+import { useBiometricStore } from "../../../src/stores/biometricStore";
+import { authApi } from "../../../src/api/auth";
+import { colors } from "../../../src/theme/colors";
 
 function SectionHeader({ title }: { title: string }) {
   return (
@@ -114,9 +115,16 @@ export default function SettingsScreen() {
             accessibilityRole="button"
           >
             <Text className="text-bone text-[14px]">Change password</Text>
-            <Text className="text-ember text-[13px]">
-              {changingPassword ? "Cancel" : "Change →"}
-            </Text>
+            <View className="flex-row items-center gap-1">
+              <Text className="text-ember text-[13px]">
+                {changingPassword ? "Cancel" : "Change"}
+              </Text>
+              {changingPassword ? (
+                <X size={14} color={colors.ember} />
+              ) : (
+                <ArrowRight size={14} color={colors.ember} />
+              )}
+            </View>
           </TouchableOpacity>
 
           {changingPassword && (

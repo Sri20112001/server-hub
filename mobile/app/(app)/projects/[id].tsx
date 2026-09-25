@@ -5,15 +5,14 @@ import {
   ScrollView,
   TouchableOpacity,
   RefreshControl,
-  ActivityIndicator,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router, useLocalSearchParams } from "expo-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
+import { ArrowLeft } from "lucide-react-native";
 import { projectsApi } from "../../../src/api/projects";
 import { StatusBadge } from "../../../src/components/StatusBadge";
-import { Meter } from "../../../src/components/Meter";
 import { ConfirmSheet } from "../../../src/components/ConfirmSheet";
 import { DeploymentRow } from "../../../src/components/DeploymentRow";
 import { SkeletonCard } from "../../../src/components/SkeletonBox";
@@ -80,7 +79,10 @@ export default function ProjectDetailScreen() {
       <SafeAreaView style={{ flex: 1, backgroundColor: colors.abyss }}>
         <View className="px-4 pt-3 pb-2 border-b border-edge flex-row items-center gap-3">
           <TouchableOpacity onPress={() => router.back()} accessibilityLabel="Go back">
-            <Text className="text-ember text-[15px]">← Back</Text>
+            <View className="flex-row items-center gap-1">
+              <ArrowLeft size={15} color={colors.ember} />
+              <Text className="text-ember text-[15px]">Back</Text>
+            </View>
           </TouchableOpacity>
         </View>
         <View className="p-4">
@@ -96,7 +98,10 @@ export default function ProjectDetailScreen() {
       <SafeAreaView style={{ flex: 1, backgroundColor: colors.abyss }}>
         <View className="px-4 pt-3 pb-2 border-b border-edge">
           <TouchableOpacity onPress={() => router.back()} accessibilityLabel="Go back">
-            <Text className="text-ember text-[15px]">← Back</Text>
+            <View className="flex-row items-center gap-1">
+              <ArrowLeft size={15} color={colors.ember} />
+              <Text className="text-ember text-[15px]">Back</Text>
+            </View>
           </TouchableOpacity>
         </View>
         <View className="p-4">
@@ -110,8 +115,6 @@ export default function ProjectDetailScreen() {
     );
   }
 
-  const f = toFleetStatus(project.status);
-
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.abyss }}>
       {/* Header */}
@@ -121,7 +124,10 @@ export default function ProjectDetailScreen() {
           className="mb-2"
           accessibilityLabel="Go back"
         >
-          <Text className="text-ember text-[13px] font-mono">← Fleet</Text>
+          <View className="flex-row items-center gap-1">
+            <ArrowLeft size={13} color={colors.ember} />
+            <Text className="text-ember text-[13px] font-mono">Fleet</Text>
+          </View>
         </TouchableOpacity>
         <View className="flex-row items-start justify-between">
           <View className="flex-1">

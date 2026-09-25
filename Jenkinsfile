@@ -1,7 +1,7 @@
 // ServerHub CI/CD — Jenkins declarative pipeline.
 //
 // Replaces .github/workflows/backend.yml (removed). The agent is expected to
-// have Docker, Go (>= 1.26) and Node 20 on PATH, and to BE the deploy target
+// have Docker, Go (>= 1.26) and Node 22 LTS (min 20.19 for Expo SDK 57) on PATH, and to BE the deploy target
 // (same-machine `docker compose up`, like the old self-hosted GitHub runner).
 // Works both on a bare-metal agent and from a containerized Jenkins with the
 // Docker socket mounted: the pipeline self-provisions a Compose binary if the
@@ -25,6 +25,11 @@
 //   BUILD_MOBILE — set to 'true' to run the Mobile EAS Build stage
 //                  (default 'false': Mobile CI still runs type-check + lint,
 //                  only the cloud EAS build is skipped).
+//
+// Mobile: Expo SDK 57 on Node 22+ (min 20.19). Mobile CI runs
+// `npm ci` (lockfile-pinned) + `tsc --noEmit` + flat-config `eslint`.
+// If you add a dependency locally with --legacy-peer-deps, commit the
+// resulting package-lock.json so `npm ci` stays reproducible.
 //
 // Job setup: New Item → Pipeline → "Pipeline script from SCM",
 // SCM: Git, Script Path: Jenkinsfile. Trigger via webhook or polling as usual.
@@ -53,6 +58,10 @@ pipeline {
     COMPOSE_FILE = 'docker-compose.yml:docker-compose.jenkins.yml'
     // Set to 'true' on the job to also run a cloud EAS Android build.
     BUILD_MOBILE = 'false'
+    // Baked into the JS bundle at build time (EXPO_PUBLIC_* are static).
+    // For EAS cloud builds this MUST be a URL the phone can reach directly
+    // (public IP/domain or VPN) — localhost/LAN IPs only work for local
+    // `npx expo start` sessions on the same network.
     EXPO_PUBLIC_API_URL = 'http://localhost:4000'
   }
 

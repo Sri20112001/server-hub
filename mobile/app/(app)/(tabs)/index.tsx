@@ -9,16 +9,17 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
-import { dashboardApi } from "../../../../src/api/dashboard";
-import { useAuthStore } from "../../../../src/stores/authStore";
-import { Meter } from "../../../../src/components/Meter";
-import { ShipCard } from "../../../../src/components/ShipCard";
-import { DeploymentRow } from "../../../../src/components/DeploymentRow";
-import { SkeletonCard } from "../../../../src/components/SkeletonBox";
-import { ErrorState } from "../../../../src/components/ErrorState";
-import { EmptyState } from "../../../../src/components/EmptyState";
-import { colors } from "../../../../src/theme/colors";
-import { greeting, fmtUptime } from "../../../../src/utils/format";
+import { RefreshCw, ArrowRight, ChevronRight, Check, X } from "lucide-react-native";
+import { dashboardApi } from "../../../src/api/dashboard";
+import { useAuthStore } from "../../../src/stores/authStore";
+import { Meter } from "../../../src/components/Meter";
+import { ShipCard } from "../../../src/components/ShipCard";
+import { DeploymentRow } from "../../../src/components/DeploymentRow";
+import { SkeletonCard } from "../../../src/components/SkeletonBox";
+import { ErrorState } from "../../../src/components/ErrorState";
+import { EmptyState } from "../../../src/components/EmptyState";
+import { colors } from "../../../src/theme/colors";
+import { greeting, fmtUptime } from "../../../src/utils/format";
 
 export default function DashboardScreen() {
   const user = useAuthStore((s) => s.user);
@@ -51,7 +52,7 @@ export default function DashboardScreen() {
           accessibilityLabel="Refresh dashboard"
           accessibilityRole="button"
         >
-          <Text className="text-fog text-base">↻</Text>
+          <RefreshCw size={18} color={colors.fog} />
         </TouchableOpacity>
       </View>
 
@@ -137,9 +138,12 @@ export default function DashboardScreen() {
                   accessibilityRole="button"
                   accessibilityLabel="View logs"
                 >
-                  <Text className="text-ember text-[11px] font-mono">
-                    Logs →
-                  </Text>
+                  <View className="flex-row items-center gap-1">
+                    <Text className="text-ember text-[11px] font-mono">
+                      Logs
+                    </Text>
+                    <ArrowRight size={12} color={colors.ember} />
+                  </View>
                 </TouchableOpacity>
               </View>
               <Meter
@@ -160,10 +164,20 @@ export default function DashboardScreen() {
                 display={`${Math.round(data.server.diskPercent)}%`}
                 dark
               />
-              <Text className="font-mono text-[11px] text-fog mt-2">
-                Uptime: {fmtUptime(data.server.uptimeSec)} ·{" "}
-                {data.dockerAvailable ? "Shipyard ✓" : "Shipyard ✗"}
-              </Text>
+              <View className="flex-row items-center gap-1.5 mt-2">
+                <Text className="font-mono text-[11px] text-fog">
+                  Uptime: {fmtUptime(data.server.uptimeSec)}
+                </Text>
+                <Text className="font-mono text-[11px] text-fog">·</Text>
+                <Text className="font-mono text-[11px] text-fog">
+                  Shipyard
+                </Text>
+                {data.dockerAvailable ? (
+                  <Check size={12} color={colors.moss} />
+                ) : (
+                  <X size={12} color={colors.brick} />
+                )}
+              </View>
             </View>
 
             {/* Fleet preview */}
@@ -176,9 +190,12 @@ export default function DashboardScreen() {
                 accessibilityRole="button"
                 accessibilityLabel="View all ships"
               >
-                <Text className="text-ember text-[13px] font-mono">
-                  All {data.projects.length} →
-                </Text>
+                <View className="flex-row items-center gap-0.5">
+                  <Text className="text-ember text-[13px] font-mono">
+                    All {data.projects.length}
+                  </Text>
+                  <ChevronRight size={14} color={colors.ember} />
+                </View>
               </TouchableOpacity>
             </View>
 
@@ -210,7 +227,10 @@ export default function DashboardScreen() {
                 accessibilityRole="button"
                 accessibilityLabel="View all deployments"
               >
-                <Text className="text-ember text-[13px] font-mono">All →</Text>
+                <View className="flex-row items-center gap-0.5">
+                  <Text className="text-ember text-[13px] font-mono">All</Text>
+                  <ChevronRight size={14} color={colors.ember} />
+                </View>
               </TouchableOpacity>
             </View>
 

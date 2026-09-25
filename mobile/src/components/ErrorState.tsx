@@ -1,5 +1,7 @@
 import React from "react";
 import { View, Text, TouchableOpacity } from "react-native";
+import { CircleAlert } from "lucide-react-native";
+import { colors } from "../theme/colors";
 
 interface Props {
   message: string;
@@ -14,7 +16,7 @@ export function ErrorState({ message, onRetry, dark = false }: Props) {
         dark ? "bg-abyss border-edge" : "bg-paper border-line"
       }`}
     >
-      <Text className="text-brick text-2xl mb-2">○</Text>
+      <CircleAlert size={28} color={colors.brick} style={{ marginBottom: 8 }} />
       <Text
         className={`font-head font-bold text-base text-center mb-1 ${
           dark ? "text-bone" : "text-ink"

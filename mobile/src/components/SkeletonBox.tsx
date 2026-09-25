@@ -1,9 +1,9 @@
-import React, { useEffect, useRef } from "react";
-import { Animated, View } from "react-native";
+import React, { useEffect, useState } from "react";
+import { Animated, View, type DimensionValue } from "react-native";
 import { colors } from "../theme/colors";
 
 interface Props {
-  width?: number | string;
+  width?: DimensionValue;
   height?: number;
   rounded?: boolean;
   dark?: boolean;
@@ -15,7 +15,7 @@ export function SkeletonBox({
   rounded = false,
   dark = false,
 }: Props) {
-  const opacity = useRef(new Animated.Value(0.4)).current;
+  const [opacity] = useState(() => new Animated.Value(0.4));
 
   useEffect(() => {
     const anim = Animated.loop(

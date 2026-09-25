@@ -2,12 +2,12 @@ import React from "react";
 import { View, Text, FlatList, RefreshControl } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useQuery } from "@tanstack/react-query";
-import { dashboardApi } from "../../../../src/api/dashboard";
-import { DeploymentRow } from "../../../../src/components/DeploymentRow";
-import { SkeletonCard } from "../../../../src/components/SkeletonBox";
-import { ErrorState } from "../../../../src/components/ErrorState";
-import { EmptyState } from "../../../../src/components/EmptyState";
-import { colors } from "../../../../src/theme/colors";
+import { dashboardApi } from "../../../src/api/dashboard";
+import { DeploymentRow } from "../../../src/components/DeploymentRow";
+import { SkeletonCard } from "../../../src/components/SkeletonBox";
+import { ErrorState } from "../../../src/components/ErrorState";
+import { EmptyState } from "../../../src/components/EmptyState";
+import { colors } from "../../../src/theme/colors";
 
 export default function DeploymentsScreen() {
   const { data: dash, isLoading, isError, error, refetch, isRefetching } =

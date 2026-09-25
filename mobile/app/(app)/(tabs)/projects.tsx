@@ -9,13 +9,13 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
-import { projectsApi } from "../../../../src/api/projects";
-import { dashboardApi } from "../../../../src/api/dashboard";
-import { ShipCard } from "../../../../src/components/ShipCard";
-import { SkeletonCard } from "../../../../src/components/SkeletonBox";
-import { ErrorState } from "../../../../src/components/ErrorState";
-import { EmptyState } from "../../../../src/components/EmptyState";
-import { colors } from "../../../../src/theme/colors";
+import { projectsApi } from "../../../src/api/projects";
+import { dashboardApi } from "../../../src/api/dashboard";
+import { ShipCard } from "../../../src/components/ShipCard";
+import { SkeletonCard } from "../../../src/components/SkeletonBox";
+import { ErrorState } from "../../../src/components/ErrorState";
+import { EmptyState } from "../../../src/components/EmptyState";
+import { colors } from "../../../src/theme/colors";
 
 export default function ProjectsScreen() {
   const [search, setSearch] = useState("");

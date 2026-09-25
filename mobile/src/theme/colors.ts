@@ -29,7 +29,7 @@ export const colors = {
   dangerNight: "#251a10",
 } as const;
 
-// Fleet status → color mapping (mirrors web DOT_TONE)
+// Fleet status to color mapping (mirrors web DOT_TONE)
 export const statusColors = {
   sailing: colors.moss,
   choppy: colors.statusAmber,

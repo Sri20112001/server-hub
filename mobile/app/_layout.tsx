@@ -44,7 +44,7 @@ export default function RootLayout() {
   useEffect(() => {
     void hydrate();
     void loadBiometric();
-  }, []);
+  }, [hydrate, loadBiometric]);
 
   useEffect(() => {
     // Keep splash up until fonts are loaded AND auth check is done
