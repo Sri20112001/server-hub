@@ -35,43 +35,24 @@ pipeline {
       }
     }
 
-    stage('Prepare') {
-      steps {
-        sh '''
-          set -e
+stage('Prepare') {
+  steps {
+    sh '''
+      set -e
 
-          echo "Preparing Jenkins environment..."
+      echo "Checking Docker..."
+      docker --version
 
-          # Ensure docker compose is available.
-          # Prefer the Docker Compose plugin.
-          if docker compose version >/dev/null 2>&1; then
-            echo "docker compose" > .jenkins-compose
-          else
-            mkdir -p .jenkins-bin
+      echo "Checking Docker Compose..."
+      docker compose version
 
-            if [ ! -x .jenkins-bin/docker-compose ]; then
-              curl -SL \
-                "https://github.com/docker/compose/releases/download/v2.29.7/docker-compose-linux-$(uname -m)" \
-                -o .jenkins-bin/docker-compose
+      echo "Preparing test Docker network..."
+      docker network create "$TEST_PG_NETWORK" 2>/dev/null || true
 
-              chmod +x .jenkins-bin/docker-compose
-            fi
-
-            echo "$WORKSPACE/.jenkins-bin/docker-compose" > .jenkins-compose
-          fi
-
-          echo "Compose implementation:"
-          cat .jenkins-compose
-
-          $(cat .jenkins-compose) version
-
-          # Create a dedicated Docker network for Jenkins test services.
-          docker network create "$TEST_PG_NETWORK" 2>/dev/null || true
-
-          echo "Docker network ready: $TEST_PG_NETWORK"
-        '''
-      }
-    }
+      echo "Preparation completed."
+    '''
+  }
+}
 
     stage('CI') {
       parallel {
