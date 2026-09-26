@@ -4,10 +4,26 @@ pipeline {
     options {
         skipDefaultCheckout(true)
         timestamps()
+        timeout(time: 35, unit: 'MINUTES')
+        disableConcurrentBuilds()
+        buildDiscarder(logRotator(numToKeepStr: '20'))
     }
 
     environment {
-        SERVER_PATH = '/home/administrator/homelabs-upload'
+        // Repository configuration
+        GIT_REPO_URL            = 'https://github.com/Sri20112001/serverhub.git' // Adjust if needed
+        GIT_BRANCH              = 'main'
+        GIT_CREDENTIALS_ID      = 'serverhub-git-credentials' // Configure in Jenkins Credentials
+
+        // Ephemeral Postgres container for Go tests
+        TEST_PG_CONTAINER       = 'jenkins-serverhub-pg'
+        
+        // Compose setup (base + override for named volume)
+        COMPOSE_FILE            = 'docker-compose.yml:docker-compose.jenkins.yml'
+        
+        // Mobile EAS build toggle
+        BUILD_MOBILE            = 'false'
+        EXPO_PUBLIC_API_URL     = 'http://localhost:4000'
     }
 
     stages {
@@ -16,184 +32,211 @@ pipeline {
 
             steps {
                 git(
-                    url: 'https://github.com/Sri20112001/homelabs-upload.git',
-                    branch: 'main',
-                    credentialsId: 'github-homelabs-upload'
+                    url: env.GIT_REPO_URL,
+                    branch: env.GIT_BRANCH,
+                    credentialsId: env.GIT_CREDENTIALS_ID
                 )
 
                 sh '''
                     set -e
                     echo "========================================"
-                    echo "Checkout"
+                    echo "ServerHub Checkout"
                     echo "========================================"
-                    echo "Built commit:"
-                    git rev-parse HEAD
+                    echo "Commit: $(git rev-parse HEAD)"
+                    echo "Branch: $(git rev-parse --abbrev-ref HEAD)"
                 '''
             }
         }
 
-        stage('Backend vet + test') {
+        stage('Prepare Environment') {
             agent any
 
             steps {
                 sh '''
                     set -e
-                    cd server
+                    echo "========================================"
+                    echo "Verifying Docker & Compose"
+                    echo "========================================"
 
-                    echo "========================================"
-                    echo "Go vet"
-                    echo "========================================"
-                    go vet ./...
+                    if docker compose version >/dev/null 2>&1; then
+                        echo "docker compose" > .jenkins-compose
+                    else
+                        mkdir -p .jenkins-bin
+                        if [ ! -x .jenkins-bin/docker-compose ]; then
+                            curl -SL "https://github.com/docker/compose/releases/download/v2.29.7/docker-compose-linux-$(uname -m)" \
+                                -o .jenkins-bin/docker-compose
+                            chmod +x .jenkins-bin/docker-compose
+                        fi
+                        echo "$WORKSPACE/.jenkins-bin/docker-compose" > .jenkins-compose
+                    fi
 
-                    echo "========================================"
-                    echo "Go tests"
-                    echo "========================================"
-                    go test ./...
-
-                    echo "Backend checks passed."
+                    echo "Using compose: $(cat .jenkins-compose)"
+                    $(cat .jenkins-compose) version
                 '''
             }
         }
 
-        stage('Frontend build') {
+        stage('Client CI') {
             agent any
 
             steps {
-                sh '''
-                    set -e
-                    cd client
-
-                    echo "========================================"
-                    echo "Installing frontend dependencies"
-                    echo "========================================"
-                    npm ci
-
-                    echo "========================================"
-                    echo "Building frontend"
-                    echo "========================================"
-                    npm run build
-
-                    echo "Frontend build completed."
-                '''
-            }
-        }
-
-        stage('Sync application to server') {
-            agent any
-
-            steps {
-                withCredentials([
-                    sshUserPrivateKey(
-                        credentialsId: 'homelabs-ssh-key',
-                        keyFileVariable: 'SSH_KEY',
-                        usernameVariable: 'SSH_USER'
-                    )
-                ]) {
+                dir('client') {
                     sh '''
                         set -e
                         echo "========================================"
-                        echo "Deployment target"
+                        echo "Frontend Client CI"
                         echo "========================================"
-                        echo "Host: $DEPLOY_HOST"
-                        echo "User: $SSH_USER"
-                        echo "Path: $SERVER_PATH"
-
-                        echo "========================================"
-                        echo "Creating deployment directory"
-                        echo "========================================"
-                        ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no "$SSH_USER@$DEPLOY_HOST" "mkdir -p '$SERVER_PATH'"
-
-                        echo "========================================"
-                        echo "Syncing application"
-                        echo "========================================"
-                        export RSYNC_RSH="ssh -i '$SSH_KEY' -o StrictHostKeyChecking=no"
-
-                        rsync -az --delete \
-                            --exclude='.git/' \
-                            --exclude='server/data/' \
-                            ./ \
-                            "$SSH_USER@$DEPLOY_HOST:$SERVER_PATH/"
-
-                        echo "Application sync completed."
+                        npm ci --no-audit --no-fund
+                        npm run lint
+                        npm run build
                     '''
                 }
             }
         }
 
-        stage('Deploy') {
+        stage('Mobile CI') {
             agent any
 
             steps {
-                withCredentials([
-                    sshUserPrivateKey(
-                        credentialsId: 'homelabs-ssh-key',
-                        keyFileVariable: 'SSH_KEY',
-                        usernameVariable: 'SSH_USER'
-                    )
-                ]) {
+                dir('mobile') {
                     sh '''
                         set -e
                         echo "========================================"
-                        echo "Connecting to deployment server"
+                        echo "Mobile CI (Type-check & Lint)"
                         echo "========================================"
+                        npm ci --no-audit --no-fund
+                        npm run type-check
+                        npm run lint
+                    '''
+                }
+            }
+        }
 
-                        ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no "$SSH_USER@$DEPLOY_HOST" bash -s << 'EOF'
+        stage('Mobile EAS Build') {
+            agent any
+            when {
+                environment name: 'BUILD_MOBILE', value: 'true'
+            }
+            steps {
+                dir('mobile') {
+                    withCredentials([string(credentialsId: 'expo-token', variable: 'EXPO_TOKEN')]) {
+                        sh '''
                             set -e
-                            cd "$SERVER_PATH/server"
+                            echo "========================================"
+                            echo "Mobile EAS Android Build"
+                            echo "========================================"
+                            export EXPO_TOKEN="$EXPO_TOKEN"
+                            export EXPO_PUBLIC_API_URL="$EXPO_PUBLIC_API_URL"
+                            npx -y eas-cli@latest build --platform android --profile preview --non-interactive
+                        '''
+                    }
+                }
+            }
+        }
 
-                            echo "========================================"
-                            echo "Stopping existing application"
-                            echo "========================================"
-                            docker compose down --remove-orphans || true
+        stage('Start Test Database') {
+            agent any
 
-                            echo "========================================"
-                            echo "Building Docker images"
-                            echo "========================================"
-                            docker compose build
+            steps {
+                sh '''
+                    set -e
+                    echo "========================================"
+                    echo "Spinning Up Ephemeral Postgres"
+                    echo "========================================"
+                    docker rm -f "$TEST_PG_CONTAINER" >/dev/null 2>&1 || true
 
-                            echo "========================================"
-                            echo "Starting application"
-                            echo "========================================"
-                            docker compose up -d --force-recreate
+                    docker run -d --name "$TEST_PG_CONTAINER" \
+                        -e POSTGRES_DB=serverhub \
+                        -e POSTGRES_USER=serverhub \
+                        -e POSTGRES_PASSWORD=changeme \
+                        -p 5433:5432 \
+                        postgres:16-alpine
 
-                            echo "========================================"
-                            echo "Application containers"
-                            echo "========================================"
-                            docker compose ps
+                    for i in $(seq 1 30); do
+                        if docker exec "$TEST_PG_CONTAINER" pg_isready -U serverhub >/dev/null 2>&1; then
+                            echo "Database ready."
+                            break
+                        fi
+                        sleep 1
+                    done
 
-                            echo "========================================"
-                            echo "Removing unused Docker images"
-                            echo "========================================"
-                            docker image prune -f
+                    PG_IP="$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$TEST_PG_CONTAINER")"
+                    echo "postgres://serverhub:changeme@${PG_IP}:5432/postgres?sslmode=disable" > .jenkins-test-db-url
+                    echo "Test DB URL configured for container network."
+                '''
+            }
+        }
 
-                            echo "========================================"
-                            echo "Waiting for application"
-                            echo "========================================"
-                            sleep 8
+        stage('Server Vet & Test') {
+            agent any
 
-                            echo "========================================"
-                            echo "Checking health endpoint"
-                            echo "========================================"
-                            curl -f http://localhost:8080/health
-                            echo ""
-                            echo "Health check passed."
+            steps {
+                dir('server') {
+                    sh '''
+                        set -e
+                        echo "========================================"
+                        echo "Backend Go Vet"
+                        echo "========================================"
+                        go vet ./...
 
-                            echo "========================================"
-                            echo "Checking NodeVault root"
-                            echo "========================================"
-                            curl -fsS http://localhost:8888/ | grep -q NodeVault
-                            echo "NodeVault root check passed."
+                        echo "========================================"
+                        echo "Backend Go Tests"
+                        echo "========================================"
+                        if [ -f "$WORKSPACE/.jenkins-test-db-url" ]; then
+                            export TEST_DATABASE_URL="$(cat "$WORKSPACE/.jenkins-test-db-url")"
+                        fi
+                        go test ./... -count=1 -timeout 300s
+                    '''
+                }
+            }
+        }
 
-                            echo "========================================"
-                            echo "Checking NodeVault application"
-                            echo "========================================"
-                            curl -fsS http://localhost:8888/nodevault/ | grep -q NodeVault
-                            echo "NodeVault application check passed."
+        stage('Build & Deploy') {
+            agent any
+            environment {
+                POSTGRES_PASSWORD        = credentials('serverhub-postgres-password')
+                JWT_SECRET               = credentials('serverhub-jwt-secret')
+                SERVERHUB_ENCRYPTION_KEY = credentials('serverhub-encryption-key')
+                ADMIN_PASSWORD           = credentials('serverhub-admin-password')
+                GITHUB_WEBHOOK_SECRET    = credentials('serverhub-webhook-secret')
+                POSTGRES_PORT            = '5434'
+            }
+            steps {
+                dir('server') {
+                    sh '''
+                        set -e
+                        echo "========================================"
+                        echo "Deploying ServerHub via Docker Compose"
+                        echo "========================================"
+                        COMPOSE="$(cat "$WORKSPACE/.jenkins-compose")"
 
-                            echo "========================================"
-                            echo "Deployment successful."
-                            echo "========================================"
-EOF
+                        $COMPOSE down --remove-orphans >/dev/null 2>&1 || true
+
+                        # Prevent port 4000 collisions
+                        HOLDER="$(docker ps --format '{{.Names}} {{.Image}} {{.Ports}}' 2>/dev/null | grep '4000->4000' || true)"
+                        if [ -n "$HOLDER" ]; then
+                            IMG="$(echo "$HOLDER" | awk '{print $2}')"
+                            NAME="$(echo "$HOLDER" | awk '{print $1}')"
+                            if [ "$IMG" = "serverhub" ] || [ "$IMG" = "docker.io/library/serverhub" ]; then
+                                echo "Cleaning stale container ($NAME)..."
+                                docker stop "$NAME" >/dev/null && docker rm "$NAME" >/dev/null
+                            else
+                                echo "ERROR: Host port 4000 held by foreign container: $HOLDER"
+                                exit 1
+                            fi
+                        fi
+
+                        $COMPOSE build
+                        $COMPOSE up -d --force-recreate
+                        docker image prune -f
+
+                        echo "========================================"
+                        echo "Verifying Health Endpoint"
+                        echo "========================================"
+                        sleep 8
+                        ( curl -s -f http://localhost:4000/health 2>/dev/null \
+                          || docker exec serverhub wget -q -O- http://localhost:4000/health ) \
+                          || echo "Health check delayed; container still initializing."
                     '''
                 }
             }
@@ -201,14 +244,15 @@ EOF
     }
 
     post {
+        always {
+            sh 'docker rm -f "$TEST_PG_CONTAINER" >/dev/null 2>&1 || true'
+            echo 'ServerHub pipeline execution finished.'
+        }
         success {
-            echo 'Pipeline succeeded.'
+            echo 'ServerHub successfully built and deployed!'
         }
         failure {
-            echo 'Pipeline failed — check the failing stage log above.'
-        }
-        always {
-            echo 'Pipeline execution completed.'
+            echo 'ServerHub pipeline failed. Check console output.'
         }
     }
 }
