@@ -17,10 +17,11 @@ pipeline {
   }
 
   environment {
-    TEST_PG_CONTAINER = 'jenkins-serverhub-pg'
+    // Base name for the throwaway test Postgres. Stages derive a per-build
+    // container name ("${base}-${BUILD_NUMBER}") so a wedged container from
+    // an older run can never collide with the current one.
+    TEST_PG_CONTAINER_BASE = 'jenkins-serverhub-pg'
     TEST_PG_NETWORK = 'jenkins-test-network'
-
-    TEST_DATABASE_URL = 'postgres://serverhub:changeme@jenkins-serverhub-pg:5432/serverhub?sslmode=disable'
 
     COMPOSE_FILE = 'docker-compose.yml:docker-compose.jenkins.yml'
 
@@ -117,6 +118,9 @@ stage('Prepare') {
 
           echo "Preparing test PostgreSQL..."
 
+          # Per-build name: immune to leftovers from older runs.
+          export TEST_PG_CONTAINER="${TEST_PG_CONTAINER_BASE}-${BUILD_NUMBER:-local}"
+
           # Remove any previous test database container and wait until the
           # name is actually free (the daemon can report success while the
           # removal is still pending, causing a name conflict on run).
@@ -181,7 +185,8 @@ stage('Prepare') {
           sh '''
             set -e
 
-            export TEST_DATABASE_URL="postgres://serverhub:changeme@jenkins-serverhub-pg:5432/serverhub?sslmode=disable"
+            export TEST_PG_CONTAINER="${TEST_PG_CONTAINER_BASE}-${BUILD_NUMBER:-local}"
+            export TEST_DATABASE_URL="postgres://serverhub:changeme@${TEST_PG_CONTAINER}:5432/serverhub?sslmode=disable"
 
             echo "Running Go tests..."
 
@@ -414,8 +419,9 @@ stage('Prepare') {
       sh '''
         echo "Cleaning Jenkins test resources..."
 
-        # Remove temporary PostgreSQL container and wait for the name to free
-        # up so the next run never hits a stale-name conflict.
+        # Per-build name (mirrors Start Test Database); best-effort removal —
+        # with unique names a leftover can never block a future run.
+        export TEST_PG_CONTAINER="${TEST_PG_CONTAINER_BASE}-${BUILD_NUMBER:-local}"
         docker rm -f "$TEST_PG_CONTAINER" >/dev/null 2>&1 || true
         for i in $(seq 1 30); do
           docker inspect "$TEST_PG_CONTAINER" >/dev/null 2>&1 || break
