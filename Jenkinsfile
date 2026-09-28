@@ -117,8 +117,19 @@ stage('Prepare') {
 
           echo "Preparing test PostgreSQL..."
 
-          # Remove any previous test database container.
+          # Remove any previous test database container and wait until the
+          # name is actually free (the daemon can report success while the
+          # removal is still pending, causing a name conflict on run).
           docker rm -f "$TEST_PG_CONTAINER" >/dev/null 2>&1 || true
+          for i in $(seq 1 30); do
+            docker inspect "$TEST_PG_CONTAINER" >/dev/null 2>&1 || break
+            sleep 2
+          done
+          if docker inspect "$TEST_PG_CONTAINER" >/dev/null 2>&1; then
+            echo "ERROR: stale container $TEST_PG_CONTAINER refuses to go away."
+            docker ps -a --filter "name=$TEST_PG_CONTAINER" || true
+            exit 1
+          fi
 
           # Make sure the network exists.
           docker network create "$TEST_PG_NETWORK" 2>/dev/null || true
@@ -403,8 +414,13 @@ stage('Prepare') {
       sh '''
         echo "Cleaning Jenkins test resources..."
 
-        # Remove temporary PostgreSQL container.
+        # Remove temporary PostgreSQL container and wait for the name to free
+        # up so the next run never hits a stale-name conflict.
         docker rm -f "$TEST_PG_CONTAINER" >/dev/null 2>&1 || true
+        for i in $(seq 1 30); do
+          docker inspect "$TEST_PG_CONTAINER" >/dev/null 2>&1 || break
+          sleep 2
+        done
 
         # Remove temporary Docker network.
         docker network rm "$TEST_PG_NETWORK" >/dev/null 2>&1 || true
