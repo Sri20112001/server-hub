@@ -198,6 +198,21 @@ stage('Prepare') {
       }
     }
 
+    stage('Mobile Bundle Check') {
+      steps {
+        dir('mobile') {
+          sh '''
+            set -e
+
+            echo "Validating mobile JS bundle (no token required)..."
+            export EXPO_PUBLIC_API_URL="$EXPO_PUBLIC_API_URL"
+
+            npx expo export --platform android
+          '''
+        }
+      }
+    }
+
     stage('Mobile EAS Build') {
       when {
         expression {
