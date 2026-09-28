@@ -1,3 +1,7 @@
+// ServerHub CI/CD — Jenkins declarative pipeline.
+// Agent prerequisites: Docker + Compose, Go >= 1.26, Node 22 LTS,
+// and (for the Mobile APK stage) JDK 17 + Android SDK with
+// ANDROID_HOME set (defaults to /opt/android-sdk).
 pipeline {
   agent any
 
@@ -6,14 +10,6 @@ pipeline {
     timeout(time: 30, unit: 'MINUTES')
     disableConcurrentBuilds()
     buildDiscarder(logRotator(numToKeepStr: '20'))
-  }
-
-  parameters {
-    booleanParam(
-      name: 'BUILD_MOBILE',
-      defaultValue: false,
-      description: 'Build Android APK using Expo EAS'
-    )
   }
 
   environment {
@@ -217,36 +213,31 @@ stage('Prepare') {
       }
     }
 
-    stage('Mobile EAS Build') {
-      when {
-        expression {
-          return params.BUILD_MOBILE
-        }
-      }
-
+    stage('Mobile APK') {
+      // No Expo account/token needed: prebuild generates android/ and Gradle
+      // compiles a debug APK (self-signed, for internal testing).
+      // Agent prerequisites (one-time): JDK 17, Android SDK cmdline-tools +
+      // platform-35 + build-tools-35, ANDROID_HOME env (default /opt/android-sdk).
       steps {
         dir('mobile') {
-          withCredentials([
-            string(
-              credentialsId: 'expo-token',
-              variable: 'EXPO_TOKEN'
-            )
-          ]) {
-            sh '''
-              set -e
+          sh '''
+            set -e
 
-              echo "Starting Expo EAS Android build..."
+            echo "Building Android debug APK (prebuild + Gradle)..."
 
-              export EXPO_TOKEN="$EXPO_TOKEN"
-              export EXPO_PUBLIC_API_URL="$EXPO_PUBLIC_API_URL"
+            export EXPO_PUBLIC_API_URL="$EXPO_PUBLIC_API_URL"
+            export ANDROID_HOME="${ANDROID_HOME:-/opt/android-sdk}"
+            export ANDROID_SDK_ROOT="$ANDROID_HOME"
+            export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH"
 
-              npx -y eas-cli@latest \
-                build \
-                --platform android \
-                --profile preview \
-                --non-interactive
-            '''
-          }
+            command -v java >/dev/null 2>&1 || { echo "ERROR: JDK 17+ not found on agent."; exit 1; }
+            [ -d "$ANDROID_HOME" ] || { echo "ERROR: Android SDK not found at $ANDROID_HOME."; exit 1; }
+
+            npx expo prebuild --platform android --non-interactive
+            chmod +x android/gradlew
+            (cd android && ./gradlew assembleDebug --no-daemon)
+          '''
+          archiveArtifacts artifacts: 'android/app/build/outputs/apk/debug/app-debug.apk'
         }
       }
     }
