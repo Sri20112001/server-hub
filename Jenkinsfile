@@ -1,7 +1,8 @@
 // ServerHub CI/CD — Jenkins declarative pipeline.
 // Agent prerequisites: Docker + Compose, Go >= 1.26, Node 22 LTS,
-// and (for the Mobile APK stage) JDK 17 + Android SDK with
-// ANDROID_HOME set (defaults to /opt/android-sdk).
+// and (for the Mobile APK stage) JDK 17 + Android SDK cmdline-tools with
+// ANDROID_HOME set (defaults to $JENKINS_HOME/android-sdk, which survives
+// container recreates because it lives in the Jenkins home volume).
 pipeline {
   agent any
 
@@ -226,7 +227,7 @@ stage('Prepare') {
             echo "Building Android debug APK (prebuild + Gradle)..."
 
             export EXPO_PUBLIC_API_URL="$EXPO_PUBLIC_API_URL"
-            export ANDROID_HOME="${ANDROID_HOME:-/opt/android-sdk}"
+            export ANDROID_HOME="${ANDROID_HOME:-/var/jenkins_home/android-sdk}"
             export ANDROID_SDK_ROOT="$ANDROID_HOME"
             export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH"
 
