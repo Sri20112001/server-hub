@@ -96,7 +96,7 @@ func (h *WebhookHandler) GitHub(c *gin.Context) {
 	// and branch.
 	rows, err := h.DB.Query(`SELECT id, name, repository, branch, deployment_path, compose_file, health_url, auto_deploy FROM projects`)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
 		return
 	}
 	defer rows.Close()

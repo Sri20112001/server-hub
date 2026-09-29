@@ -26,7 +26,7 @@ import { useTheme } from "../lib/useTheme";
 function Brand() {
   return (
     <Link
-      className="fixed top-5 left-6 z-40 flex items-center gap-2.5 no-underline max-md:left-3"
+      className="fixed top-3 sm:top-5 left-3 sm:left-6 z-40 flex items-center gap-2.5 no-underline"
       to="/"
       aria-label="ServerHub home"
     >
@@ -118,11 +118,11 @@ function CommandPalette({ onClose }: { onClose: () => void }) {
 
   return (
     <div
-      className="fixed inset-0 z-[60] flex items-start justify-center px-4 pt-[12vh] bg-[rgba(28,25,23,0.28)] dark:bg-[rgba(0,0,0,0.55)]"
+      className="fixed inset-0 z-[60] flex items-start justify-center p-4 pt-[8dvh] sm:pt-[12vh] bg-[rgba(28,25,23,0.28)] dark:bg-[rgba(0,0,0,0.55)] overflow-y-auto"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-[560px] bg-white dark:bg-panel border border-line dark:border-edge rounded-card overflow-hidden shadow-chrome"
+        className="w-full max-w-[560px] bg-white dark:bg-panel border border-line dark:border-edge rounded-card overflow-hidden shadow-chrome my-auto max-h-[88dvh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         <input
@@ -147,7 +147,7 @@ function CommandPalette({ onClose }: { onClose: () => void }) {
             if (e.key === "Enter") choose(sel);
           }}
         />
-        <div className="max-h-[320px] overflow-y-auto p-2">
+        <div className="max-h-[50dvh] sm:max-h-[320px] overflow-y-auto p-2">
           {items.length === 0 && (
             <div className="p-4 text-muted dark:text-fog text-[13px]">
               Nothing on this heading.
@@ -209,21 +209,23 @@ export function AppShell({ online }: { online: boolean }) {
     <>
       <Brand />
       <button
-        className="bg-white dark:bg-panel border border-line dark:border-edge rounded-full shadow-chrome fixed top-5 left-1/2 -translate-x-1/2 z-40 flex items-center justify-between gap-2.5 h-[42px] pl-4 pr-2 w-[calc(100vw-190px)] min-w-0 sm:w-auto sm:min-w-[480px] text-muted dark:text-fog text-[13px] cursor-pointer hover:border-accent dark:hover:border-ember"
+        className="bg-white dark:bg-panel border border-line dark:border-edge rounded-full shadow-chrome fixed top-3 sm:top-5 left-1/2 -translate-x-1/2 z-40 flex items-center justify-between gap-2 h-[42px] pl-4 pr-2 w-[calc(100vw-9.5rem)] min-w-0 min-[420px]:w-[calc(100vw-12rem)] sm:w-auto sm:min-w-[480px] text-muted dark:text-fog text-[13px] cursor-pointer hover:border-accent dark:hover:border-ember"
         onClick={() => setPaletteOpen(true)}
+        aria-label="Search ships, pages, and actions"
       >
-        <div className="flex items-center justify-center gap-3">
-          <Search size={15} />
-          <span className="truncate">Search ships, actions, or press</span>
+        <div className="flex items-center justify-center gap-2.5 min-w-0">
+          <Search size={15} className="shrink-0" />
+          <span className="truncate hidden min-[420px]:inline">Search ships, actions, or press</span>
+          <span className="truncate min-[420px]:hidden">Search…</span>
         </div>
 
-        <span className="flex items-center justify-center font-mono text-[11px] bg-paper dark:bg-abyss border border-line dark:border-edge rounded-md px-2.5 py-1.5 text-muted dark:text-fog">
+        <span className="hidden sm:flex items-center justify-center font-mono text-[11px] bg-paper dark:bg-abyss border border-line dark:border-edge rounded-md px-2.5 py-1.5 text-muted dark:text-fog">
           ⌘ K
         </span>
       </button>
-      <div className="fixed top-5 right-6 z-40 flex items-center gap-2 max-md:right-3">
+      <div className="fixed top-3 sm:top-5 right-3 sm:right-6 z-40 flex items-center gap-2">
         <button
-          className="bg-white dark:bg-panel border border-line dark:border-edge rounded-full shadow-chrome w-[42px] h-[42px] flex items-center justify-center text-muted dark:text-fog hover:text-ink dark:hover:text-bone cursor-pointer"
+          className="bg-white dark:bg-panel border border-line dark:border-edge rounded-full shadow-chrome w-[42px] h-[42px] flex items-center justify-center text-muted dark:text-fog hover:text-ink dark:hover:text-bone cursor-pointer shrink-0"
           title={
             theme === "cyberdeck"
               ? "Switch to light mode"
@@ -236,7 +238,10 @@ export function AppShell({ online }: { online: boolean }) {
         >
           {theme === "cyberdeck" ? <Sun size={16} /> : <Moon size={16} />}
         </button>
-        <div className="bg-white dark:bg-panel border border-line dark:border-edge rounded-full shadow-chrome flex items-center gap-2 h-[42px] px-4 font-mono text-xs">
+        <div
+          className="bg-white dark:bg-panel border border-line dark:border-edge rounded-full shadow-chrome flex items-center gap-2 h-[42px] px-3 sm:px-4 font-mono text-xs shrink-0"
+          title={online ? "Connected" : "Disconnected"}
+        >
           <span
             className={
               online
@@ -244,14 +249,15 @@ export function AppShell({ online }: { online: boolean }) {
                 : "w-2 h-2 rounded-full bg-brick shadow-[0_0_0_3px_rgba(220,38,38,0.15)]"
             }
           />
-          {online ? "Online" : "Offline"}
+          <span className="hidden sm:inline">{online ? "Online" : "Offline"}</span>
+          <span className="sr-only">{online ? "Online" : "Offline"}</span>
         </div>
       </div>
 
       <Outlet />
 
       <nav
-        className="bg-white dark:bg-panel border border-line dark:border-edge rounded-full shadow-chrome fixed bottom-6 left-1/2 -translate-x-1/2 z-40 flex items-center gap-1 px-3 py-2"
+        className="bg-white dark:bg-panel border border-line dark:border-edge rounded-full shadow-chrome fixed bottom-4 sm:bottom-6 left-1/2 -translate-x-1/2 z-40 flex items-center gap-0.5 sm:gap-1 px-2 sm:px-3 py-2 max-w-[calc(100vw-1rem)] overflow-x-auto [padding-bottom:calc(0.5rem+env(safe-area-inset-bottom,0px))]"
         aria-label="Primary"
       >
         <button
@@ -326,7 +332,7 @@ export function AppShell({ online }: { online: boolean }) {
 
       {paletteOpen && <CommandPalette onClose={() => setPaletteOpen(false)} />}
 
-      <div className="fixed bottom-6 right-6 z-[80] flex flex-col gap-2 max-w-[min(360px,calc(100vw-2rem))]">
+      <div className="fixed bottom-24 sm:bottom-6 right-3 sm:right-6 z-[80] flex flex-col gap-2 max-w-[min(360px,calc(100vw-1.5rem))]">
         {toasts.map((t) => (
           <div
             key={t.id}

@@ -19,6 +19,7 @@ type AuthHandler struct {
 	Cfg *config.Config
 }
 
+// Login sets an HttpOnly session cookie for web clients.
 func (h *AuthHandler) Login(c *gin.Context) {
 	var body struct {
 		Username string `json:"username"`
@@ -28,33 +29,61 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "username and password required"})
 		return
 	}
-	var id int64
-	var username, hash, role string
-	err := h.DB.QueryRow(`SELECT id, username, password_hash, role FROM users WHERE username=?`, body.Username).
-		Scan(&id, &username, &hash, &role)
-	if err != nil {
-		audit.Write(h.DB, body.Username, "login", "auth", "", "failed", "invalid username")
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid credentials"})
-		return
-	}
-	if err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(body.Password)); err != nil {
-		audit.Write(h.DB, body.Username, "login", "auth", "", "failed", "invalid password")
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid credentials"})
-		return
-	}
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"sub":  username,
-		"role": role,
-		"exp":  time.Now().Add(24 * time.Hour).Unix(),
-	})
-	signed, err := token.SignedString([]byte(h.Cfg.JWTSecret))
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not create session"})
+	username, role, signed, status, errMsg := h.authenticate(body.Username, body.Password)
+	if errMsg != "" {
+		c.JSON(status, gin.H{"error": errMsg})
 		return
 	}
 	c.SetCookie("serverhub_session", signed, 86400, "/", h.Cfg.CookieDomain, h.Cfg.CookieSecure, true)
 	audit.Write(h.DB, username, "login", "auth", "", "ok", "")
+	c.JSON(http.StatusOK, gin.H{"username": username, "role": role})
+}
+
+// Token is the mobile/API-client login endpoint that returns a Bearer token
+// in the response body instead of setting a cookie.
+func (h *AuthHandler) Token(c *gin.Context) {
+	var body struct {
+		Username string `json:"username"`
+		Password string `json:"password"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil || body.Username == "" || body.Password == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "username and password required"})
+		return
+	}
+	username, role, signed, status, errMsg := h.authenticate(body.Username, body.Password)
+	if errMsg != "" {
+		c.JSON(status, gin.H{"error": errMsg})
+		return
+	}
+	audit.Write(h.DB, username, "token", "auth", "", "ok", "")
 	c.JSON(http.StatusOK, gin.H{"username": username, "role": role, "token": signed})
+}
+
+// authenticate validates credentials and returns a signed JWT.
+func (h *AuthHandler) authenticate(username, password string) (user, role, signed string, status int, errMsg string) {
+	var id int64
+	var hash string
+	err := h.DB.QueryRow(`SELECT id, username, password_hash, role FROM users WHERE username=?`, username).
+		Scan(&id, &user, &hash, &role)
+	if err != nil {
+		audit.Write(h.DB, username, "login", "auth", "", "failed", "invalid username")
+		return "", "", "", http.StatusUnauthorized, "invalid credentials"
+	}
+	if err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(password)); err != nil {
+		audit.Write(h.DB, username, "login", "auth", "", "failed", "invalid password")
+		return "", "", "", http.StatusUnauthorized, "invalid credentials"
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"sub":  user,
+		"role": role,
+		"iat":  time.Now().Unix(),
+		"exp":  time.Now().Add(24 * time.Hour).Unix(),
+	})
+	s, err := token.SignedString([]byte(h.Cfg.JWTSecret))
+	if err != nil {
+		return "", "", "", http.StatusInternalServerError, "could not create session"
+	}
+	return user, role, s, http.StatusOK, ""
 }
 
 func (h *AuthHandler) Logout(c *gin.Context) {

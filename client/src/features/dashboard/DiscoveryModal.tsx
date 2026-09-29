@@ -121,9 +121,9 @@ export function DiscoveryModal({
             >
               <div className="flex items-center justify-between gap-4">
                 <div>
-                  <div className="font-head font-bold text-[15px]">{p.name}</div>
+                  <div className="font-head font-bold text-[15px] break-words">{p.name}</div>
                   {p.deploymentPath && (
-                    <div className="font-mono text-muted dark:text-fog text-[11px] mt-0.5 truncate max-w-[280px]">
+                    <div className="font-mono text-muted dark:text-fog text-[11px] mt-0.5 break-all sm:truncate sm:max-w-[280px]">
                       {p.deploymentPath}
                     </div>
                   )}
@@ -175,11 +175,11 @@ export function DiscoveryModal({
               >
                 <div className="flex items-center justify-between gap-4">
                   <div>
-                    <div className="font-head font-bold text-[15px]">{p.name}</div>
-                    <div className="font-mono text-muted dark:text-fog text-[11px] mt-0.5 truncate max-w-[280px]">
-                      {p.path}
-                    </div>
+                  <div className="font-head font-bold text-[15px] break-words">{p.name}</div>
+                  <div className="font-mono text-muted dark:text-fog text-[11px] mt-0.5 break-all sm:truncate sm:max-w-[280px]">
+                    {p.path}
                   </div>
+                </div>
                   {p.registered ? (
                     <StatusPill status="healthy" label="Registered" />
                   ) : (

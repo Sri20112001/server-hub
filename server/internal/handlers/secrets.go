@@ -133,6 +133,11 @@ func (h *SecretHandler) Update(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "secret not found"})
 		return
 	}
+	_, role := middleware.CurrentUser(c)
+	if role != "admin" {
+		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+		return
+	}
 	if body.Environment != "" {
 		env = body.Environment
 	}
@@ -167,6 +172,11 @@ func (h *SecretHandler) Delete(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
 		return
 	}
+	_, role := middleware.CurrentUser(c)
+	if role != "admin" {
+		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+		return
+	}
 	res, err := h.DB.Exec(`DELETE FROM secrets WHERE id=?`, id)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -188,6 +198,11 @@ func (h *SecretHandler) Reveal(c *gin.Context) {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		return
+	}
+	_, role := middleware.CurrentUser(c)
+	if role != "admin" {
+		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
 		return
 	}
 	var name, ct, nonce string

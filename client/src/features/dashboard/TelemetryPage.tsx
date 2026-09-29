@@ -276,7 +276,7 @@ export function TelemetryPage() {
           One sample per minute, kept for 7 days. Ranges switch the charts.
         </p>
       </div>
-      <div className="grid grid-cols-4 gap-1 p-1 rounded-xl bg-paper dark:bg-abyss border border-line dark:border-edge mb-8 max-w-sm">
+      <div className="grid grid-cols-4 gap-1 p-1 rounded-xl bg-paper dark:bg-abyss border border-line dark:border-edge mb-8 w-full sm:max-w-sm">
         {RANGES.map((r) => (
           <button
             key={r}
@@ -370,7 +370,7 @@ export function TelemetryPage() {
         {detail && (
           <>
             <Section title="System pressure">
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4">
                 {[
                   ["CPU", detail.pressure.cpu],
                   ["Memory", detail.pressure.memory],
@@ -455,25 +455,25 @@ export function TelemetryPage() {
                 )}
               </div>
               <div className="overflow-x-auto bg-white dark:bg-panel border border-line dark:border-edge rounded-xl">
-                <table className="w-full border-collapse text-[13px]">
+                <table className="w-full min-w-[520px] sm:min-w-0 border-collapse text-[13px]">
                   <thead>
                     <tr>
                       <th className="text-left text-[11px] font-semibold tracking-[0.08em] uppercase text-muted dark:text-fog px-4 py-2.5 bg-paper dark:bg-abyss">Process</th>
-                      <th className="text-left text-[11px] font-semibold tracking-[0.08em] uppercase text-muted dark:text-fog px-4 py-2.5 bg-paper dark:bg-abyss">PID</th>
-                      <th className="text-left text-[11px] font-semibold tracking-[0.08em] uppercase text-muted dark:text-fog px-4 py-2.5 bg-paper dark:bg-abyss">State</th>
+                      <th className="hidden sm:table-cell text-left text-[11px] font-semibold tracking-[0.08em] uppercase text-muted dark:text-fog px-4 py-2.5 bg-paper dark:bg-abyss">PID</th>
+                      <th className="hidden md:table-cell text-left text-[11px] font-semibold tracking-[0.08em] uppercase text-muted dark:text-fog px-4 py-2.5 bg-paper dark:bg-abyss">State</th>
                       <th className="text-left text-[11px] font-semibold tracking-[0.08em] uppercase text-muted dark:text-fog px-4 py-2.5 bg-paper dark:bg-abyss last:text-right">Memory</th>
                     </tr>
                   </thead>
                   <tbody>
                     {detail.processes.top.map((p) => (
                       <tr key={p.pid} className="group">
-                        <td className="px-4 py-2.5 border-t border-line dark:border-edge align-middle font-mono max-w-[220px] truncate">
+                        <td className="px-4 py-2.5 border-t border-line dark:border-edge align-middle font-mono max-w-[160px] sm:max-w-[220px] truncate">
                           {p.name}
                         </td>
-                        <td className="px-4 py-2.5 border-t border-line dark:border-edge align-middle font-mono text-muted dark:text-fog">
+                        <td className="hidden sm:table-cell px-4 py-2.5 border-t border-line dark:border-edge align-middle font-mono text-muted dark:text-fog">
                           {p.pid}
                         </td>
-                        <td className="px-4 py-2.5 border-t border-line dark:border-edge align-middle font-mono text-muted dark:text-fog">
+                        <td className="hidden md:table-cell px-4 py-2.5 border-t border-line dark:border-edge align-middle font-mono text-muted dark:text-fog">
                           {p.status}
                         </td>
                         <td className="px-4 py-2.5 border-t border-line dark:border-edge align-middle last:text-right group-hover:bg-paper dark:group-hover:bg-emboss font-mono">
@@ -491,7 +491,7 @@ export function TelemetryPage() {
         {storage && (
           <Section title="Storage">
             <div className="overflow-x-auto bg-white dark:bg-panel border border-line dark:border-edge rounded-xl mb-4">
-              <table className="w-full border-collapse text-[13px]">
+              <table className="w-full min-w-[440px] sm:min-w-0 border-collapse text-[13px]">
                 <thead>
                   <tr>
                     <th className="text-left text-[11px] font-semibold tracking-[0.08em] uppercase text-muted dark:text-fog px-4 py-2.5 bg-paper dark:bg-abyss">Filesystem</th>
@@ -562,7 +562,7 @@ export function TelemetryPage() {
 
             {storage.docker && (
               <div>
-                <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 mb-2.5">
+                <div className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-2 lg:grid-cols-4 sm:gap-4 mb-2.5">
                   <Fact label="Images" value={fmtSize(storage.docker.imagesMB)} />
                   <Fact label="Containers" value={fmtSize(storage.docker.containersMB)} />
                   <Fact label="Volumes" value={fmtSize(storage.docker.volumesMB)} />
@@ -588,7 +588,7 @@ export function TelemetryPage() {
         {detail && detail.network.length > 0 && (
           <Section title="Network interfaces">
             <div className="overflow-x-auto bg-white dark:bg-panel border border-line dark:border-edge rounded-xl">
-              <table className="w-full border-collapse text-[13px]">
+              <table className="w-full min-w-[440px] sm:min-w-0 border-collapse text-[13px]">
                 <thead>
                   <tr>
                     <th className="text-left text-[11px] font-semibold tracking-[0.08em] uppercase text-muted dark:text-fog px-4 py-2.5 bg-paper dark:bg-abyss">Interface</th>
@@ -619,7 +619,7 @@ export function TelemetryPage() {
         {detail && detail.diskIO.length > 0 && (
           <Section title="Disk I/O totals">
             <div className="overflow-x-auto bg-white dark:bg-panel border border-line dark:border-edge rounded-xl">
-              <table className="w-full border-collapse text-[13px]">
+              <table className="w-full min-w-[440px] sm:min-w-0 border-collapse text-[13px]">
                 <thead>
                   <tr>
                     <th className="text-left text-[11px] font-semibold tracking-[0.08em] uppercase text-muted dark:text-fog px-4 py-2.5 bg-paper dark:bg-abyss">Device</th>
@@ -650,12 +650,12 @@ export function TelemetryPage() {
         {cstats !== null && cstats.length > 0 && (
           <Section title="Container resources">
             <div className="overflow-x-auto bg-white dark:bg-panel border border-line dark:border-edge rounded-xl">
-              <table className="w-full border-collapse text-[13px]">
+              <table className="w-full min-w-[560px] md:min-w-0 border-collapse text-[13px]">
                 <thead>
                   <tr>
                     <th className="text-left text-[11px] font-semibold tracking-[0.08em] uppercase text-muted dark:text-fog px-4 py-2.5 bg-paper dark:bg-abyss">Container</th>
                     <th className="text-left text-[11px] font-semibold tracking-[0.08em] uppercase text-muted dark:text-fog px-4 py-2.5 bg-paper dark:bg-abyss">CPU</th>
-                    <th className="text-left text-[11px] font-semibold tracking-[0.08em] uppercase text-muted dark:text-fog px-4 py-2.5 bg-paper dark:bg-abyss">Memory</th>
+                    <th className="hidden sm:table-cell text-left text-[11px] font-semibold tracking-[0.08em] uppercase text-muted dark:text-fog px-4 py-2.5 bg-paper dark:bg-abyss">Memory</th>
                     <th className="text-left text-[11px] font-semibold tracking-[0.08em] uppercase text-muted dark:text-fog px-4 py-2.5 bg-paper dark:bg-abyss last:text-right">Net ↓↑</th>
                   </tr>
                 </thead>
@@ -671,7 +671,7 @@ export function TelemetryPage() {
                       <td className="px-4 py-2.5 border-t border-line dark:border-edge align-middle font-mono">
                         {c.cpuPercent.toFixed(1)}%
                       </td>
-                      <td className="px-4 py-2.5 border-t border-line dark:border-edge align-middle font-mono">
+                      <td className="hidden sm:table-cell px-4 py-2.5 border-t border-line dark:border-edge align-middle font-mono">
                         {fmtSize(c.memMB)}
                         {c.memLimitMB > 0 ? ` / ${fmtSize(c.memLimitMB)}` : ""}
                       </td>

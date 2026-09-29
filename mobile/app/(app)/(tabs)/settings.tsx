@@ -16,6 +16,11 @@ import { ArrowRight, X } from "lucide-react-native";
 import { useAuthStore } from "../../../src/stores/authStore";
 import { useBiometricStore } from "../../../src/stores/biometricStore";
 import { authApi } from "../../../src/api/auth";
+import {
+  currentBaseUrl,
+  probeBaseUrl,
+  saveBaseUrl,
+} from "../../../src/api/serverUrl";
 import { colors } from "../../../src/theme/colors";
 
 function SectionHeader({ title }: { title: string }) {
@@ -54,6 +59,27 @@ export default function SettingsScreen() {
   const [newPw, setNewPw] = useState("");
   const [pwError, setPwError] = useState<string | null>(null);
   const [pwBusy, setPwBusy] = useState(false);
+  const [serverUrl, setServerUrl] = useState(() => currentBaseUrl());
+  const [editingServer, setEditingServer] = useState(false);
+  const [serverBusy, setServerBusy] = useState(false);
+  const [serverMsg, setServerMsg] = useState<string | null>(null);
+
+  const handleSaveServer = async () => {
+    if (!serverUrl.trim()) return;
+    setServerBusy(true);
+    setServerMsg(null);
+    try {
+      await probeBaseUrl(serverUrl);
+      const clean = await saveBaseUrl(serverUrl);
+      setServerUrl(clean);
+      setEditingServer(false);
+      setServerMsg(`Connected to ${clean}`);
+    } catch (e) {
+      setServerMsg(e instanceof Error ? e.message : "Could not reach that server.");
+    } finally {
+      setServerBusy(false);
+    }
+  };
 
   const handleLogout = () => {
     Alert.alert("Sign out", "Are you sure you want to sign out?", [
@@ -167,6 +193,57 @@ export default function SettingsScreen() {
               </TouchableOpacity>
             </View>
           )}
+        </View>
+
+        <SectionHeader title="Server" />
+        <View className="bg-panel border-t border-b border-edge">
+          <View className="px-4 py-3.5 border-b border-edge">
+            <View className="flex-row items-center justify-between">
+              <Text className="text-bone text-[14px] flex-1 mr-3" numberOfLines={1} ellipsizeMode="middle">
+                {serverUrl || "…"}
+              </Text>
+              <TouchableOpacity onPress={() => setEditingServer((v) => !v)} accessibilityRole="button">
+                <Text className="text-ember text-[13px]">{editingServer ? "Cancel" : "Change"}</Text>
+              </TouchableOpacity>
+            </View>
+            <Text className="text-fog text-[12px] mt-0.5">
+              Backend address. Use the PC&apos;s LAN IP — phone + PC must share Wi-Fi.
+            </Text>
+            {editingServer && (
+              <View className="mt-3">
+                <TextInput
+                  value={serverUrl}
+                  onChangeText={setServerUrl}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  keyboardType="url"
+                  placeholder="http://192.168.0.111:4000"
+                  placeholderTextColor={colors.fog}
+                  className="bg-emboss border border-edge rounded-input px-3 py-2.5 text-bone text-[13px] mb-3"
+                  style={{ fontFamily: "Inter_400Regular" }}
+                />
+                {serverMsg && (
+                  <Text className="text-fog text-[12px] mb-3">{serverMsg}</Text>
+                )}
+                <TouchableOpacity
+                  onPress={handleSaveServer}
+                  disabled={serverBusy || !serverUrl.trim()}
+                  className="bg-ember rounded-input py-2.5 items-center"
+                  style={{ opacity: serverBusy || !serverUrl.trim() ? 0.55 : 1 }}
+                  accessibilityRole="button"
+                >
+                  {serverBusy ? (
+                    <ActivityIndicator color={colors.abyss} size="small" />
+                  ) : (
+                    <Text className="text-black font-medium text-[13px]">Test & save</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            )}
+            {!editingServer && serverMsg && (
+              <Text className="text-fog text-[12px] mt-2">{serverMsg}</Text>
+            )}
+          </View>
         </View>
 
         <SectionHeader title="Security" />

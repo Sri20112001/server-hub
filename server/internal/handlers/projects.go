@@ -73,7 +73,7 @@ func (h *ProjectHandler) Create(c *gin.Context) {
 		VALUES (?,?,?,?,?,?,?,?,?,'unknown',?)`,
 		p.Name, p.Description, p.Repository, p.Branch, p.Environment, p.DeploymentPath, p.ComposeFile, p.GatewayPrefix, p.HealthURL, p.AutoDeploy)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "could not create project"})
 		return
 	}
 	u, _ := middleware.CurrentUser(c)
@@ -113,7 +113,7 @@ func (h *ProjectHandler) Update(c *gin.Context) {
 	_, err = h.DB.Exec(`UPDATE projects SET name=?,description=?,repository=?,branch=?,environment=?,deployment_path=?,compose_file=?,gateway_prefix=?,health_url=?,auto_deploy=?,updated_at=CURRENT_TIMESTAMP WHERE id=?`,
 		p.Name, p.Description, p.Repository, p.Branch, p.Environment, p.DeploymentPath, p.ComposeFile, p.GatewayPrefix, p.HealthURL, p.AutoDeploy, id)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not update project"})
 		return
 	}
 	u, _ := middleware.CurrentUser(c)

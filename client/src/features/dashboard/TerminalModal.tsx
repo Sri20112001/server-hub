@@ -151,14 +151,14 @@ export function TerminalModal({
 
   return (
     <div
-      className="fixed inset-0 z-[60] flex items-center justify-center px-4 bg-[rgba(28,25,23,0.28)] dark:bg-[rgba(0,0,0,0.55)]"
+      className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center sm:px-4 bg-[rgba(28,25,23,0.28)] dark:bg-[rgba(0,0,0,0.55)] overflow-y-auto"
       onClick={onClose}
     >
       <div
-        className="bg-white dark:bg-panel border border-line dark:border-edge rounded-card w-full max-w-[860px] p-5 shadow-chrome"
+        className="bg-white dark:bg-panel border border-line dark:border-edge rounded-t-2xl sm:rounded-card w-full sm:max-w-[860px] p-4 sm:p-5 shadow-chrome max-h-[92dvh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between gap-4 mb-3">
+        <div className="flex flex-col min-[480px]:flex-row min-[480px]:items-center gap-2 min-[480px]:justify-between mb-3">
           <div className="flex items-center gap-2 flex-wrap">
             <SquareTerminal size={16} />
             <h3 className="text-[18px]">
@@ -229,7 +229,7 @@ export function TerminalModal({
 
         <div
           ref={boxRef}
-          className="rounded-xl overflow-hidden border border-line dark:border-edge h-[420px] p-2 bg-[#171512]"
+          className="rounded-xl overflow-hidden border border-line dark:border-edge h-[50dvh] min-h-[280px] max-h-[420px] p-2 bg-[#171512]"
         />
         <div className="mt-2">
           <Kicker>PTY · docker exec · single-use token · closes with the modal</Kicker>

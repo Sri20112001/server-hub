@@ -106,12 +106,14 @@ func main() {
 
 	authH := &handlers.AuthHandler{DB: db, Cfg: cfg}
 	r.POST("/server-hub/api/auth/login", authH.Login)
+	r.POST("/server-hub/api/auth/token", authH.Token)
 	r.POST("/server-hub/api/auth/logout", authH.Logout)
 	r.GET("/server-hub/api/auth/me", middleware.AuthRequired(cfg.JWTSecret), authH.Me)
 	r.PUT("/server-hub/api/auth/password", middleware.AuthRequired(cfg.JWTSecret), authH.ChangePassword)
 
 	api := r.Group("/server-hub/api", middleware.AuthRequired(cfg.JWTSecret))
 	execH := &handlers.ExecHandler{DB: db, Docker: dockerClient, Broker: broker}
+	handlers.SetWSAllowedOrigins(origins)
 	{
 		projH := &handlers.ProjectHandler{DB: db}
 		api.GET("/projects", projH.List)

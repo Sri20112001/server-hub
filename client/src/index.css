@@ -48,6 +48,19 @@
     0 1px 2px rgba(28, 25, 23, 0.04);
 }
 
+html {
+  -webkit-text-size-adjust: 100%;
+  scroll-behavior: smooth;
+}
+
+/* Prevent stray wide children (tables, feeds, bars) from creating a
+   page-level horizontal scrollbar — scroll containers handle it instead. */
+html,
+body {
+  overflow-x: clip;
+  max-width: 100%;
+}
+
 body {
   background: var(--color-paper);
   color: var(--color-ink);
@@ -56,6 +69,14 @@ body {
   line-height: 1.45;
   -webkit-font-smoothing: antialiased;
   margin: 0;
+  /* Bottom dock + toasts overlay content: keep OS gesture bar clear. */
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+@media (max-width: 640px) {
+  body {
+    font-size: 14px;
+  }
 }
 
 html { color-scheme: light; }
@@ -115,5 +136,47 @@ a { color: inherit; }
     background-attachment: fixed;
     /* Optional: blend mode to make it subtle */
     background-blend-mode: overlay;
+  }
+
+  /* Responsive media defaults: never overflow narrow viewports. */
+  img,
+  svg,
+  video,
+  canvas {
+    max-width: 100%;
+    height: auto;
+  }
+  svg.h-36 {
+    /* chart SVGs set explicit height via class — keep it */
+    height: 9rem;
+  }
+
+  /* Smooth momentum scrolling for table / log scroll regions on iOS. */
+  .overflow-x-auto,
+  .overflow-y-auto {
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+  }
+
+  /* Larger tap targets on coarse pointers without restyling desktop. */
+  @media (pointer: coarse) {
+    button,
+    select,
+    input[type="checkbox"] {
+      min-height: 40px;
+    }
+    nav button {
+      min-height: 44px;
+      min-width: 44px;
+    }
+    input[type="checkbox"] {
+      min-width: 18px;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
   }
 }

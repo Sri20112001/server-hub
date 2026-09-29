@@ -49,7 +49,7 @@ export function ProjectDrawer({
       onClick={onClose}
     >
       <aside
-        className="bg-paper dark:bg-abyss border-l border-line dark:border-edge w-full max-w-[440px] h-full overflow-y-auto px-6 pt-6 pb-12"
+        className="bg-paper dark:bg-abyss border-l border-line dark:border-edge w-full sm:max-w-[440px] h-[100dvh] overflow-y-auto px-4 sm:px-6 pt-6 pb-[calc(3rem+env(safe-area-inset-bottom,0px))]"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between gap-4">

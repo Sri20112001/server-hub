@@ -19,6 +19,7 @@
         "backgroundColor": "#121316"
       },
       "package": "com.serverhub.mobile",
+      "usesCleartextTraffic": true,
       "permissions": [
         "USE_BIOMETRIC",
         "USE_FINGERPRINT",

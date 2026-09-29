@@ -11,14 +11,40 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
-import { Cog } from "lucide-react-native";
+import { Cog, Server } from "lucide-react-native";
 import { useAuthStore } from "../../src/stores/authStore";
+import {
+  currentBaseUrl,
+  probeBaseUrl,
+  saveBaseUrl,
+} from "../../src/api/serverUrl";
 import { colors } from "../../src/theme/colors";
 
 export default function LoginScreen() {
   const { login, busy, error, clearError } = useAuthStore();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [serverUrl, setServerUrl] = useState(() => currentBaseUrl());
+  const [editingServer, setEditingServer] = useState(false);
+  const [serverBusy, setServerBusy] = useState(false);
+  const [serverMsg, setServerMsg] = useState<string | null>(null);
+
+  const handleSaveServer = async () => {
+    if (!serverUrl.trim()) return;
+    setServerBusy(true);
+    setServerMsg(null);
+    try {
+      await probeBaseUrl(serverUrl);
+      const clean = await saveBaseUrl(serverUrl);
+      setServerUrl(clean);
+      setEditingServer(false);
+      setServerMsg(`Connected to ${clean}`);
+    } catch (e) {
+      setServerMsg(e instanceof Error ? e.message : "Could not reach that server.");
+    } finally {
+      setServerBusy(false);
+    }
+  };
 
   const handleLogin = async () => {
     if (!username.trim() || !password) return;
@@ -123,6 +149,71 @@ export default function LoginScreen() {
                 </Text>
               )}
             </TouchableOpacity>
+          </View>
+
+          {/* Server address — must be reachable from the phone (LAN IP, not localhost) */}
+          <View className="bg-panel border border-edge rounded-card p-4 mt-4">
+            <TouchableOpacity
+              onPress={() => setEditingServer((v) => !v)}
+              className="flex-row items-center justify-between"
+              accessibilityRole="button"
+              accessibilityLabel="Change server address"
+            >
+              <View className="flex-row items-center gap-2 flex-1 mr-3">
+                <Server size={14} color={colors.fog} />
+                <Text
+                  className="text-fog text-[12px] flex-1"
+                  numberOfLines={1}
+                  ellipsizeMode="middle"
+                >
+                  {serverUrl || "…"}
+                </Text>
+              </View>
+              <Text className="text-ember text-[12px]">
+                {editingServer ? "Cancel" : "Change"}
+              </Text>
+            </TouchableOpacity>
+            {editingServer && (
+              <View className="mt-3">
+                <TextInput
+                  value={serverUrl}
+                  onChangeText={setServerUrl}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  keyboardType="url"
+                  placeholder="http://192.168.0.111:4000"
+                  placeholderTextColor={colors.fog}
+                  className="bg-panel border border-edge rounded-input px-3 py-3 text-bone text-[13px] mb-3"
+                  style={{ fontFamily: "Inter_400Regular" }}
+                />
+                {serverMsg && (
+                  <Text className="text-fog text-[12px] mb-3">{serverMsg}</Text>
+                )}
+                <TouchableOpacity
+                  onPress={handleSaveServer}
+                  disabled={serverBusy || !serverUrl.trim()}
+                  className="bg-ember rounded-input py-2.5 items-center"
+                  style={{ opacity: serverBusy || !serverUrl.trim() ? 0.55 : 1 }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Save server address"
+                >
+                  {serverBusy ? (
+                    <ActivityIndicator color={colors.abyss} size="small" />
+                  ) : (
+                    <Text
+                      className="text-black font-medium text-[13px]"
+                      style={{ fontFamily: "Inter_500Medium" }}
+                    >
+                      Test & save
+                    </Text>
+                  )}
+                </TouchableOpacity>
+                <Text className="text-fog text-[11px] mt-2">
+                  Use your PC&apos;s LAN IP (e.g. 192.168.0.111), not localhost.
+                  Phone + PC must share the same Wi-Fi.
+                </Text>
+              </View>
+            )}
           </View>
         </ScrollView>
       </KeyboardAvoidingView>

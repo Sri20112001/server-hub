@@ -327,9 +327,9 @@ export function DatabasesPage({ setOnline }: { setOnline: (v: boolean) => void }
                             </label>
                           ))}
                         </div>
-                        <div className="flex items-center gap-2 flex-wrap mt-4">
+                        <div className="flex flex-col sm:flex-row sm:items-center gap-2 flex-wrap mt-4">
                           <select
-                            className={`${inputCls} !w-auto min-w-[180px]`}
+                            className={`${inputCls} w-full sm:!w-auto sm:min-w-[180px]`}
                             value={projectId}
                             onChange={(e) => setProjectId(e.target.value)}
                           >
@@ -341,7 +341,7 @@ export function DatabasesPage({ setOnline }: { setOnline: (v: boolean) => void }
                             ))}
                           </select>
                           <button
-                            className={btnAccent}
+                            className={`${btnAccent} w-full sm:w-auto justify-center`}
                             disabled={registering || checked.size === 0 || !projectId}
                             onClick={() => void register()}
                           >

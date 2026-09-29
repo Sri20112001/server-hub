@@ -2,8 +2,11 @@ package handlers
 
 import (
 	"database/sql"
+	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
 	"strconv"
 	"time"
 
@@ -20,6 +23,33 @@ type SystemHandler struct {
 	DB     *database.DB
 	Docker *dockerx.Client
 	Cfg    *config.Config
+}
+
+// isSafeHealthURL returns an error if the URL targets a private/loopback
+// address (SSRF guard). Only http/https are allowed.
+func isSafeHealthURL(raw string) error {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return fmt.Errorf("invalid URL")
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return fmt.Errorf("only http/https URLs are allowed")
+	}
+	hostname := u.Hostname()
+	addrs, err := net.LookupHost(hostname)
+	if err != nil {
+		return nil // allow — DNS failure is not a security issue here
+	}
+	for _, addr := range addrs {
+		ip := net.ParseIP(addr)
+		if ip == nil {
+			continue
+		}
+		if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() {
+			return fmt.Errorf("health URL must not target a private or loopback address")
+		}
+	}
+	return nil
 }
 
 // GET /api/health — overall rollup for the dashboard.
@@ -95,25 +125,29 @@ func (h *SystemHandler) ProjectHealth(c *gin.Context) {
 	var rtMs *int64
 	var lastCheck string
 	if healthURL != "" {
-		start := time.Now()
-		client := &http.Client{Timeout: 8 * time.Second}
-		resp, err := client.Get(healthURL)
-		ms := time.Since(start).Milliseconds()
-		rtMs = &ms
-		lastCheck = time.Now().UTC().Format(time.RFC3339)
-		if err != nil {
-			live = "DOWN"
+		if err := isSafeHealthURL(healthURL); err != nil {
+			live = "UNKNOWN"
 		} else {
-			body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-			resp.Body.Close()
-			_ = body
-			switch {
-			case resp.StatusCode >= 200 && resp.StatusCode < 300:
-				live = "HEALTHY"
-			case resp.StatusCode >= 500:
+			start := time.Now()
+			client := &http.Client{Timeout: 8 * time.Second}
+			resp, err := client.Get(healthURL)
+			ms := time.Since(start).Milliseconds()
+			rtMs = &ms
+			lastCheck = time.Now().UTC().Format(time.RFC3339)
+			if err != nil {
 				live = "DOWN"
-			default:
-				live = "DEGRADED"
+			} else {
+				body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+				resp.Body.Close()
+				_ = body
+				switch {
+				case resp.StatusCode >= 200 && resp.StatusCode < 300:
+					live = "HEALTHY"
+				case resp.StatusCode >= 500:
+					live = "DOWN"
+				default:
+					live = "DEGRADED"
+				}
 			}
 		}
 	}

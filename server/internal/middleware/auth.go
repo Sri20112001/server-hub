@@ -24,7 +24,7 @@ func AuthRequired(jwtSecret string) gin.HandlerFunc {
 		}
 		token, err := jwt.Parse(tokenStr, func(t *jwt.Token) (interface{}, error) {
 			return []byte(jwtSecret), nil
-		})
+		}, jwt.WithValidMethods([]string{"HS256"}))
 		if err != nil || !token.Valid {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid session"})
 			return

@@ -72,16 +72,33 @@ func Load() *Config {
 	}
 	secure := getenv("COOKIE_SECURE", "false") == "true"
 	retention, _ := strconv.Atoi(getenv("LOG_RETENTION_DAYS", "30"))
+
+	jwtSecret := os.Getenv("JWT_SECRET")
+	if jwtSecret == "" {
+		fmt.Fprintln(os.Stderr, "FATAL: JWT_SECRET environment variable is required")
+		os.Exit(1)
+	}
+	if len(jwtSecret) < 32 {
+		fmt.Fprintln(os.Stderr, "FATAL: JWT_SECRET must be at least 32 characters")
+		os.Exit(1)
+	}
+
+	adminPass := os.Getenv("ADMIN_PASSWORD")
+	if adminPass == "" {
+		fmt.Fprintln(os.Stderr, "FATAL: ADMIN_PASSWORD environment variable is required")
+		os.Exit(1)
+	}
+
 	return &Config{
 		Port:        getenv("PORT", "4000"),
 		DatabaseURL: os.Getenv("DATABASE_URL"),
-		JWTSecret:       getenv("JWT_SECRET", "change-me-in-production-min-32-chars"),
+		JWTSecret:       jwtSecret,
 		EncryptionKey:   encKey,
 		CookieSecure:    secure,
 		CookieDomain:    os.Getenv("COOKIE_DOMAIN"),
 		FrontendURL:     getenv("FRONTEND_URL", "http://localhost:5173"),
 		AdminUser:       getenv("ADMIN_USERNAME", "admin"),
-		AdminPass:       getenv("ADMIN_PASSWORD", "changeme"),
+		AdminPass:       adminPass,
 		WebhookSecret:   os.Getenv("GITHUB_WEBHOOK_SECRET"),
 		ScanRoots:       splitRoots(getenv("SCAN_ROOTS", "/srv/apps")),
 		AlertCPU:        getenvFloat("ALERT_CPU_PCT", 85),

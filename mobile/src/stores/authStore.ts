@@ -2,6 +2,7 @@ import { create } from "zustand";
 import * as SecureStore from "expo-secure-store";
 import { authApi } from "../api/auth";
 import { TOKEN_KEY, USER_KEY } from "../api/client";
+import { initStoredBaseUrl } from "../api/serverUrl";
 import type { User } from "../types";
 
 interface AuthState {
@@ -25,6 +26,8 @@ export const useAuthStore = create<AuthState>((set) => ({
 
   hydrate: async () => {
     try {
+      // Apply any saved server-URL override before any request fires.
+      await initStoredBaseUrl();
       const [token, userJson] = await Promise.all([
         SecureStore.getItemAsync(TOKEN_KEY),
         SecureStore.getItemAsync(USER_KEY),

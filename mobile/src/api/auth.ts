@@ -5,7 +5,7 @@ export const authApi = {
   login: (username: string, password: string) =>
     client
       .post<{ username: string; role: string; token: string }>(
-        "/server-hub/api/auth/login",
+        "/server-hub/api/auth/token",
         { username, password },
       )
       .then((r) => r.data),

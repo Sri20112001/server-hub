@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -36,7 +37,7 @@ func (h *DeploymentHandler) ListAll(c *gin.Context) {
 	}
 	rows, err := h.DB.Query(`SELECT id,project_id,commit_sha,branch,trigger,status,started_at,completed_at,duration_sec,logs FROM deployments ORDER BY id DESC LIMIT ?`, limit)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not list deployments"})
 		return
 	}
 	defer rows.Close()
@@ -51,7 +52,7 @@ func (h *DeploymentHandler) ListByProject(c *gin.Context) {
 	}
 	rows, err := h.DB.Query(`SELECT id,project_id,commit_sha,branch,trigger,status,started_at,completed_at,duration_sec,logs FROM deployments WHERE project_id=? ORDER BY id DESC LIMIT 100`, pid)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not list deployments"})
 		return
 	}
 	defer rows.Close()
@@ -162,21 +163,25 @@ func (h *DeploymentHandler) Deploy(c *gin.Context) {
 	}
 	u, _ := middleware.CurrentUser(c)
 
-	deployID, _ := h.DB.InsertID(`INSERT INTO deployments (project_id,commit_sha,branch,trigger,status,started_at) VALUES (?,?,?,?, 'RUNNING', CURRENT_TIMESTAMP)`,
-		pid, body.CommitSHA, branch, "manual@serverhub")
-	audit.Write(h.DB, u, "deploy", "project", strconv.FormatInt(pid, 10), "started", body.CommitSHA)
-
-	op, err := ops.Create(h.DB, "deploy", "project", strconv.FormatInt(pid, 10), u, deployStages)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not track operation"})
+	if deployID, err := h.DB.InsertID(`INSERT INTO deployments (project_id,commit_sha,branch,trigger,status,started_at) VALUES (?,?,?,?, 'RUNNING', CURRENT_TIMESTAMP)`,
+		pid, body.CommitSHA, branch, "manual@serverhub"); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not create deployment"})
 		return
+	} else {
+		audit.Write(h.DB, u, "deploy", "project", strconv.FormatInt(pid, 10), "started", body.CommitSHA)
+
+		op, err := ops.Create(h.DB, "deploy", "project", strconv.FormatInt(pid, 10), u, deployStages)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "could not track operation"})
+			return
+		}
+
+		go h.runDeploy(op.ID, deployID, pid, name, deployPath, composeFile, u, body.CommitSHA, healthURL)
+
+		var d models.Deployment
+		scanDeploymentRow(h.DB.QueryRow(`SELECT id,project_id,commit_sha,branch,trigger,status,started_at,completed_at,duration_sec,logs FROM deployments WHERE id=?`, deployID), &d)
+		c.JSON(http.StatusAccepted, gin.H{"deployment": d, "operationId": op.ID})
 	}
-
-	go h.runDeploy(op.ID, deployID, pid, name, deployPath, composeFile, u, body.CommitSHA, healthURL)
-
-	var d models.Deployment
-	scanDeploymentRow(h.DB.QueryRow(`SELECT id,project_id,commit_sha,branch,trigger,status,started_at,completed_at,duration_sec,logs FROM deployments WHERE id=?`, deployID), &d)
-	c.JSON(http.StatusAccepted, gin.H{"deployment": d, "operationId": op.ID})
 }
 
 func (h *DeploymentHandler) runDeploy(opID string, deployID, projectID int64, projectName, deployPath, composeFile, actor, commit, healthURL string) {
@@ -227,6 +232,18 @@ func (h *DeploymentHandler) Rollback(c *gin.Context) {
 	c.JSON(http.StatusAccepted, gin.H{"deployment": d, "operationId": op.ID})
 }
 
+// validateDeployInputs checks that deployPath is an absolute path and
+// composeFile is a safe bare filename (no path separators, no leading dashes).
+func validateDeployInputs(deployPath, composeFile string) error {
+	if !filepath.IsAbs(deployPath) {
+		return fmt.Errorf("deployment_path must be an absolute path")
+	}
+	if filepath.Base(composeFile) != composeFile || strings.HasPrefix(composeFile, "-") {
+		return fmt.Errorf("compose_file must be a plain filename with no path separators or leading dashes")
+	}
+	return nil
+}
+
 // executeDeploy runs the staged pipeline (pull → up → health check),
 // updating the operation stages and broadcasting events throughout.
 func executeDeploy(db *database.DB, broker *events.Broker, opID string, deployID, projectID int64, projectName, deployPath, composeFile, actor, commit, healthURL string) {
@@ -256,6 +273,10 @@ func executeDeploy(db *database.DB, broker *events.Broker, opID string, deployID
 
 	if deployPath == "" {
 		fail("No deployment_path configured for this project. Set it in project settings.")
+		return
+	}
+	if err := validateDeployInputs(deployPath, composeFile); err != nil {
+		fail(err.Error())
 		return
 	}
 	composePath := filepath.Join(deployPath, composeFile)

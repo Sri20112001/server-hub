@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -130,9 +131,29 @@ func (h *ExecHandler) Create(c *gin.Context) {
 var wsUpgrader = websocket.Upgrader{
 	ReadBufferSize:  32 * 1024,
 	WriteBufferSize: 32 * 1024,
-	// Auth rides on the single-use token, not cookies, so any origin
-	// presenting a valid token may upgrade.
-	CheckOrigin: func(r *http.Request) bool { return true },
+	// Origin is validated against the allowed origins list configured via
+	// FRONTEND_URL. The single-use token provides authentication, but we
+	// still restrict the origin to prevent cross-site WebSocket hijacking.
+	CheckOrigin: func(r *http.Request) bool {
+		origin := r.Header.Get("Origin")
+		if origin == "" {
+			return true // non-browser clients (mobile, curl)
+		}
+		for _, allowed := range allowedWSOrigins {
+			if origin == allowed {
+				return true
+			}
+		}
+		return false
+	},
+}
+
+// allowedWSOrigins is populated at startup from FRONTEND_URL.
+var allowedWSOrigins []string
+
+// SetWSAllowedOrigins configures the WebSocket origin allowlist.
+func SetWSAllowedOrigins(origins []string) {
+	allowedWSOrigins = origins
 }
 
 // GET /server-hub/api/exec/:token — WebSocket PTY bridge (no session auth;
@@ -183,6 +204,17 @@ func (h *ExecHandler) Attach(c *gin.Context) {
 	// has a permanent record.
 	audit.Write(h.DB, g.actor, "exec-open", "container", g.container, "ok", "shell="+g.shell)
 	defer audit.Write(h.DB, g.actor, "exec-close", "container", g.container, "ok", "shell="+g.shell)
+
+	// Absolute session deadline — regardless of activity.
+	const maxSessionDuration = 30 * time.Minute
+	sessionCtx, sessionCancel := context.WithTimeout(context.Background(), maxSessionDuration)
+	defer sessionCancel()
+	go func() {
+		<-sessionCtx.Done()
+		_ = ws.WriteMessage(websocket.TextMessage, []byte("\r\n[session timeout]\r\n"))
+		ws.Close()
+	}()
+
 	_ = ws.SetReadDeadline(time.Now().Add(10 * time.Minute))
 
 	// Resize + input from the browser.

@@ -122,9 +122,9 @@ function DetailsBody({
       </div>
 
       {/* helm */}
-      <div className="bg-white dark:bg-panel border border-line dark:border-edge rounded-card p-5 mt-5">
+      <div className="bg-white dark:bg-panel border border-line dark:border-edge rounded-card p-4 sm:p-5 mt-5">
         <Kicker>Helm</Kicker>
-        <div className="flex items-center gap-2 flex-wrap mt-2.5">
+        <div className="grid grid-cols-2 gap-2 mt-2.5 sm:flex sm:items-center sm:flex-wrap">
           <button
             className="inline-flex items-center gap-2 rounded-input text-[13px] font-medium px-4 py-2 cursor-pointer border border-transparent whitespace-nowrap transition-colors duration-150 disabled:opacity-55 disabled:cursor-not-allowed bg-accent dark:bg-ember text-white dark:text-black hover:bg-accent-hover dark:hover:bg-ember-hover px-3 py-1.5 text-xs"
             disabled={d.busy}
@@ -169,13 +169,14 @@ function DetailsBody({
       </div>
 
       {/* stations */}
-      <div className="bg-white dark:bg-panel border border-line dark:border-edge rounded-card p-5 mt-4">
+      <div className="bg-white dark:bg-panel border border-line dark:border-edge rounded-card p-4 sm:p-5 mt-4">
         <Kicker>Stations · {d.services.length}</Kicker>
         <div className="mt-2.5">
           {d.services.length === 0 ? (
             <EmptyState title="No stations charted" hint="Add services via the API to track them here." />
           ) : (
-            <table className="w-full border-collapse text-[13px]">
+            <div className="overflow-x-auto -mx-1 px-1">
+            <table className="w-full min-w-[420px] sm:min-w-0 border-collapse text-[13px]">
               <thead>
                 <tr>
                   <th className="text-left text-[11px] font-semibold tracking-[0.08em] uppercase text-muted dark:text-fog px-4 py-2.5 bg-paper dark:bg-abyss first:rounded-l-[10px] last:rounded-r-[10px] last:text-right">Station</th>
@@ -202,12 +203,13 @@ function DetailsBody({
                 ))}
               </tbody>
             </table>
+            </div>
           )}
         </div>
       </div>
 
       {/* live logs */}
-      <div className="bg-white dark:bg-panel border border-line dark:border-edge rounded-card p-5 mt-4">
+      <div className="bg-white dark:bg-panel border border-line dark:border-edge rounded-card p-4 sm:p-5 mt-4">
         <div className="flex items-center gap-2 flex-wrap mb-2.5">
           <ScrollText size={15} />
           <Kicker>Live logs</Kicker>
@@ -254,17 +256,20 @@ function DetailsBody({
       </div>
 
       {/* launches */}
-      <div className="bg-white dark:bg-panel border border-line dark:border-edge rounded-card p-5 mt-4">
+      <div className="bg-white dark:bg-panel border border-line dark:border-edge rounded-card p-4 sm:p-5 mt-4">
         <Kicker>Launch log · {d.deployments.length}</Kicker>
-        <div className="mt-2.5 flex flex-col gap-4">
+        <div className="mt-2.5 flex flex-col gap-3">
           {d.deployments.length === 0 && <EmptyState title="No launches yet" />}
           {d.deployments.map((dep) => (
-            <div key={dep.id} className="flex items-center justify-between gap-4 text-[13px]">
-              <span className="inline-flex items-center gap-1.5 font-mono text-[11px] bg-tint dark:bg-emboss border border-line dark:border-edge text-ink dark:text-bone rounded-md px-2 py-[3px] whitespace-nowrap">
+            <div key={dep.id} className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between text-[13px] bg-paper dark:bg-abyss sm:bg-transparent sm:dark:bg-transparent border border-line dark:border-edge sm:border-0 rounded-xl sm:rounded-none px-3 py-2.5 sm:p-0">
+              <span className="inline-flex items-center gap-1.5 font-mono text-[11px] bg-tint dark:bg-emboss border border-line dark:border-edge text-ink dark:text-bone rounded-md px-2 py-[3px] whitespace-nowrap self-start">
                 <Hash size={11} /> {shortSha(dep.commitSha)}
               </span>
-              <span className="font-mono text-muted dark:text-fog">{fmtDuration(dep.durationSec)}</span>
-              <span className="text-muted dark:text-fog">{timeAgo(dep.startedAt)}</span>
+              <span className="flex items-center gap-3 flex-wrap font-mono text-muted dark:text-fog text-xs">
+                <span>{fmtDuration(dep.durationSec)}</span>
+                <span>{timeAgo(dep.startedAt)}</span>
+              </span>
+              <span className="flex items-center gap-2">
               <StatusPill status={dep.status} />
               <button
                 className="inline-flex items-center gap-2 rounded-input text-[13px] font-medium px-4 py-2 cursor-pointer border border-transparent whitespace-nowrap transition-colors duration-150 disabled:opacity-55 disabled:cursor-not-allowed bg-white dark:bg-panel border-line dark:border-edge text-ink dark:text-bone hover:bg-paper dark:hover:bg-emboss px-3 py-1.5 text-xs"
@@ -274,18 +279,19 @@ function DetailsBody({
               >
                 <History size={12} />
               </button>
+              </span>
             </div>
           ))}
         </div>
       </div>
 
       {/* vault */}
-      <div className="bg-white dark:bg-panel border border-line dark:border-edge rounded-card p-5 mt-4">
+      <div className="bg-white dark:bg-panel border border-line dark:border-edge rounded-card p-4 sm:p-5 mt-4">
         <Kicker>Vault · {d.secrets.length} sealed</Kicker>
-        <div className="mt-2.5 flex flex-col gap-4">
+        <div className="mt-2.5 flex flex-col gap-3">
           {d.secrets.map((s) => (
-            <div key={s.id} className="flex items-center justify-between gap-4 text-[13px]">
-              <span className="font-mono">{s.name}</span>
+            <div key={s.id} className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between text-[13px]">
+              <span className="font-mono break-all">{s.name}</span>
               <span className="flex items-center gap-2 flex-wrap">
                 <span className="inline-flex items-center gap-1.5 font-mono text-[11px] bg-tint dark:bg-emboss border border-line dark:border-edge text-ink dark:text-bone rounded-md px-2 py-[3px] whitespace-nowrap">
                   {s.environment}
@@ -350,8 +356,8 @@ function DetailsBody({
       </div>
 
       {/* snapshots */}
-      <div className="bg-white dark:bg-panel border border-line dark:border-edge rounded-card p-5 mt-4">
-        <div className="flex items-center justify-between gap-4 mb-2.5">
+      <div className="bg-white dark:bg-panel border border-line dark:border-edge rounded-card p-4 sm:p-5 mt-4">
+        <div className="flex flex-col min-[420px]:flex-row min-[420px]:items-center gap-2 min-[420px]:justify-between mb-2.5">
           <div className="flex items-center gap-2 flex-wrap">
             <Archive size={15} />
             <Kicker>Snapshots · {d.backups.length}</Kicker>
@@ -372,7 +378,7 @@ function DetailsBody({
         ) : (
           <div className="flex flex-col gap-2.5">
             {d.backups.map((b) => (
-              <div key={b.id} className="flex items-center justify-between gap-4 text-[13px]">
+              <div key={b.id} className="flex flex-col min-[420px]:flex-row min-[420px]:items-center gap-2 min-[420px]:justify-between text-[13px]">
                 <div>
                   <div className="font-mono">
                     {new Date(b.createdAt.replace(" ", "T") + "Z").toLocaleString("en-GB", {

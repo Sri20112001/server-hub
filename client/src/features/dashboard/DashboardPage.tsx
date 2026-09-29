@@ -465,15 +465,15 @@ export function DashboardPage({ setOnline }: { setOnline: (v: boolean) => void }
             {todayLong()} <span className="mx-1.5">•</span> {healthLine}
           </p>
         </div>
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto">
           <button
-            className="inline-flex items-center gap-2 rounded-input text-[13px] font-medium px-4 py-2 cursor-pointer border border-transparent whitespace-nowrap transition-colors duration-150 disabled:opacity-55 disabled:cursor-not-allowed bg-white dark:bg-panel border-line dark:border-edge text-ink dark:text-bone hover:bg-paper dark:hover:bg-emboss"
+            className="inline-flex flex-1 sm:flex-none items-center justify-center gap-2 rounded-input text-[13px] font-medium px-4 py-2 cursor-pointer border border-transparent whitespace-nowrap transition-colors duration-150 disabled:opacity-55 disabled:cursor-not-allowed bg-white dark:bg-panel border-line dark:border-edge text-ink dark:text-bone hover:bg-paper dark:hover:bg-emboss"
             onClick={() => void load()}
           >
             <RefreshCw size={14} /> Run Diagnostics
           </button>
           <button
-            className="inline-flex items-center gap-2 rounded-input text-[13px] font-medium px-4 py-2 cursor-pointer border border-transparent whitespace-nowrap transition-colors duration-150 disabled:opacity-55 disabled:cursor-not-allowed bg-accent dark:bg-ember text-white dark:text-black hover:bg-accent-hover dark:hover:bg-ember-hover"
+            className="inline-flex flex-1 sm:flex-none items-center justify-center gap-2 rounded-input text-[13px] font-medium px-4 py-2 cursor-pointer border border-transparent whitespace-nowrap transition-colors duration-150 disabled:opacity-55 disabled:cursor-not-allowed bg-accent dark:bg-ember text-white dark:text-black hover:bg-accent-hover dark:hover:bg-ember-hover"
             onClick={() => setShowCreate(true)}
           >
             <Plus size={14} /> New Dispatch
@@ -603,14 +603,14 @@ export function DashboardPage({ setOnline }: { setOnline: (v: boolean) => void }
         </div>
       </div>
       <div className="bg-white dark:bg-panel border border-line dark:border-edge rounded-card p-0 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full border-collapse text-[13px]">
+        <div className="overflow-x-auto -mx-px">
+          <table className="w-full min-w-[560px] md:min-w-0 border-collapse text-[13px]">
             <thead>
               <tr>
                 <th className="text-left text-[11px] font-semibold tracking-[0.08em] uppercase text-muted dark:text-fog px-4 py-2.5 bg-paper dark:bg-abyss first:rounded-l-[10px] last:rounded-r-[10px] last:text-right">Commit SHA</th>
                 <th className="text-left text-[11px] font-semibold tracking-[0.08em] uppercase text-muted dark:text-fog px-4 py-2.5 bg-paper dark:bg-abyss first:rounded-l-[10px] last:rounded-r-[10px] last:text-right">Target / Vessel</th>
-                <th className="text-left text-[11px] font-semibold tracking-[0.08em] uppercase text-muted dark:text-fog px-4 py-2.5 bg-paper dark:bg-abyss first:rounded-l-[10px] last:rounded-r-[10px] last:text-right">Branch</th>
-                <th className="text-left text-[11px] font-semibold tracking-[0.08em] uppercase text-muted dark:text-fog px-4 py-2.5 bg-paper dark:bg-abyss first:rounded-l-[10px] last:rounded-r-[10px] last:text-right">Duration</th>
+                <th className="hidden md:table-cell text-left text-[11px] font-semibold tracking-[0.08em] uppercase text-muted dark:text-fog px-4 py-2.5 bg-paper dark:bg-abyss first:rounded-l-[10px] last:rounded-r-[10px] last:text-right">Branch</th>
+                <th className="hidden md:table-cell text-left text-[11px] font-semibold tracking-[0.08em] uppercase text-muted dark:text-fog px-4 py-2.5 bg-paper dark:bg-abyss first:rounded-l-[10px] last:rounded-r-[10px] last:text-right">Duration</th>
                 <th className="text-left text-[11px] font-semibold tracking-[0.08em] uppercase text-muted dark:text-fog px-4 py-2.5 bg-paper dark:bg-abyss first:rounded-l-[10px] last:rounded-r-[10px] last:text-right">Timestamp</th>
                 <th className="text-left text-[11px] font-semibold tracking-[0.08em] uppercase text-muted dark:text-fog px-4 py-2.5 bg-paper dark:bg-abyss first:rounded-l-[10px] last:rounded-r-[10px] last:text-right">Status</th>
               </tr>
@@ -634,12 +634,12 @@ export function DashboardPage({ setOnline }: { setOnline: (v: boolean) => void }
                     <div className="font-medium">{projectById.get(d.projectId)?.name ?? `#${d.projectId}`}</div>
                     <div className="font-mono text-muted dark:text-fog text-xs">{d.trigger ?? ""}</div>
                   </td>
-                  <td className="px-4 py-3 border-t border-line dark:border-edge align-middle last:text-right group-hover:bg-paper dark:group-hover:bg-emboss">
+                  <td className="hidden md:table-cell px-4 py-3 border-t border-line dark:border-edge align-middle last:text-right group-hover:bg-paper dark:group-hover:bg-emboss">
                     <span className="inline-flex items-center gap-1.5 font-mono text-[11px] bg-tint dark:bg-emboss border border-line dark:border-edge text-ink dark:text-bone rounded-md px-2 py-[3px] whitespace-nowrap">
                       <GitBranch size={11} /> {d.branch || "—"}
                     </span>
                   </td>
-                  <td className="px-4 py-3 border-t border-line dark:border-edge align-middle last:text-right group-hover:bg-paper dark:group-hover:bg-emboss font-mono">
+                  <td className="hidden md:table-cell px-4 py-3 border-t border-line dark:border-edge align-middle last:text-right group-hover:bg-paper dark:group-hover:bg-emboss font-mono">
                     {fmtDuration(d.durationSec)}
                   </td>
                   <td className="px-4 py-3 border-t border-line dark:border-edge align-middle last:text-right group-hover:bg-paper dark:group-hover:bg-emboss">
@@ -653,7 +653,7 @@ export function DashboardPage({ setOnline }: { setOnline: (v: boolean) => void }
             </tbody>
           </table>
         </div>
-        <div className="flex items-center gap-2 flex-wrap justify-between px-4 py-[0.7rem] border-t border-line dark:border-edge text-muted dark:text-fog text-xs">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2 flex-wrap justify-between px-4 py-[0.7rem] border-t border-line dark:border-edge text-muted dark:text-fog text-xs">
           <span>
             Showing {data.recentDeployments.length} of {data.counts.deployments} launches logged
           </span>

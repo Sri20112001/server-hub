@@ -143,13 +143,13 @@ export function FleetPage({ setOnline }: { setOnline: (v: boolean) => void }) {
             </Kicker>
           </p>
         </div>
-        <label className="flex items-center gap-2 bg-white dark:bg-panel border border-line dark:border-edge rounded-input px-3 py-2 text-[13px] text-muted dark:text-fog focus-within:border-accent dark:focus-within:border-ember">
-          <Search size={14} />
+        <label className="flex items-center gap-2 bg-white dark:bg-panel border border-line dark:border-edge rounded-input px-3 py-2 text-[13px] text-muted dark:text-fog focus-within:border-accent dark:focus-within:border-ember w-full sm:w-auto">
+          <Search size={14} className="shrink-0" />
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Filter ships…"
-            className="bg-transparent outline-none text-ink dark:text-bone placeholder:text-muted dark:placeholder:text-fog w-44"
+            className="bg-transparent outline-none text-ink dark:text-bone placeholder:text-muted dark:placeholder:text-fog w-full sm:w-44"
           />
         </label>
       </div>

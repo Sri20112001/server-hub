@@ -268,30 +268,6 @@ stage('Prepare') {
 
             COMPOSE="$(cat "$WORKSPACE/.jenkins-compose")"
 
-            # Preflight: the server fatals on short/empty secrets, so fail
-            # here with the exact credential to fix instead of a cryptic
-            # compose/container error after deploy.
-            if [ "${#JWT_SECRET}" -lt 32 ]; then
-              echo "ERROR: JWT_SECRET is shorter than 32 chars (got ${#JWT_SECRET})."
-              echo "Update the 'serverhub-jwt-secret' Jenkins credential (generate: openssl rand -hex 32)."
-              exit 1
-            fi
-            if [ -z "$ADMIN_PASSWORD" ]; then
-              echo "ERROR: ADMIN_PASSWORD is empty."
-              echo "Update the 'serverhub-admin-password' Jenkins credential."
-              exit 1
-            fi
-            if [ -z "$POSTGRES_PASSWORD" ]; then
-              echo "ERROR: POSTGRES_PASSWORD is empty."
-              echo "Update the 'serverhub-postgres-password' Jenkins credential."
-              exit 1
-            fi
-            if [ -n "$SERVERHUB_ENCRYPTION_KEY" ] && [ "${#SERVERHUB_ENCRYPTION_KEY}" -ne 64 ]; then
-              echo "ERROR: SERVERHUB_ENCRYPTION_KEY must be 64-char hex when set."
-              echo "Update the 'serverhub-encryption-key' Jenkins credential (generate: openssl rand -hex 32)."
-              exit 1
-            fi
-
             echo "Stopping previous ServerHub Compose deployment..."
 
             $COMPOSE down --remove-orphans >/dev/null 2>&1 || true
