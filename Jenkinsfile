@@ -227,26 +227,25 @@ stage('Prepare') {
             export ANDROID_SDK_ROOT="$ANDROID_HOME"
             export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH"
 
-            # Strict memory boundaries for Gradle and Node
+            # Set clean JVM heap ceilings without explicit GC flags
+            export GRADLE_OPTS="-Xmx2048m -XX:MaxMetaspaceSize=512m -Dorg.gradle.daemon=false -Dorg.gradle.parallel=false -Dkotlin.compiler.execution.strategy=in-process"
             export NODE_OPTIONS="--max-old-space-size=1536"
-            export _JAVA_OPTIONS="-Xmx1536m -XX:+UseG1GC"
-            export GRADLE_OPTS="-Dorg.gradle.jvmargs='-Xmx1536m -XX:MaxMetaspaceSize=512m' -Dorg.gradle.parallel=false"
 
             command -v java >/dev/null 2>&1 || { echo "ERROR: JDK 17+ not found on agent."; exit 1; }
             [ -d "$ANDROID_HOME" ] || { echo "ERROR: Android SDK not found at $ANDROID_HOME."; exit 1; }
 
-            # Prebuild Android directory
+            # Accept SDK licenses automatically if prompted
+            yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null 2>&1 || true
+
             npx expo prebuild --platform android --non-interactive
-
             chmod +x android/gradlew
-
-            # Run build with single worker and no background daemon
             (cd android && ./gradlew assembleDebug --no-daemon --max-workers=1)
           '''
           archiveArtifacts artifacts: 'android/app/build/outputs/apk/debug/app-debug.apk'
         }
       }
     }
+
 
 
     stage('Deploy') {
