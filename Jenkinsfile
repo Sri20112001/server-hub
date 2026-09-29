@@ -215,10 +215,6 @@ stage('Prepare') {
     }
 
     stage('Mobile APK') {
-      // No Expo account/token needed: prebuild generates android/ and Gradle
-      // compiles a debug APK (self-signed, for internal testing).
-      // Agent prerequisites (one-time): JDK 17, Android SDK cmdline-tools +
-      // platform-35 + build-tools-35, ANDROID_HOME env (default /opt/android-sdk).
       steps {
         dir('mobile') {
           sh '''
@@ -231,17 +227,27 @@ stage('Prepare') {
             export ANDROID_SDK_ROOT="$ANDROID_HOME"
             export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH"
 
+            # Strict memory boundaries for Gradle and Node
+            export NODE_OPTIONS="--max-old-space-size=1536"
+            export _JAVA_OPTIONS="-Xmx1536m -XX:+UseG1GC"
+            export GRADLE_OPTS="-Dorg.gradle.jvmargs='-Xmx1536m -XX:MaxMetaspaceSize=512m' -Dorg.gradle.parallel=false"
+
             command -v java >/dev/null 2>&1 || { echo "ERROR: JDK 17+ not found on agent."; exit 1; }
             [ -d "$ANDROID_HOME" ] || { echo "ERROR: Android SDK not found at $ANDROID_HOME."; exit 1; }
 
+            # Prebuild Android directory
             npx expo prebuild --platform android --non-interactive
+
             chmod +x android/gradlew
-            (cd android && ./gradlew assembleDebug --no-daemon)
+
+            # Run build with single worker and no background daemon
+            (cd android && ./gradlew assembleDebug --no-daemon --max-workers=1)
           '''
           archiveArtifacts artifacts: 'android/app/build/outputs/apk/debug/app-debug.apk'
         }
       }
     }
+
 
     stage('Deploy') {
       environment {
