@@ -14,10 +14,10 @@ type OperationsHandler struct {
 	DB *database.DB
 }
 
-// GET /server-hub/api/operations?limit=50
+// GET /server-hub/api/operations?limit=50 (clamped 1..200)
 func (h *OperationsHandler) List(c *gin.Context) {
 	limit := 50
-	if v, err := strconv.Atoi(c.DefaultQuery("limit", "50")); err == nil {
+	if v, err := strconv.Atoi(c.DefaultQuery("limit", "50")); err == nil && v >= 1 && v <= 200 {
 		limit = v
 	}
 	list, err := ops.List(h.DB, limit)

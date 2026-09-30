@@ -4,7 +4,7 @@ import type { User } from "../types";
 export const authApi = {
   login: (username: string, password: string) =>
     client
-      .post<{ username: string; role: string; token: string }>(
+      .post<{ username: string; role: string; token: string; refreshToken?: string }>(
         "/server-hub/api/auth/token",
         { username, password },
       )

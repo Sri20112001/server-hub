@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 )
 
 type FoundProject struct {
@@ -20,22 +21,46 @@ type FoundProject struct {
 	Registered   bool     `json:"registered"`
 }
 
-const maxDirs = 200
+const (
+	maxDirs = 200
+	// Hardening caps so a huge SCAN_ROOTS can never wedge the API call:
+	maxRoots      = 32          // distinct roots scanned per call
+	maxEntriesDir = 1000        // entries read per directory listing
+	scanTimeout   = 20 * time.Second
+)
 
-// Scan returns detected projects one level below each root.
+// Scan returns detected projects one level below each root. It is
+// deliberately shallow (no recursion): each root contributes at most one
+// directory level, entries per directory are capped, and the whole scan is
+// bounded by scanTimeout.
 func Scan(roots []string) []FoundProject {
+	deadline := time.Now().Add(scanTimeout)
 	out := []FoundProject{}
 	seen := map[string]bool{}
+	scannedRoots := 0
 	for _, root := range roots {
+		if time.Now().After(deadline) || scannedRoots >= maxRoots {
+			break
+		}
 		root = strings.TrimSpace(root)
 		if root == "" {
 			continue
 		}
+		if fi, err := os.Lstat(root); err != nil || !fi.IsDir() {
+			continue
+		}
+		scannedRoots++
 		entries, err := os.ReadDir(root)
 		if err != nil {
 			continue
 		}
-		for _, e := range entries {
+		for i, e := range entries {
+			if time.Now().After(deadline) {
+				break
+			}
+			if i >= maxEntriesDir {
+				break
+			}
 			if !e.IsDir() || strings.HasPrefix(e.Name(), ".") {
 				continue
 			}
@@ -63,7 +88,10 @@ func inspect(dir string) (FoundProject, bool) {
 		return fp, false
 	}
 	has := map[string]bool{}
-	for _, f := range files {
+	for i, f := range files {
+		if i >= maxEntriesDir {
+			break
+		}
 		if !f.IsDir() {
 			has[f.Name()] = true
 		}

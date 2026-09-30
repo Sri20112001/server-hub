@@ -48,6 +48,7 @@ func OpenDatabase(databaseURL string) (*DB, error) {
 		&DbServer{},
 		&DbRegistration{},
 		&AppSetting{},
+		&RefreshToken{},
 	} {
 		if gdb.Migrator().HasTable(m) {
 			continue

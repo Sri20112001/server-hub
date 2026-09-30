@@ -105,113 +105,131 @@ func main() {
 	})
 
 	authH := &handlers.AuthHandler{DB: db, Cfg: cfg}
-	r.POST("/server-hub/api/auth/login", authH.Login)
-	r.POST("/server-hub/api/auth/token", authH.Token)
-	r.POST("/server-hub/api/auth/logout", authH.Logout)
+	loginLimiter := middleware.NewLoginLimiter()
+	r.POST("/server-hub/api/auth/login", middleware.LoginRateLimit(gdb, loginLimiter), authH.Login)
+	r.POST("/server-hub/api/auth/token", middleware.LoginRateLimit(gdb, loginLimiter), authH.Token)
+	r.POST("/server-hub/api/auth/refresh", authH.Refresh)
+	r.POST("/server-hub/api/auth/logout", middleware.AuthRequired(cfg.JWTSecret), authH.Logout)
 	r.GET("/server-hub/api/auth/me", middleware.AuthRequired(cfg.JWTSecret), authH.Me)
 	r.PUT("/server-hub/api/auth/password", middleware.AuthRequired(cfg.JWTSecret), authH.ChangePassword)
+	r.POST("/server-hub/api/auth/logout-all", middleware.AuthRequired(cfg.JWTSecret), authH.LogoutAll)
 
-	api := r.Group("/server-hub/api", middleware.AuthRequired(cfg.JWTSecret))
+	// Role-based route groups (see middleware/roles.go for the matrix):
+	// viewer = read-only, operator = +routine mutations,
+	// admin = +destructive & privileged operations.
+	authd := middleware.AuthRequired(cfg.JWTSecret)
+	viewer := r.Group("/server-hub/api", authd, middleware.RequireRole(middleware.RoleViewer))
+	operator := r.Group("/server-hub/api", authd, middleware.RequireRole(middleware.RoleOperator))
+	admin := r.Group("/server-hub/api", authd, middleware.RequireRole(middleware.RoleAdmin))
 	execH := &handlers.ExecHandler{DB: db, Docker: dockerClient, Broker: broker}
 	handlers.SetWSAllowedOrigins(origins)
 	{
 		projH := &handlers.ProjectHandler{DB: db}
-		api.GET("/projects", projH.List)
-		api.POST("/projects", projH.Create)
-		api.GET("/projects/:id", projH.Get)
-		api.PUT("/projects/:id", projH.Update)
-		api.DELETE("/projects/:id", projH.Delete)
+		viewer.GET("/projects", projH.List)
+		operator.POST("/projects", projH.Create)
+		viewer.GET("/projects/:id", projH.Get)
+		operator.PUT("/projects/:id", projH.Update)
+		operator.DELETE("/projects/:id", projH.Delete)
 
 		svcH := &handlers.ServiceHandler{DB: db}
-		api.GET("/projects/:id/services", svcH.ListByProject)
-		api.POST("/projects/:id/services", svcH.Create)
-		api.PUT("/services/:id", svcH.Update)
-		api.DELETE("/services/:id", svcH.Delete)
+		viewer.GET("/projects/:id/services", svcH.ListByProject)
+		operator.POST("/projects/:id/services", svcH.Create)
+		operator.PUT("/services/:id", svcH.Update)
+		operator.DELETE("/services/:id", svcH.Delete)
 
 		ctrH := &handlers.ContainerHandler{DB: db, Docker: dockerClient, Broker: broker}
-		api.GET("/containers", ctrH.List)
-		api.GET("/containers/:id", ctrH.Inspect)
-		api.GET("/containers/:id/logs", ctrH.Logs)
-		api.GET("/containers/:id/stats", ctrH.Stats)
-		api.POST("/containers/:id/start", ctrH.Start)
-		api.POST("/containers/:id/stop", ctrH.Stop)
-		api.POST("/containers/:id/restart", ctrH.Restart)
-		api.GET("/images", ctrH.Images)
-		api.GET("/volumes", ctrH.Volumes)
-		api.GET("/containers/stats", ctrH.StatsAll)
+		viewer.GET("/containers", ctrH.List)
+		viewer.GET("/containers/:id", ctrH.Inspect)
+		viewer.GET("/containers/:id/logs", ctrH.Logs)
+		viewer.GET("/containers/:id/stats", ctrH.Stats)
+		operator.POST("/containers/:id/start", ctrH.Start)
+		admin.POST("/containers/:id/stop", ctrH.Stop)
+		admin.POST("/containers/:id/restart", ctrH.Restart)
+		viewer.GET("/images", ctrH.Images)
+		viewer.GET("/volumes", ctrH.Volumes)
+		viewer.GET("/containers/stats", ctrH.StatsAll)
 
 		discH := &handlers.DiscoveryHandler{DB: db, Docker: dockerClient, Cfg: cfg, Broker: broker}
-		api.GET("/discovery", discH.Scan)
-		api.POST("/discovery/import", discH.Import)
-		api.POST("/discovery/import-all", discH.ImportAll)
+		viewer.GET("/discovery", discH.Scan)
+		operator.POST("/discovery/import", discH.Import)
+		operator.POST("/discovery/import-all", discH.ImportAll)
 
 		sysH := &handlers.SystemHandler{DB: db, Docker: dockerClient, Cfg: cfg}
-		api.GET("/health", sysH.Health)
-		api.GET("/projects/:id/health", sysH.ProjectHealth)
-		api.GET("/server", sysH.Server)
-		api.GET("/server/detail", sysH.Detail)
-		api.GET("/server/storage", sysH.Storage)
-		api.GET("/dashboard", sysH.Dashboard)
-		api.GET("/audit", sysH.Audit)
+		viewer.GET("/health", sysH.Health)
+		viewer.GET("/projects/:id/health", sysH.ProjectHealth)
+		viewer.GET("/server", sysH.Server)
+		viewer.GET("/server/detail", sysH.Detail)
+		viewer.GET("/server/storage", sysH.Storage)
+		viewer.GET("/dashboard", sysH.Dashboard)
+		viewer.GET("/audit", sysH.Audit)
 
 		depH := &handlers.DeploymentHandler{DB: db, Broker: broker}
-		api.GET("/deployments", depH.ListAll)
-		api.DELETE("/deployments", depH.Wipe)
-		api.GET("/projects/:id/deployments", depH.ListByProject)
-		api.POST("/projects/:id/deployments", depH.Create)
-		api.POST("/projects/:id/deploy", depH.Deploy)
-		api.POST("/projects/:id/deployments/:depId/rollback", depH.Rollback)
+		viewer.GET("/deployments", depH.ListAll)
+		admin.DELETE("/deployments", depH.Wipe)
+		viewer.GET("/projects/:id/deployments", depH.ListByProject)
+		operator.POST("/projects/:id/deployments", depH.Create)
+		operator.POST("/projects/:id/deploy", depH.Deploy)
+		operator.POST("/projects/:id/deployments/:depId/rollback", depH.Rollback)
 
 		telH := &handlers.TelemetryHandler{DB: db}
-		api.GET("/telemetry", telH.History)
-		api.GET("/telemetry/latest", telH.Latest)
+		viewer.GET("/telemetry", telH.History)
+		viewer.GET("/telemetry/latest", telH.Latest)
 
 		lifeH := &handlers.ProjectLifecycle{DB: db, Broker: broker}
-		api.POST("/projects/:id/start", lifeH.Start)
-		api.POST("/projects/:id/stop", lifeH.Stop)
-		api.POST("/projects/:id/restart", lifeH.Restart)
-		api.POST("/projects/bulk-lifecycle", lifeH.Bulk)
+		operator.POST("/projects/:id/start", lifeH.Start)
+		admin.POST("/projects/:id/stop", lifeH.Stop)
+		admin.POST("/projects/:id/restart", lifeH.Restart)
+		admin.POST("/projects/bulk-lifecycle", lifeH.Bulk)
 
 		secH := &handlers.SecretHandler{DB: db, Cfg: cfg}
-		api.GET("/projects/:id/secrets", secH.List)
-		api.POST("/projects/:id/secrets", secH.Upsert)
-		api.PUT("/secrets/:id", secH.Update)
-		api.DELETE("/secrets/:id", secH.Delete)
-		api.POST("/secrets/:id/reveal", secH.Reveal)
+		viewer.GET("/projects/:id/secrets", secH.List)
+		operator.POST("/projects/:id/secrets", secH.Upsert)
+		admin.PUT("/secrets/:id", secH.Update)
+		admin.DELETE("/secrets/:id", secH.Delete)
+		admin.POST("/secrets/:id/reveal", secH.Reveal)
 
 
 
-		api.GET("/events", broker.Stream)
+		viewer.GET("/events", broker.Stream)
 
 		opH := &handlers.OperationsHandler{DB: db}
-		api.GET("/operations", opH.List)
-		api.GET("/operations/:id", opH.Get)
+		viewer.GET("/operations", opH.List)
+		viewer.GET("/operations/:id", opH.Get)
 
-		api.POST("/containers/:id/exec", execH.Create)
+		// Container shells are admin-only: the single-use grant token keeps
+		// the WebSocket itself capability-gated, but minting requires admin.
+		admin.POST("/containers/:id/exec", execH.Create)
 
 		backH := &handlers.BackupsHandler{DB: db, Broker: broker, Dir: backupDir()}
-		api.GET("/projects/:id/backups", backH.List)
-		api.POST("/projects/:id/backups", backH.Create)
-		api.GET("/backups/:id", backH.Get)
-		api.DELETE("/backups/:id", backH.Delete)
-		api.POST("/backups/:id/restore", backH.Restore)
+		viewer.GET("/projects/:id/backups", backH.List)
+		operator.POST("/projects/:id/backups", backH.Create)
+		viewer.GET("/backups/:id", backH.Get)
+		operator.DELETE("/backups/:id", backH.Delete)
+		operator.POST("/backups/:id/restore", backH.Restore)
 
 		// Central log store: single place for all activity + future aggregator.
 		logsH := &handlers.LogsHandler{GDB: gdb}
-		api.GET("/logs", logsH.List)
+		viewer.GET("/logs", logsH.List)
 
 		// Databases: auto-detect servers, browse, save connections, register.
 		dbH := &handlers.DatabasesHandler{DB: db, Docker: dockerClient, Cfg: cfg}
-		api.GET("/databases/servers", dbH.Servers)
-		api.POST("/databases/browse", dbH.Browse)
-		api.POST("/databases/connect", dbH.Connect)
-		api.POST("/databases/register", dbH.Register)
+		viewer.GET("/databases/servers", dbH.Servers)
+		operator.POST("/databases/browse", dbH.Browse)
+		operator.POST("/databases/connect", dbH.Connect)
+		operator.POST("/databases/register", dbH.Register)
 
 		// Notification channels (Telegram / email) for failure + pressure signals.
 		ntH := &handlers.NotificationsHandler{DB: db}
-		api.GET("/settings/notifications", ntH.Get)
-		api.PUT("/settings/notifications", ntH.Update)
-		api.POST("/settings/notifications/test", ntH.Test)
+		viewer.GET("/settings/notifications", ntH.Get)
+		admin.PUT("/settings/notifications", ntH.Update)
+		admin.POST("/settings/notifications/test", ntH.Test)
+
+		// User + role management (admin only; last-admin guards in handler).
+		usrH := &handlers.UserHandler{DB: db}
+		admin.GET("/users", usrH.List)
+		admin.POST("/users", usrH.Create)
+		admin.PUT("/users/:username/role", usrH.SetRole)
+		admin.DELETE("/users/:username", usrH.Delete)
 	}
 
 	// Container exec session (single-use token auth, no session cookie).

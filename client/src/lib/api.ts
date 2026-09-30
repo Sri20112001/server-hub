@@ -8,12 +8,38 @@ export class ApiError extends Error {
   }
 }
 
-async function req<T>(path: string, init?: RequestInit): Promise<T> {
+// Single-flight session refresh: concurrent 401s share one rotation call.
+let refreshPromise: Promise<boolean> | null = null;
+
+function refreshSession(): Promise<boolean> {
+  if (!refreshPromise) {
+    refreshPromise = fetch(`${API_BASE}/server-hub/api/auth/refresh`, {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+    })
+      .then((r) => r.ok)
+      .catch(() => false)
+      .finally(() => {
+        refreshPromise = null;
+      });
+  }
+  return refreshPromise;
+}
+
+async function req<T>(path: string, init?: RequestInit, retry = true): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     credentials: "include",
     headers: { "Content-Type": "application/json" },
     ...init,
   });
+  // Access tokens live 30 minutes. On expiry, transparently rotate via the
+  // refresh cookie and retry once (single-flight across concurrent calls).
+  // Auth endpoints themselves never retry (a 401 there is a real failure).
+  if (res.status === 401 && retry && !path.startsWith("/server-hub/api/auth/")) {
+    const ok = await refreshSession();
+    if (ok) return req<T>(path, init, false);
+  }
   if (res.status === 204) return undefined as T;
   let body: unknown;
   try {
@@ -207,4 +233,24 @@ export const api = {
     const suffix = q.toString() ? `?${q.toString()}` : "";
     return req<import("./types").AppLog[]>(`/server-hub/api/logs${suffix}`);
   },
+
+  // user + role management (admin only)
+  users: () =>
+    req<{ username: string; role: string; createdAt: string }[]>("/server-hub/api/users"),
+  createUser: (username: string, password: string, role: string) =>
+    req<{ username: string; role: string }>("/server-hub/api/users", {
+      method: "POST",
+      body: JSON.stringify({ username, password, role }),
+    }),
+  setUserRole: (username: string, role: string) =>
+    req<{ username: string; role: string }>(`/server-hub/api/users/${encodeURIComponent(username)}/role`, {
+      method: "PUT",
+      body: JSON.stringify({ role }),
+    }),
+  deleteUser: (username: string) =>
+    req<{ ok: boolean }>(`/server-hub/api/users/${encodeURIComponent(username)}`, {
+      method: "DELETE",
+    }),
+  logoutAll: () =>
+    req<{ ok: boolean }>("/server-hub/api/auth/logout-all", { method: "POST" }),
 };

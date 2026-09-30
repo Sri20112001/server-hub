@@ -34,6 +34,13 @@ func AuthRequired(jwtSecret string) gin.HandlerFunc {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid session"})
 			return
 		}
+		// Sessions use short-lived access tokens (typ=access). Refresh
+		// tokens are opaque DB rows and must never pass as API credentials.
+		// Tokens minted before typ existed are still honored until expiry.
+		if typ, present := claims["typ"].(string); present && typ != "access" {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid session"})
+			return
+		}
 		username, _ := claims["sub"].(string)
 		role, _ := claims["role"].(string)
 		if username == "" {

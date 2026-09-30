@@ -196,6 +196,21 @@ type AppSetting struct {
 
 func (AppSetting) TableName() string { return "app_settings" }
 
+// RefreshToken stores one side of the session refresh flow. Only the
+// SHA-256 hash of the token is persisted (a DB leak must not yield live
+// sessions). Tokens rotate on every use: presenting an already-revoked
+// token is treated as theft and revokes every token for that user.
+type RefreshToken struct {
+	ID        uint      `gorm:"primaryKey;autoIncrement" json:"id"`
+	TokenHash string    `gorm:"uniqueIndex;not null" json:"-"`
+	Username  string    `gorm:"index;not null" json:"username"`
+	ExpiresAt time.Time `gorm:"index;not null" json:"expiresAt"`
+	CreatedAt time.Time `gorm:"default:CURRENT_TIMESTAMP" json:"createdAt"`
+	Revoked   bool      `gorm:"not null;default:false" json:"-"`
+}
+
+func (RefreshToken) TableName() string { return "refresh_tokens" }
+
 // AppLog is the central activity/log store for the future log-aggregator UI.
 // Every significant event (HTTP requests, deploys, health transitions,
 // auth, backups) lands here with a level + source + optional project link.

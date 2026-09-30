@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import * as SecureStore from "expo-secure-store";
 import { authApi } from "../api/auth";
-import { TOKEN_KEY, USER_KEY } from "../api/client";
+import { TOKEN_KEY, REFRESH_KEY, USER_KEY } from "../api/client";
 import { initStoredBaseUrl } from "../api/serverUrl";
 import type { User } from "../types";
 
@@ -33,13 +33,15 @@ export const useAuthStore = create<AuthState>((set) => ({
         SecureStore.getItemAsync(USER_KEY),
       ]);
       if (token && userJson) {
-        // Verify token is still valid, use fresh user data from server
+        // Verify token is still valid, use fresh user data from server.
+        // (A 401 here transparently rotates via the refresh token first.)
         try {
           const freshUser = await authApi.me();
           await SecureStore.setItemAsync(USER_KEY, JSON.stringify(freshUser));
           set({ user: freshUser, token, checked: true });
         } catch {
           await SecureStore.deleteItemAsync(TOKEN_KEY);
+          await SecureStore.deleteItemAsync(REFRESH_KEY);
           await SecureStore.deleteItemAsync(USER_KEY);
           set({ user: null, token: null, checked: true });
         }
@@ -57,6 +59,9 @@ export const useAuthStore = create<AuthState>((set) => ({
       const res = await authApi.login(username, password);
       const user: User = { username: res.username, role: res.role };
       await SecureStore.setItemAsync(TOKEN_KEY, res.token);
+      if (res.refreshToken) {
+        await SecureStore.setItemAsync(REFRESH_KEY, res.refreshToken);
+      }
       await SecureStore.setItemAsync(USER_KEY, JSON.stringify(user));
       set({ user, token: res.token, busy: false });
     } catch (e) {
@@ -75,6 +80,7 @@ export const useAuthStore = create<AuthState>((set) => ({
       // ignore — clear local state regardless
     } finally {
       await SecureStore.deleteItemAsync(TOKEN_KEY);
+      await SecureStore.deleteItemAsync(REFRESH_KEY);
       await SecureStore.deleteItemAsync(USER_KEY);
       set({ user: null, token: null });
     }
