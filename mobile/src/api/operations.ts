@@ -1,14 +1,15 @@
 import { client } from "./client";
-import type { Operation } from "../types";
+import { operation, operations } from "@serverhub/shared";
+import type { Operation } from "@serverhub/shared";
 
 export const operationsApi = {
   list: (limit = 20) =>
     client
-      .get<Operation[]>(`/server-hub/api/operations?limit=${limit}`)
+      .get<Operation[]>(operations(limit))
       .then((r) => r.data),
 
   get: (id: string) =>
     client
-      .get<Operation>(`/server-hub/api/operations/${id}`)
+      .get<Operation>(operation(id))
       .then((r) => r.data),
 };

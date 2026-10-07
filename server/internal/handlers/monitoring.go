@@ -2,13 +2,12 @@ package handlers
 
 import (
 	"context"
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/hex"
+	"crypto/subtle"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -331,6 +330,16 @@ func (h *MonitoringHandler) DeleteSilence(c *gin.Context) {
 
 // ── Alertmanager webhook ──────────────────────────────────────────────────────
 
+// WebhookAlert is a single Alertmanager alert delivery.
+type WebhookAlert struct {
+	Status      string            `json:"status"`
+	Labels      map[string]string `json:"labels"`
+	Annotations map[string]string `json:"annotations"`
+	StartsAt    string            `json:"startsAt"`
+	EndsAt      string            `json:"endsAt"`
+	Fingerprint string            `json:"fingerprint"`
+}
+
 // AlertmanagerWebhookPayload is the Alertmanager webhook body.
 type AlertmanagerWebhookPayload struct {
 	Version           string            `json:"version"`
@@ -342,14 +351,7 @@ type AlertmanagerWebhookPayload struct {
 	CommonLabels      map[string]string `json:"commonLabels"`
 	CommonAnnotations map[string]string `json:"commonAnnotations"`
 	ExternalURL       string            `json:"externalURL"`
-	Alerts            []struct {
-		Status      string            `json:"status"`
-		Labels      map[string]string `json:"labels"`
-		Annotations map[string]string `json:"annotations"`
-		StartsAt    string            `json:"startsAt"`
-		EndsAt      string            `json:"endsAt"`
-		Fingerprint string            `json:"fingerprint"`
-	} `json:"alerts"`
+	Alerts            []WebhookAlert    `json:"alerts"`
 }
 
 // POST /server-hub/api/webhooks/alertmanager
@@ -363,35 +365,12 @@ func (h *MonitoringHandler) AlertmanagerWebhook(c *gin.Context) {
 
 	// Validate shared secret if configured.
 	if h.Cfg.AlertmanagerWebhookSecret != "" {
-		provided := c.GetHeader("X-Alertmanager-Secret")
-		if provided == "" {
-			// Also accept HMAC-SHA256 in X-Hub-Signature-256 (same as GitHub pattern).
-			sigHeader := c.GetHeader("X-Hub-Signature-256")
-			if !verifySignature(h.Cfg.AlertmanagerWebhookSecret, body, sigHeader) {
-				if h.DB != nil {
-					applog.Warn(h.DB.GDB, "webhook", "alertmanager webhook: bad signature")
-				}
-				c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid signature"})
-				return
+		if !checkAlertmanagerAuth(h.Cfg.AlertmanagerWebhookSecret, c, body) {
+			if h.DB != nil {
+				applog.Warn(h.DB.GDB, "webhook", "alertmanager webhook: auth failed")
 			}
-		} else {
-			// Constant-time compare for plain shared secret.
-			mac := hmac.New(sha256.New, []byte(h.Cfg.AlertmanagerWebhookSecret))
-			mac.Write([]byte(provided))
-			expected := hmac.New(sha256.New, []byte(h.Cfg.AlertmanagerWebhookSecret))
-			expected.Write([]byte(h.Cfg.AlertmanagerWebhookSecret))
-			if !hmac.Equal([]byte(provided), []byte(h.Cfg.AlertmanagerWebhookSecret)) {
-				// Use constant-time hex comparison to avoid timing attacks.
-				ph := hex.EncodeToString([]byte(provided))
-				eh := hex.EncodeToString([]byte(h.Cfg.AlertmanagerWebhookSecret))
-				if ph != eh {
-					if h.DB != nil {
-						applog.Warn(h.DB.GDB, "webhook", "alertmanager webhook: bad secret")
-					}
-					c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid secret"})
-					return
-				}
-			}
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid secret or signature"})
+			return
 		}
 	}
 
@@ -410,23 +389,29 @@ func (h *MonitoringHandler) AlertmanagerWebhook(c *gin.Context) {
 				payload.Status, len(payload.Alerts), payload.Receiver))
 	}
 
-	// Publish SSE events for each alert.
+	// Publish SSE events for each alert and persist firing/resolved state.
+	// Fingerprint dedupes repeated Alertmanager deliveries into one alert row.
 	for _, a := range payload.Alerts {
 		evType := "monitoring.alert.firing"
 		if a.Status == "resolved" {
 			evType = "monitoring.alert.resolved"
 		}
-		h.Broker.Publish(evType, gin.H{
-			"status":      a.Status,
-			"labels":      a.Labels,
-			"annotations": a.Annotations,
-			"startsAt":    a.StartsAt,
-			"endsAt":      a.EndsAt,
-			"fingerprint": a.Fingerprint,
-			"alertname":   a.Labels["alertname"],
-			"severity":    a.Labels["severity"],
-			"instance":    a.Labels["instance"],
-		})
+		serverID := h.resolveAlertServer(a.Labels)
+		h.persistWebhookAlert(a, serverID)
+		if h.Broker != nil {
+			h.Broker.Publish(evType, gin.H{
+				"status":      a.Status,
+				"labels":      a.Labels,
+				"annotations": a.Annotations,
+				"startsAt":    a.StartsAt,
+				"endsAt":      a.EndsAt,
+				"fingerprint": a.Fingerprint,
+				"alertname":   a.Labels["alertname"],
+				"severity":    a.Labels["severity"],
+				"instance":    a.Labels["instance"],
+				"serverId":    serverID,
+			})
+		}
 	}
 
 	// Also publish a group-level event.
@@ -434,15 +419,173 @@ func (h *MonitoringHandler) AlertmanagerWebhook(c *gin.Context) {
 	if payload.Status == "resolved" {
 		groupEvType = "monitoring.alert.resolved"
 	}
-	h.Broker.Publish(groupEvType, gin.H{
-		"groupKey":    payload.GroupKey,
-		"status":      payload.Status,
-		"receiver":    payload.Receiver,
-		"alertCount":  len(payload.Alerts),
-		"groupLabels": payload.GroupLabels,
-	})
+	if h.Broker != nil {
+		h.Broker.Publish(groupEvType, gin.H{
+			"groupKey":    payload.GroupKey,
+			"status":      payload.Status,
+			"receiver":    payload.Receiver,
+			"alertCount":  len(payload.Alerts),
+			"groupLabels": payload.GroupLabels,
+		})
+	}
 
 	c.JSON(http.StatusOK, gin.H{"ok": true, "received": len(payload.Alerts)})
+}
+
+// checkAlertmanagerAuth validates the webhook caller when a shared secret is
+// configured. Accepts the plaintext X-Alertmanager-Secret header (compared
+// in constant time) or an HMAC-SHA256 body signature.
+func checkAlertmanagerAuth(secret string, c *gin.Context, body []byte) bool {
+	if provided := c.GetHeader("X-Alertmanager-Secret"); provided != "" {
+		a := []byte(provided)
+		b := []byte(secret)
+		return len(a) == len(b) && subtle.ConstantTimeCompare(a, b) == 1
+	}
+	if sig := c.GetHeader("X-Hub-Signature-256"); sig != "" {
+		return verifySignature(secret, body, sig)
+	}
+	return false
+}
+
+// resolveAlertServer maps Alertmanager labels to a managed server id.
+// Supports an explicit server_id label plus hostname/instance matching, so
+// Prometheus scrape labels stay the extensible multi-server contract:
+// add `labels: {server_id: "<id>"}` (or a resolvable hostname) to any job.
+func (h *MonitoringHandler) resolveAlertServer(labels map[string]string) *uint {
+	if h.DB == nil {
+		return nil
+	}
+	if raw := strings.TrimSpace(labels["server_id"]); raw != "" {
+		if id, err := strconv.ParseUint(raw, 10, 64); err == nil {
+			var count int
+			_ = h.DB.QueryRow(`SELECT COUNT(*) FROM managed_servers WHERE id=$1`, id).Scan(&count)
+			if count > 0 {
+				u := uint(id)
+				return &u
+			}
+		}
+	}
+	candidates := []string{
+		strings.TrimSpace(labels["hostname"]),
+		hostPart(labels["instance"]),
+	}
+	for _, cand := range candidates {
+		if cand == "" {
+			continue
+		}
+		var id uint
+		err := h.DB.QueryRow(`
+			SELECT id FROM managed_servers
+			WHERE hostname=$1 OR ip_address=$1 OR name=$1 LIMIT 1`, cand).Scan(&id)
+		if err == nil {
+			return &id
+		}
+	}
+	return nil
+}
+
+// hostPart strips an optional :port suffix from an instance label.
+func hostPart(instance string) string {
+	instance = strings.TrimSpace(instance)
+	if i := strings.LastIndex(instance, ":"); i > 0 {
+		return instance[:i]
+	}
+	return instance
+}
+
+// persistWebhookAlert upserts the alerts table from one Alertmanager alert.
+// Firing alerts insert once per fingerprint; resolved alerts close the open
+// row. New firing alerts fan out to in-app notifications.
+func (h *MonitoringHandler) persistWebhookAlert(a WebhookAlert, serverID *uint) {
+	if h.DB == nil {
+		return
+	}
+	fp := a.Fingerprint
+	if fp == "" {
+		return
+	}
+	severity := strings.ToUpper(strings.TrimSpace(a.Labels["severity"]))
+	switch severity {
+	case "INFO", "WARNING", "CRITICAL":
+	default:
+		severity = "WARNING"
+	}
+	condition := strings.TrimSpace(a.Labels["alertname"])
+	if condition == "" {
+		condition = "alertmanager"
+	}
+
+	if a.Status == "resolved" {
+		res, err := h.DB.Exec(`
+			UPDATE alerts SET status='RESOLVED', resolved_at=NOW()
+			WHERE fingerprint=$1 AND status='TRIGGERED'`, fp)
+		if err != nil {
+			return
+		}
+		if n, _ := res.RowsAffected(); n > 0 {
+			applog.Info(h.DB.GDB, "webhook",
+				fmt.Sprintf("alertmanager resolved %s (%s)", condition, fp))
+		}
+		return
+	}
+
+	var count int
+	_ = h.DB.QueryRow(`
+		SELECT COUNT(*) FROM alerts WHERE fingerprint=$1 AND status='TRIGGERED'`, fp).Scan(&count)
+	if count > 0 {
+		return // duplicate delivery of an already-firing alert
+	}
+	message := strings.TrimSpace(a.Annotations["summary"])
+	if message == "" {
+		message = strings.TrimSpace(a.Annotations["description"])
+	}
+	if message == "" {
+		message = condition + " firing on " + hostPart(a.Labels["instance"])
+	}
+	var sid any
+	if serverID != nil {
+		sid = *serverID
+	}
+	alertID, err := h.DB.InsertID(`
+		INSERT INTO alerts (server_id,condition,threshold,severity,status,message,triggered_at,fingerprint,source)
+		VALUES ($1,$2,0,$3,'TRIGGERED',$4,NOW(),$5,'alertmanager')`,
+		sid, condition, severity, message, fp)
+	if err != nil {
+		return
+	}
+	applog.Info(h.DB.GDB, "webhook",
+		fmt.Sprintf("alertmanager firing %s (%s)", condition, fp))
+	notifyWebhookUsers(h.DB, serverID, severity+": "+message, message, "alert", alertID)
+	if h.Broker != nil {
+		h.Broker.Publish("alert.triggered", map[string]interface{}{
+			"serverId": serverID, "condition": condition,
+			"severity": severity, "message": message, "fingerprint": fp,
+		})
+	}
+}
+
+// notifyWebhookUsers fans a webhook alert out to every user's notification
+// center, linked to the alert row when one was created.
+func notifyWebhookUsers(db *database.DB, serverID *uint, title, body, category string, alertID int64) {
+	rows, err := db.Query(`SELECT username FROM users`)
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+	var sid any
+	if serverID != nil {
+		sid = *serverID
+	}
+	for rows.Next() {
+		var u string
+		if err := rows.Scan(&u); err != nil {
+			continue
+		}
+		_, _ = db.Exec(`
+			INSERT INTO in_app_notifications (username,title,body,category,read,server_id,alert_id,created_at)
+			VALUES ($1,$2,$3,$4,false,$5,$6,NOW())`,
+			u, title, body, category, sid, alertID)
+	}
 }
 
 // ── helpers ───────────────────────────────────────────────────────────────────

@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -75,6 +77,9 @@ type notifyView struct {
 		To          string `json:"to"`
 		TLS         bool   `json:"tls"`
 		HasPassword bool   `json:"hasPassword"`
+		// EmailGroupID selects the default notification group for delivery.
+		// Null/unset means the legacy To address is used.
+		EmailGroupID *uint `json:"emailGroupId"`
 	} `json:"email"`
 }
 
@@ -101,6 +106,10 @@ func (h *NotificationsHandler) Get(c *gin.Context) {
 	v.Email.To = m[notify.KeySmtpTo]
 	v.Email.TLS = notifyBool(m, notify.KeySmtpTLS, true)
 	v.Email.HasPassword = strings.HasPrefix(m[notify.KeySmtpPass], "enc:")
+	if gid, err := strconv.ParseInt(strings.TrimSpace(m[notify.KeyEmailGroupID]), 10, 64); err == nil && gid > 0 {
+		u := uint(gid)
+		v.Email.EmailGroupID = &u
+	}
 	c.JSON(http.StatusOK, v)
 }
 
@@ -116,23 +125,38 @@ func (h *NotificationsHandler) Update(c *gin.Context) {
 			ProjectFailed *bool `json:"projectFailed"`
 		} `json:"events"`
 		Telegram struct {
-			Enabled *bool  `json:"enabled"`
-			ChatID  string `json:"chatId"`
-			Token   string `json:"token"`
+			Enabled *bool   `json:"enabled"`
+			ChatID  *string `json:"chatId"`
+			Token   string  `json:"token"`
 		} `json:"telegram"`
 		Email struct {
-			Enabled  *bool  `json:"enabled"`
-			Host     string `json:"host"`
-			Port     string `json:"port"`
-			Username string `json:"username"`
-			Password string `json:"password"`
-			From     string `json:"from"`
-			To       string `json:"to"`
-			TLS      *bool  `json:"tls"`
+			Enabled  *bool   `json:"enabled"`
+			Host     *string `json:"host"`
+			Port     *string `json:"port"`
+			Username *string `json:"username"`
+			Password string  `json:"password"`
+			From     *string `json:"from"`
+			To       *string `json:"to"`
+			TLS      *bool   `json:"tls"`
+			// EmailGroupID selects the default group; explicit null clears it
+			// (back to legacy To). Absent means "leave unchanged".
+			EmailGroupID *uint `json:"emailGroupId"`
 		} `json:"email"`
 	}
-	if err := c.ShouldBindJSON(&body); err != nil {
+	raw, err := c.GetRawData()
+	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+		return
+	}
+	if err := json.Unmarshal(raw, &body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+		return
+	}
+	// emailGroupId is tri-state: absent = leave unchanged, null = clear
+	// (legacy To fallback), number = select group (must exist).
+	groupIDSet, groupIDClear, groupID, groupIDErr := parseGroupSelector(raw)
+	if groupIDErr != "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": groupIDErr})
 		return
 	}
 	setBool := func(key string, v *bool) error {
@@ -145,8 +169,20 @@ func (h *NotificationsHandler) Update(c *gin.Context) {
 		}
 		return notifySet(h.DB, key, val)
 	}
-	setStr := func(key, v string) error {
-		return notifySet(h.DB, key, strings.TrimSpace(v))
+	setStr := func(key string, v *string) error {
+		if v == nil {
+			return nil
+		}
+		return notifySet(h.DB, key, strings.TrimSpace(*v))
+	}
+	setPort := func(key string, v *string) error {
+		if v == nil || strings.TrimSpace(*v) == "" {
+			return nil
+		}
+		if _, err := strconv.Atoi(strings.TrimSpace(*v)); err != nil {
+			return fmt.Errorf("smtp port must be numeric")
+		}
+		return notifySet(h.DB, key, strings.TrimSpace(*v))
 	}
 	for _, fn := range []func() error{
 		func() error { return setBool(notify.KeyEnabled, body.Enabled) },
@@ -168,12 +204,27 @@ func (h *NotificationsHandler) Update(c *gin.Context) {
 			return
 		}
 	}
-	if strings.TrimSpace(body.Email.Port) != "" {
-		if _, err := strconv.Atoi(strings.TrimSpace(body.Email.Port)); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "smtp port must be numeric"})
+	if err := setPort(notify.KeySmtpPort, body.Email.Port); err != nil {
+		// Distinguish bad input (400) from storage failures (500).
+		if strings.Contains(err.Error(), "numeric") {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		} else {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		}
+		return
+	}
+	if groupIDClear {
+		if err := notifySet(h.DB, notify.KeyEmailGroupID, ""); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
-		if err := setStr(notify.KeySmtpPort, body.Email.Port); err != nil {
+	} else if groupIDSet {
+		var exists int
+		if err := h.DB.QueryRow(`SELECT COUNT(*) FROM notification_groups WHERE id=$1`, groupID).Scan(&exists); err != nil || exists == 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "notification group not found"})
+			return
+		}
+		if err := notifySet(h.DB, notify.KeyEmailGroupID, strconv.FormatUint(uint64(groupID), 10)); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
@@ -195,7 +246,37 @@ func (h *NotificationsHandler) Update(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
-// POST /server-hub/api/settings/notifications/test — probe enabled channels.
+// parseGroupSelector reads the tri-state email.emailGroupId from the raw
+// request body: (set, clear, id, errorMessage).
+func parseGroupSelector(raw []byte) (set, clear bool, id uint, errMsg string) {
+	if len(raw) == 0 {
+		return false, false, 0, ""
+	}
+	var top map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &top); err != nil {
+		return false, false, 0, ""
+	}
+	emRaw, ok := top["email"]
+	if !ok {
+		return false, false, 0, ""
+	}
+	var em map[string]json.RawMessage
+	if err := json.Unmarshal(emRaw, &em); err != nil {
+		return false, false, 0, ""
+	}
+	gRaw, ok := em["emailGroupId"]
+	if !ok {
+		return false, false, 0, ""
+	}
+	if string(gRaw) == "null" {
+		return false, true, 0, ""
+	}
+	var gid uint
+	if err := json.Unmarshal(gRaw, &gid); err != nil || gid == 0 {
+		return false, false, 0, "emailGroupId must be a positive group id or null"
+	}
+	return true, false, gid, ""
+}
 func (h *NotificationsHandler) Test(c *gin.Context) {
 	tg, mail := notify.Test(h.DB)
 	c.JSON(http.StatusOK, gin.H{"telegram": tg, "email": mail})

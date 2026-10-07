@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { API_BASE } from "./api";
+import { events } from "@serverhub/shared";
 import type { BusEvent } from "./types";
 
 const TYPES = [
@@ -46,7 +47,7 @@ export function useEvents(onEvent: (ev: BusEvent) => void) {
     const connect = () => {
       if (closed) return;
       try {
-        es = new EventSource(`${API_BASE}/server-hub/api/events`, {
+        es = new EventSource(`${API_BASE}${events()}`, {
           withCredentials: true,
         });
       } catch {

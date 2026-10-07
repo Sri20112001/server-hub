@@ -12,7 +12,7 @@ const SEVERITY_STYLE: Record<string, string> = {
   INFO: "border-blue-500/40 bg-blue-500/10 text-blue-300",
 };
 
-function AlertRow({ alert, onResolve }: { alert: Alert; onResolve: () => void }) {
+function AlertRow({ alert, serverName, onResolve }: { alert: Alert; serverName?: string; onResolve: () => void }) {
   const { pushToast } = useUi();
   const [busy, setBusy] = useState(false);
 
@@ -35,6 +35,7 @@ function AlertRow({ alert, onResolve }: { alert: Alert; onResolve: () => void })
         <div className="flex items-center gap-2 mb-1">
           <span className="text-xs font-mono font-bold uppercase">{alert.severity}</span>
           <span className="text-xs font-mono opacity-60">{alert.condition}</span>
+          {serverName && <span className="text-xs font-mono opacity-60">· {serverName}</span>}
         </div>
         <p className="text-sm">{alert.message}</p>
         <p className="text-xs opacity-60 mt-1 font-mono">
@@ -65,8 +66,20 @@ export function AlertsPage() {
     refetchInterval: 30_000,
   });
 
+  const { data: servers = [] } = useQuery({
+    queryKey: ["servers"],
+    queryFn: api.servers,
+  });
+  const serverName = (id: number | null) =>
+    servers.find((s) => s.id === id)?.name;
+
   useEvents((ev) => {
-    if (ev.type === "alert.triggered" || ev.type === "alert.resolved") {
+    if (
+      ev.type === "alert.triggered" ||
+      ev.type === "alert.resolved" ||
+      ev.type === "monitoring.alert.firing" ||
+      ev.type === "monitoring.alert.resolved"
+    ) {
       void qc.invalidateQueries({ queryKey: ["alerts"] });
     }
   });
@@ -124,6 +137,7 @@ export function AlertsPage() {
         <AlertRow
           key={a.id}
           alert={a}
+          serverName={serverName(a.serverId)}
           onResolve={() => void qc.invalidateQueries({ queryKey: ["alerts"] })}
         />
       ))}

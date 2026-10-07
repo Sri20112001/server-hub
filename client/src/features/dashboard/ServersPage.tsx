@@ -164,6 +164,7 @@ export function ServersPage({ setOnline }: { setOnline: (v: boolean) => void }) 
     online: servers.filter((s) => s.status === "ONLINE").length,
     offline: servers.filter((s) => s.status === "OFFLINE").length,
     warning: servers.filter((s) => s.status === "WARNING").length,
+    unknown: servers.filter((s) => s.status !== "ONLINE" && s.status !== "OFFLINE" && s.status !== "WARNING").length,
   };
 
   return (
@@ -192,12 +193,13 @@ export function ServersPage({ setOnline }: { setOnline: (v: boolean) => void }) 
       </div>
 
       {/* Summary */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-6">
         {[
           { label: "Total", value: counts.total, color: "text-bone" },
           { label: "Online", value: counts.online, color: "text-green-400" },
           { label: "Offline", value: counts.offline, color: "text-red-400" },
           { label: "Warning", value: counts.warning, color: "text-yellow-400" },
+          { label: "Unknown", value: counts.unknown, color: "text-zinc-400" },
         ].map((c) => (
           <div key={c.label} className="bg-panel border border-edge rounded-xl p-4">
             <div className="text-fog text-xs uppercase tracking-wider mb-1">{c.label}</div>

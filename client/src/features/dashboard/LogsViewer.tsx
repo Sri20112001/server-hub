@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Pause, Play, Trash2 } from "lucide-react";
+import { containerLogsStream } from "@serverhub/shared";
 import { API_BASE } from "../../lib/api";
 import { Kicker } from "../../components/ui";
 
@@ -37,9 +38,7 @@ export function LogsViewer({ container }: { container: string }) {
     setLines([]);
     setError(null);
     if (!live || !container) return;
-    const url =
-      `${API_BASE}/server-hub/api/containers/${encodeURIComponent(container)}` +
-      `/logs?tail=${tail}&follow=1`;
+    const url = `${API_BASE}${containerLogsStream(container, tail)}`;
     const es = new EventSource(url, { withCredentials: true });
     esRef.current = es;
     es.onmessage = (e) => {

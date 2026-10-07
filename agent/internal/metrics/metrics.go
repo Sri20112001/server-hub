@@ -5,6 +5,7 @@ package metrics
 
 import (
 	"fmt"
+	"math"
 	"runtime"
 	"strings"
 	"time"
@@ -74,7 +75,7 @@ func Collect() (Snapshot, error) {
 	}
 
 	if avg, err := load.Avg(); err == nil {
-		s.LoadAvg1 = avg.Load1
+		s.LoadAvg1 = sanitizeLoad(avg.Load1)
 	}
 
 	info, err := host.Info()
@@ -139,4 +140,13 @@ func rootDiskUsage() (*disk.UsageStat, error) {
 func isLoopback(name string) bool {
 	n := strings.ToLower(name)
 	return n == "lo" || strings.HasPrefix(n, "loopback")
+}
+
+// sanitizeLoad drops NaN/Inf/negative/denormal readings (some platforms
+// report garbage for unsupported load averages) to a clean zero.
+func sanitizeLoad(v float64) float64 {
+	if math.IsNaN(v) || math.IsInf(v, 0) || v < 0 || (v > 0 && v < 1e-9) {
+		return 0
+	}
+	return v
 }

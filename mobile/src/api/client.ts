@@ -1,5 +1,6 @@
 import axios from "axios";
 import * as SecureStore from "expo-secure-store";
+import { authRefresh } from "@serverhub/shared";
 
 const envUrl = (process.env.EXPO_PUBLIC_API_URL as string | undefined)?.trim();
 
@@ -52,7 +53,7 @@ async function refreshSession(): Promise<boolean> {
         ]);
         if (!refreshToken) return false;
         const res = await axios.post(
-          `${baseURL}/server-hub/api/auth/refresh`,
+          `${baseURL}${authRefresh()}`,
           { refreshToken },
           { timeout: 15000, headers: { "Content-Type": "application/json" } },
         );

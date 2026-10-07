@@ -26,6 +26,7 @@ import (
 	"serverhub/internal/healthcheck"
 	"serverhub/internal/middleware"
 	"serverhub/internal/monitoring"
+	"serverhub/internal/notify"
 	"serverhub/internal/telemetry"
 )
 
@@ -64,6 +65,9 @@ func main() {
 	if err := ensureAdmin(db, cfg.AdminUser, cfg.AdminPass); err != nil {
 		log.Fatalf("seed admin: %v", err)
 	}
+	// Migrate a legacy single-recipient email setup into the default
+	// notification group (idempotent; no-op when already migrated).
+	notify.EnsureDefaultGroup(db)
 	// Mirror boot + startup warnings to the central DB log store
 	// (stdout alone is not enough — all logs must live in the DB).
 	bootWarningsToDB(gdb)
@@ -77,7 +81,9 @@ func main() {
 	})
 	alerting.StartLoop(db, broker, alerting.Thresholds{
 		CPU: cfg.AlertCPU, RAM: cfg.AlertRAM, Disk: cfg.AlertDisk,
+		OfflineAfter: time.Duration(cfg.OfflineTimeoutSec) * time.Second,
 	})
+	log.Printf("server offline timeout: %ds", cfg.OfflineTimeoutSec)
 	healthcheck.StartLoop(db, broker)
 
 	promClient := monitoring.NewPrometheusClient(cfg.PrometheusURL, cfg.PrometheusTimeoutSec)
@@ -251,7 +257,7 @@ func main() {
 		admin.DELETE("/users/:username", usrH.Delete)
 
 		// ── Managed servers (Phase 1-9) ──────────────────────────────────
-		srvH := &handlers.ServersHandler{DB: db, Broker: broker}
+		srvH := &handlers.ServersHandler{DB: db, Broker: broker, Cfg: cfg}
 		viewer.GET("/servers", srvH.List)
 		operator.POST("/servers", srvH.Create)
 		viewer.GET("/servers/:id", srvH.Get)
@@ -268,6 +274,16 @@ func main() {
 		viewer.GET("/server-groups", grpH.List)
 		operator.POST("/server-groups", grpH.Create)
 		admin.DELETE("/server-groups/:id", grpH.Delete)
+
+		// Notification groups (Phase 1: multi-recipient email)
+		ngH := &handlers.NotificationGroupsHandler{DB: db}
+		viewer.GET("/notification-groups", ngH.List)
+		viewer.GET("/notification-groups/:id", ngH.Get)
+		operator.POST("/notification-groups", ngH.Create)
+		operator.PATCH("/notification-groups/:id", ngH.Update)
+		operator.POST("/notification-groups/:id/members", ngH.AddMember)
+		operator.DELETE("/notification-groups/:id/members/:memberId", ngH.RemoveMember)
+		admin.DELETE("/notification-groups/:id", ngH.Delete)
 
 		// Alerts
 		altH := &handlers.AlertsHandler{DB: db}
@@ -315,7 +331,7 @@ func main() {
 	agentMw := middleware.AgentAuth(db)
 	agentGrp := r.Group("/server-hub/api/agent", agentMw)
 	{
-		agentSrvH := &handlers.ServersHandler{DB: db, Broker: broker}
+		agentSrvH := &handlers.ServersHandler{DB: db, Broker: broker, Cfg: cfg}
 		agentGrp.POST("/heartbeat", agentSrvH.Heartbeat)
 		agentGrp.POST("/metrics", agentSrvH.IngestMetrics)
 	}

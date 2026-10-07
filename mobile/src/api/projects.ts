@@ -1,21 +1,22 @@
 import { client } from "./client";
-import type { Project, Service, Deployment } from "../types";
+import { project, projectAction, projectDeployments, projectServices, projects } from "@serverhub/shared";
+import type { Project, Service, Deployment } from "@serverhub/shared";
 
 export const projectsApi = {
   list: () =>
-    client.get<Project[]>("/server-hub/api/projects").then((r) => r.data),
+    client.get<Project[]>(projects()).then((r) => r.data),
 
   get: (id: number) =>
-    client.get<Project>(`/server-hub/api/projects/${id}`).then((r) => r.data),
+    client.get<Project>(project(id)).then((r) => r.data),
 
   services: (projectId: number) =>
     client
-      .get<Service[]>(`/server-hub/api/projects/${projectId}/services`)
+      .get<Service[]>(projectServices(projectId))
       .then((r) => r.data),
 
   deployments: (projectId: number) =>
     client
-      .get<Deployment[]>(`/server-hub/api/projects/${projectId}/deployments`)
+      .get<Deployment[]>(projectDeployments(projectId))
       .then((r) => r.data),
 
   action: (
@@ -25,7 +26,7 @@ export const projectsApi = {
   ) =>
     client
       .post<{ ok: boolean; logs?: string }>(
-        `/server-hub/api/projects/${id}/${action}${confirm ? "?confirm=true" : ""}`,
+        projectAction(id, action, confirm),
       )
       .then((r) => r.data),
 };

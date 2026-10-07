@@ -310,13 +310,23 @@ export function DashboardPage({ setOnline }: { setOnline: (v: boolean) => void }
   }, [load, autoSync]);
 
   // Live signals: refresh the workbench and toast on deployments,
-  // container/project lifecycle, gateway reloads, backups and threshold
-  // crossings. Health transitions keep coming through the poll alerts
-  // above to respect the Settings toggles without double-notifying.
+  // container/project lifecycle, gateway reloads, backups, threshold
+  // crossings, and managed-server / alert transitions. Health transitions
+  // keep coming through the poll alerts above to respect the Settings
+  // toggles without double-notifying.
   useEvents((ev: BusEvent) => {
     const d = (ev.data ?? {}) as Record<string, unknown>;
     const str = (v: unknown) => (typeof v === "string" ? v : "");
     switch (ev.type) {
+      case "server.heartbeat":
+      case "server.metrics":
+      case "server.status":
+      case "alert.triggered":
+      case "alert.resolved":
+      case "monitoring.alert.firing":
+      case "monitoring.alert.resolved":
+        void load();
+        break;
       case "deployment.completed":
         pushToast(
           `Launch complete: ${str(d.project)} @ ${shortSha(str(d.commit))} (${str(d.durationSec)}s).`,

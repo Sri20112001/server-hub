@@ -4,6 +4,7 @@ import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
 import { API_BASE, api } from "../../lib/api";
+import { execSession } from "@serverhub/shared";
 import type { Service } from "../../lib/types";
 import { ConfirmModal, Field, Kicker } from "../../components/ui";
 
@@ -69,7 +70,7 @@ export function TerminalModal({
           /* sized on first frame */
         }
         const dims = fit.proposeDimensions();
-        ws = new WebSocket(`${wsBase()}/server-hub/api/exec/${grant.token}`);
+        ws = new WebSocket(`${wsBase()}${execSession(grant.token)}`);
         ws.binaryType = "arraybuffer";
         ws.onopen = () => {
           if (!alive) return;

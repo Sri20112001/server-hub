@@ -24,6 +24,9 @@ type Config struct {
 	AlertCPU      float64
 	AlertRAM      float64
 	AlertDisk     float64
+	// OfflineTimeoutSec marks a managed server OFFLINE/DISCONNECTED when
+	// no heartbeat was received within this many seconds.
+	OfflineTimeoutSec int
 	HealthIntervalSec int
 	// LogRetentionDays is deprecated and ignored: all log tables are
 	// append-only and retained forever (DB triggers reject DELETE/UPDATE).
@@ -103,6 +106,10 @@ func Load() *Config {
 	if amTimeout <= 0 {
 		amTimeout = 10
 	}
+	offlineTimeout, _ := strconv.Atoi(getenv("SERVER_OFFLINE_TIMEOUT_SEC", "180"))
+	if offlineTimeout < 30 {
+		offlineTimeout = 180
+	}
 	return &Config{
 		Port:        getenv("PORT", "4000"),
 		DatabaseURL: os.Getenv("DATABASE_URL"),
@@ -118,6 +125,7 @@ func Load() *Config {
 		AlertCPU:        getenvFloat("ALERT_CPU_PCT", 85),
 		AlertRAM:        getenvFloat("ALERT_RAM_PCT", 90),
 		AlertDisk:       getenvFloat("ALERT_DISK_PCT", 80),
+		OfflineTimeoutSec: offlineTimeout,
 		HealthIntervalSec: interval,
 		LogRetentionDays:  retention,
 		PrometheusURL:             os.Getenv("PROMETHEUS_URL"),

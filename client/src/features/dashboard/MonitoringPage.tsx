@@ -388,12 +388,20 @@ function TargetsTab() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  useEffect(() => {
+  const load = useCallback(() => {
     api.prometheusTargets()
-      .then(r => setTargets(r.data))
+      .then(r => { setTargets(r.data); setError(""); })
       .catch(e => setError(e.message))
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  useEvents((ev: BusEvent) => {
+    if (ev.type === "monitoring.alert.firing" || ev.type === "monitoring.alert.resolved") {
+      load();
+    }
+  });
 
   if (loading) return <div className="text-muted dark:text-fog text-[13px]">Loading…</div>;
   if (error) return (
@@ -467,6 +475,12 @@ function SilencesTab() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  useEvents((ev: BusEvent) => {
+    if (ev.type === "monitoring.alert.firing" || ev.type === "monitoring.alert.resolved") {
+      load();
+    }
+  });
 
   const doDelete = async (id: string) => {
     setDeleting(id);

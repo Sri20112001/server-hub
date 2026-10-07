@@ -57,6 +57,8 @@ func OpenDatabase(databaseURL string) (*DB, error) {
 		&InAppNotification{},
 		&HealthCheck{},
 		&HealthCheckResult{},
+		&NotificationGroup{},
+		&NotificationGroupMember{},
 	} {
 		if gdb.Migrator().HasTable(m) {
 			continue
@@ -70,6 +72,11 @@ func OpenDatabase(databaseURL string) (*DB, error) {
 		return nil, err
 	}
 	db := &DB{GDB: gdb, SQL: sqldb}
+	// Idempotent schema upgrades for pre-existing installs (CreateTable
+	// above only creates missing tables, never alters them).
+	if err := db.ensureMonitoringSchema(); err != nil {
+		return nil, err
+	}
 	// Log tables are append-only: once written, rows can never be updated
 	// or deleted. Enforced at the DB layer so no API, prune job, or raw SQL
 	// path can tamper with history.
@@ -77,6 +84,24 @@ func OpenDatabase(databaseURL string) (*DB, error) {
 		return nil, err
 	}
 	return db, nil
+}
+
+// ensureMonitoringSchema applies idempotent upgrades for the monitoring
+// tables on installs that predate them. Every statement is safe to re-run.
+func (d *DB) ensureMonitoringSchema() error {
+	stmts := []string{
+		`ALTER TABLE alerts ADD COLUMN IF NOT EXISTS fingerprint TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE alerts ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT ''`,
+		`CREATE INDEX IF NOT EXISTS idx_alerts_fingerprint ON alerts(fingerprint)`,
+		`CREATE INDEX IF NOT EXISTS idx_alerts_server_cond_status ON alerts(server_id, condition, status)`,
+		`CREATE INDEX IF NOT EXISTS idx_sm_server_ts ON server_metrics(server_id, timestamp)`,
+	}
+	for _, q := range stmts {
+		if _, err := d.SQL.Exec(q); err != nil {
+			return fmt.Errorf("monitoring schema upgrade: %w", err)
+		}
+	}
+	return nil
 }
 
 // ensureLogImmutability installs append-only guards on every table that

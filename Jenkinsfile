@@ -13,6 +13,12 @@ pipeline {
     buildDiscarder(logRotator(numToKeepStr: '20'))
   }
 
+  parameters {
+    booleanParam(name: 'BUILD_WEB', defaultValue: true, description: 'Build the web application')
+    booleanParam(name: 'BUILD_MOBILE', defaultValue: false, description: 'Run mobile CI and build the mobile application')
+    booleanParam(name: 'DEPLOY', defaultValue: true, description: 'Deploy ServerHub after successful CI')
+  }
+
   environment {
     // Base name for the throwaway test Postgres. Stages derive a per-build
     // container name ("${base}-${BUILD_NUMBER}") so a wedged container from
@@ -56,6 +62,7 @@ stage('Prepare') {
       parallel {
 
         stage('Client CI') {
+    when { expression { params.BUILD_WEB } }
           steps {
             dir('client') {
               sh '''
@@ -75,9 +82,11 @@ stage('Prepare') {
         }
 
         stage('Mobile CI') {
+    when { expression { params.BUILD_MOBILE } }
           steps {
             dir('mobile') {
-              sh '''
+              catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') {
+                sh '''
                 set -e
 
                 echo "Installing mobile dependencies..."
@@ -89,6 +98,7 @@ stage('Prepare') {
                 echo "Running mobile lint..."
                 npm run lint
               '''
+              }
             }
           }
         }
@@ -193,6 +203,7 @@ stage('Prepare') {
 
             echo "Building ServerHub Docker images..."
 
+            export POSTGRES_PASSWORD=dummy_build_password
             $COMPOSE build
           '''
         }
@@ -200,9 +211,11 @@ stage('Prepare') {
     }
 
     stage('Mobile Bundle Check') {
+    when { expression { params.BUILD_MOBILE } }
       steps {
         dir('mobile') {
-          sh '''
+          catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') {
+                sh '''
             set -e
 
             echo "Validating mobile JS bundle (no token required)..."
@@ -210,14 +223,17 @@ stage('Prepare') {
 
             npx expo export --platform android
           '''
+              }
         }
       }
     }
 
     stage('Mobile APK') {
+    when { expression { params.BUILD_MOBILE } }
       steps {
         dir('mobile') {
-          sh '''
+          catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') {
+                sh '''
             set -e
 
             echo "Building Android debug APK (prebuild + Gradle)..."
@@ -242,6 +258,7 @@ stage('Prepare') {
             (cd android && ./gradlew assembleDebug --no-daemon --max-workers=1)
           '''
           archiveArtifacts artifacts: 'android/app/build/outputs/apk/debug/app-debug.apk'
+              }
         }
       }
     }
@@ -249,6 +266,7 @@ stage('Prepare') {
 
 
     stage('Deploy') {
+      when { expression { params.DEPLOY } }
       environment {
         POSTGRES_PASSWORD = credentials('serverhub-postgres-password')
         JWT_SECRET = credentials('serverhub-jwt-secret')

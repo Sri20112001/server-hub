@@ -1,0 +1,50 @@
+# ServerHub host alert rules, evaluated by Prometheus every 60s.
+# Firing alerts route through Alertmanager to the ServerHub webhook:
+#   POST /server-hub/api/webhooks/alertmanager
+# which persists them (dedupe by fingerprint) and notifies users.
+#
+# Multi-server contract: every scrape target that represents a managed
+# server should carry a label identifying it — preferably
+#   labels: {server_id: "<managed_servers.id>"}
+# or a hostname matching managed_servers.hostname. The webhook uses
+# server_id → hostname → instance(host) in that order to link an alert
+# to its server (see MonitoringHandler.resolveAlertServer).
+groups:
+  - name: serverhub-host
+    interval: 60s
+    rules:
+      - alert: HostHighCpu
+        expr: 100 - (avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High CPU on {{ $labels.instance }} ({{ humanize $value }}%)"
+          description: "CPU usage above 85% for 5 minutes."
+
+      - alert: HostHighMemory
+        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 90
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High memory on {{ $labels.instance }} ({{ humanize $value }}%)"
+          description: "Memory usage above 90% for 5 minutes."
+
+      - alert: HostDiskPressure
+        expr: (1 - (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"})) * 100 > 80
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Disk pressure on {{ $labels.instance }} ({{ humanize $value }}%)"
+          description: "Root filesystem usage above 80% for 10 minutes."
+
+      - alert: HostDown
+        expr: up{job="node"} == 0
+        for: 3m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Node exporter down: {{ $labels.instance }}"
+          description: "No scrape data for 3 minutes; the host or exporter may be offline."

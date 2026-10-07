@@ -39,6 +39,7 @@ services:
       - "--web.enable-lifecycle"
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./rules:/etc/prometheus/rules:ro
       - promdata:/prometheus
     # NOT published externally — only serverhub reaches it.
     expose:

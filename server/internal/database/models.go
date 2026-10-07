@@ -278,6 +278,8 @@ type ServerMetric struct {
 func (ServerMetric) TableName() string { return "server_metrics" }
 
 // Alert is a threshold-triggered alert with TRIGGERED/RESOLVED state machine.
+// Fingerprint carries the Alertmanager fingerprint for external alerts so
+// repeated webhook deliveries update one row instead of duplicating it.
 type Alert struct {
 	ID          uint       `gorm:"primaryKey;autoIncrement" json:"id"`
 	ServerID    *uint      `gorm:"index" json:"serverId"`
@@ -288,6 +290,8 @@ type Alert struct {
 	Message     string     `gorm:"not null;default:''" json:"message"`
 	TriggeredAt time.Time  `gorm:"index;default:CURRENT_TIMESTAMP" json:"triggeredAt"`
 	ResolvedAt  *time.Time `json:"resolvedAt"`
+	Fingerprint string     `gorm:"index;not null;default:''" json:"fingerprint"`
+	Source      string     `gorm:"not null;default:''" json:"source"`
 }
 
 func (Alert) TableName() string { return "alerts" }
@@ -330,3 +334,31 @@ type AppLog struct {
 }
 
 func (AppLog) TableName() string { return "app_logs" }
+
+// ─── Notification Groups (Phase 1: multi-recipient email) ───────────────────
+
+// NotificationGroup names a set of email recipients (e.g. "Default
+// Notifications", "Infrastructure Team"). Members live in
+// notification_group_members; deleting a group cascades to its members.
+type NotificationGroup struct {
+	ID          uint      `gorm:"primaryKey;autoIncrement" json:"id"`
+	Name        string    `gorm:"uniqueIndex;not null" json:"name"`
+	Description string    `gorm:"not null;default:''" json:"description"`
+	CreatedAt   time.Time `gorm:"default:CURRENT_TIMESTAMP" json:"createdAt"`
+	UpdatedAt   time.Time `gorm:"default:CURRENT_TIMESTAMP" json:"updatedAt"`
+}
+
+func (NotificationGroup) TableName() string { return "notification_groups" }
+
+// NotificationGroupMember is one email recipient in a group. Email is stored
+// lowercased+trimmed with a per-group unique constraint (duplicates rejected).
+type NotificationGroupMember struct {
+	ID        uint      `gorm:"primaryKey;autoIncrement" json:"id"`
+	GroupID   uint      `gorm:"not null;uniqueIndex:idx_ngm_group_email,priority:1" json:"groupId"`
+	Email     string    `gorm:"not null;uniqueIndex:idx_ngm_group_email,priority:2" json:"email"`
+	CreatedAt time.Time `gorm:"default:CURRENT_TIMESTAMP" json:"createdAt"`
+	// Association exists for the FK cascade only; never serialized.
+	Group NotificationGroup `gorm:"foreignKey:GroupID;constraint:OnDelete:CASCADE" json:"-"`
+}
+
+func (NotificationGroupMember) TableName() string { return "notification_group_members" }

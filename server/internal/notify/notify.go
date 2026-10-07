@@ -14,8 +14,10 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/mail"
 	"net/smtp"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -50,7 +52,17 @@ const (
 	KeySmtpFrom     = "notify_smtp_from"
 	KeySmtpTo       = "notify_smtp_to"
 	KeySmtpTLS      = "notify_smtp_tls" // "true" (default) | "false"
+	// KeyEmailGroupID optionally points email delivery at a notification
+	// group (row id in notification_groups). When unset/empty/invalid, the
+	// legacy notify_smtp_to address is used (backward compatible).
+	KeyEmailGroupID = "notify_email_group_id"
 )
+
+// DefaultGroupName is seeded by EnsureDefaultGroup during migration.
+const DefaultGroupName = "Default Notifications"
+
+// MaxGroupMembers caps recipients per group (backend-enforced).
+const MaxGroupMembers = 10
 
 func eventKey(event string) string {
 	switch event {
@@ -128,7 +140,87 @@ func EncryptSecret(plain string) string {
 	return "enc:" + ct + "." + nonce
 }
 
-// Send delivers title/body to every enabled channel for the event.
+// EnsureDefaultGroup migrates a legacy single-recipient setup to a group.
+// Idempotent and safe on every startup: if the legacy notify_smtp_to is set
+// and no notification group exists yet, it creates DefaultGroupName with that
+// address as its sole member. The legacy To value is left untouched as the
+// fallback, so existing installs never lose their recipient.
+func EnsureDefaultGroup(db *database.DB) {
+	if db == nil {
+		return
+	}
+	m := settings(db)
+	legacy := strings.TrimSpace(m[KeySmtpTo])
+	if legacy == "" {
+		return
+	}
+	var groups int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM notification_groups`).Scan(&groups); err != nil || groups > 0 {
+		return
+	}
+	id, err := db.InsertID(`INSERT INTO notification_groups (name,description,created_at,updated_at)
+		VALUES ($1,'Migrated from email settings',NOW(),NOW())`, DefaultGroupName)
+	if err != nil {
+		return
+	}
+	email := NormalizeMemberEmail(legacy)
+	if email == "" {
+		return
+	}
+	_, _ = db.Exec(`INSERT INTO notification_group_members (group_id,email,created_at)
+		VALUES ($1,$2,NOW()) ON CONFLICT DO NOTHING`, id, email)
+	_, _ = db.Exec(`INSERT INTO app_settings (key, value) VALUES ($1,$2)
+		ON CONFLICT(key) DO UPDATE SET value=excluded.value`, KeyEmailGroupID, itoa(id))
+}
+
+// NormalizeMemberEmail trims + lowercases; "" when unparsable as an address.
+func NormalizeMemberEmail(raw string) string {
+	email := strings.ToLower(strings.TrimSpace(raw))
+	if email == "" {
+		return ""
+	}
+	if _, err := mail.ParseAddress(email); err != nil {
+		return ""
+	}
+	return email
+}
+
+func itoa(n int64) string {
+	return strconv.FormatInt(n, 10)
+}
+
+// emailRecipients resolves who gets mail: members of the configured default
+// group (up to MaxGroupMembers, in join order) when it exists and is
+// non-empty, else the legacy single To address. Never returns blanks.
+func emailRecipients(db *database.DB, m map[string]string) []string {
+	if db != nil {
+		if gid, err := strconv.ParseInt(strings.TrimSpace(m[KeyEmailGroupID]), 10, 64); err == nil && gid > 0 {
+			rows, err := db.Query(`SELECT email FROM notification_group_members
+				WHERE group_id=$1 ORDER BY id ASC LIMIT $2`, gid, MaxGroupMembers)
+			if err == nil {
+				var out []string
+				for rows.Next() {
+					var e string
+					if err := rows.Scan(&e); err == nil {
+						if e = strings.TrimSpace(e); e != "" {
+							out = append(out, e)
+						}
+					}
+				}
+				rows.Close()
+				if len(out) > 0 {
+					return out
+				}
+			} else if rows != nil {
+				rows.Close()
+			}
+		}
+	}
+	if to := strings.TrimSpace(m[KeySmtpTo]); to != "" {
+		return []string{to}
+	}
+	return nil
+}
 // Never blocks the caller; never returns delivery errors (they go to app_logs).
 func Send(db *database.DB, event, title, body string) {
 	if db == nil || eventKey(event) == "" {
@@ -149,7 +241,7 @@ func Send(db *database.DB, event, title, body string) {
 			}
 		}
 		if on(m, KeySmtpEnabled) {
-			if err := sendEmail(m, title, text); err != nil {
+			if err := sendEmail(db, m, title, text); err != nil {
 				applog.Warn(db.GDB, "system", "notify: email failed: "+err.Error())
 			}
 		}
@@ -172,7 +264,7 @@ func Test(db *database.DB) (telegram, email string) {
 	}
 	if !on(m, KeySmtpEnabled) {
 		email = "disabled"
-	} else if err := sendEmail(m, "ServerHub test signal", "ServerHub test signal — notifications are wired up."); err != nil {
+	} else if err := sendEmail(db, m, "ServerHub test signal", "ServerHub test signal — notifications are wired up."); err != nil {
 		email = "failed: " + err.Error()
 	} else {
 		email = "sent"
@@ -200,12 +292,11 @@ func sendTelegram(m map[string]string, text string) error {
 	return nil
 }
 
-func buildEmail(m map[string]string, subject, text string) (addr string, msg []byte, err error) {
+func buildEmail(m map[string]string, to []string, subject, text string) (addr string, msg []byte, err error) {
 	host := strings.TrimSpace(m[KeySmtpHost])
 	port := strings.TrimSpace(m[KeySmtpPort])
 	from := strings.TrimSpace(m[KeySmtpFrom])
-	to := strings.TrimSpace(m[KeySmtpTo])
-	if host == "" || from == "" || to == "" {
+	if host == "" || from == "" || len(to) == 0 {
 		return "", nil, fmt.Errorf("smtp host/from/to required")
 	}
 	if port == "" {
@@ -213,14 +304,15 @@ func buildEmail(m map[string]string, subject, text string) (addr string, msg []b
 	}
 	var buf bytes.Buffer
 	fmt.Fprintf(&buf, "From: %s\r\nTo: %s\r\nSubject: %s\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n%s\r\n",
-		from, to, subject, text)
+		from, strings.Join(to, ", "), subject, text)
 	return netJoinHostPort(host, port), buf.Bytes(), nil
 }
 
 func netJoinHostPort(host, port string) string { return host + ":" + port }
 
-func sendEmail(m map[string]string, subject, text string) error {
-	addr, msg, err := buildEmail(m, subject, text)
+func sendEmail(db *database.DB, m map[string]string, subject, text string) error {
+	to := emailRecipients(db, m)
+	addr, msg, err := buildEmail(m, to, subject, text)
 	if err != nil {
 		return err
 	}
@@ -228,13 +320,12 @@ func sendEmail(m map[string]string, subject, text string) error {
 	user := strings.TrimSpace(m[KeySmtpUser])
 	pass := secret(m, KeySmtpPass)
 	from := strings.TrimSpace(m[KeySmtpFrom])
-	to := strings.TrimSpace(m[KeySmtpTo])
 	var auth smtp.Auth
 	if user != "" {
 		auth = smtp.PlainAuth("", user, pass, host)
 	}
 	if strings.ToLower(strings.TrimSpace(m[KeySmtpTLS])) == "false" {
-		return smtp.SendMail(addr, auth, from, []string{to}, msg)
+		return smtp.SendMail(addr, auth, from, to, msg)
 	}
 	// Implicit TLS (port 465 style): dial TLS first.
 	if strings.HasSuffix(addr, ":465") {
@@ -260,8 +351,10 @@ func sendEmail(m map[string]string, subject, text string) error {
 		if err := client.Mail(from); err != nil {
 			return err
 		}
-		if err := client.Rcpt(to); err != nil {
-			return err
+		for _, rcpt := range to {
+			if err := client.Rcpt(rcpt); err != nil {
+				return err
+			}
 		}
 		w, err := client.Data()
 		if err != nil {
@@ -275,7 +368,7 @@ func sendEmail(m map[string]string, subject, text string) error {
 		}
 		return client.Quit()
 	}
-	return smtp.SendMail(addr, auth, from, []string{to}, msg)
+	return smtp.SendMail(addr, auth, from, to, msg)
 }
 
 func truncate(s string, max int) string {

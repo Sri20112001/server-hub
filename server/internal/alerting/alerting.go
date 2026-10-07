@@ -11,19 +11,33 @@ import (
 	"serverhub/internal/events"
 )
 
-const (
-	checkInterval    = 60 * time.Second
-	offlineThreshold = 3 * time.Minute
-)
+const checkInterval = 60 * time.Second
+
+// defaultOfflineThreshold applies when no timeout is configured.
+const defaultOfflineThreshold = 3 * time.Minute
 
 type Thresholds struct {
 	CPU  float64
 	RAM  float64
 	Disk float64
+	// OfflineAfter marks a server OFFLINE when its last heartbeat is older
+	// than this. Values < 30s fall back to defaultOfflineThreshold.
+	OfflineAfter time.Duration
+}
+
+func offlineThreshold(th Thresholds) time.Duration {
+	if th.OfflineAfter >= 30*time.Second {
+		return th.OfflineAfter
+	}
+	return defaultOfflineThreshold
 }
 
 func StartLoop(db *database.DB, broker *events.Broker, th Thresholds) {
 	go func() {
+		// Sweep immediately so a restart converges without waiting a tick.
+		if err := runChecks(db, broker, th); err != nil {
+			log.Printf("alerting: %v", err)
+		}
 		t := time.NewTicker(checkInterval)
 		defer t.Stop()
 		for range t.C {
@@ -35,13 +49,13 @@ func StartLoop(db *database.DB, broker *events.Broker, th Thresholds) {
 }
 
 func runChecks(db *database.DB, broker *events.Broker, th Thresholds) error {
-	checkOffline(db, broker)
+	checkOffline(db, broker, th)
 	checkMetricThresholds(db, broker, th)
 	return nil
 }
 
-func checkOffline(db *database.DB, broker *events.Broker) {
-	cutoff := time.Now().UTC().Add(-offlineThreshold)
+func checkOffline(db *database.DB, broker *events.Broker, th Thresholds) {
+	cutoff := time.Now().UTC().Add(-offlineThreshold(th))
 	rows, err := db.Query(`
 		SELECT id, name FROM managed_servers
 		WHERE status='ONLINE' AND (last_heartbeat IS NULL OR last_heartbeat < $1)`, cutoff)
@@ -75,9 +89,12 @@ func checkOffline(db *database.DB, broker *events.Broker) {
 }
 
 func checkMetricThresholds(db *database.DB, broker *events.Broker, th Thresholds) {
+	// Only evaluate fresh snapshots: a dead server's last high reading must
+	// not keep firing threshold alerts (offline detection owns that case).
+	freshSince := time.Now().UTC().Add(-offlineThreshold(th))
 	rows, err := db.Query(`
 		SELECT DISTINCT ON (server_id) server_id, cpu_usage, memory_usage, disk_usage
-		FROM server_metrics ORDER BY server_id, timestamp DESC`)
+		FROM server_metrics WHERE timestamp >= $1 ORDER BY server_id, timestamp DESC`, freshSince)
 	if err != nil {
 		return
 	}
@@ -112,6 +129,26 @@ func checkMetricThresholds(db *database.DB, broker *events.Broker, th Thresholds
 				resolveAlert(db, broker, sid, ch.condition)
 			}
 		}
+	}
+	rows.Close()
+
+	// Servers whose snapshots went stale keep no live threshold state:
+	// resolve their metric alerts so only the offline alert stays firing.
+	stale, err := db.Query(`
+		SELECT server_id FROM server_metrics
+		GROUP BY server_id HAVING MAX(timestamp) < $1`, freshSince)
+	if err != nil {
+		return
+	}
+	defer stale.Close()
+	for stale.Next() {
+		var sid uint
+		if err := stale.Scan(&sid); err != nil {
+			continue
+		}
+		resolveAlert(db, broker, sid, "cpu_high")
+		resolveAlert(db, broker, sid, "ram_high")
+		resolveAlert(db, broker, sid, "disk_high")
 	}
 }
 

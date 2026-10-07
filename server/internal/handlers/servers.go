@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -11,6 +12,8 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"serverhub/internal/audit"
+	"serverhub/internal/applog"
+	"serverhub/internal/config"
 	"serverhub/internal/database"
 	"serverhub/internal/events"
 	"serverhub/internal/middleware"
@@ -19,6 +22,44 @@ import (
 type ServersHandler struct {
 	DB     *database.DB
 	Broker *events.Broker
+	Cfg    *config.Config
+}
+
+// offlineAfter returns how long a heartbeat may be stale before the server
+// reads as OFFLINE/DISCONNECTED. Defaults to 180s when unconfigured.
+func (h *ServersHandler) offlineAfter() time.Duration {
+	if h != nil && h.Cfg != nil && h.Cfg.OfflineTimeoutSec >= 30 {
+		return time.Duration(h.Cfg.OfflineTimeoutSec) * time.Second
+	}
+	return 180 * time.Second
+}
+
+// applyStaleness overrides stored ONLINE/CONNECTED state when the heartbeat
+// is older than the offline timeout, so reads never report a dead agent as
+// ONLINE while the background loop has not swept yet.
+func (h *ServersHandler) applyStaleness(m gin.H) gin.H {
+	if m == nil {
+		return nil
+	}
+	status, _ := m["status"].(string)
+	if status != "ONLINE" {
+		return m
+	}
+	cutoff := time.Now().UTC().Add(-h.offlineAfter())
+	var lhb time.Time
+	switch v := m["lastHeartbeat"].(type) {
+	case time.Time:
+		lhb = v
+	case *time.Time:
+		if v != nil {
+			lhb = *v
+		}
+	}
+	if lhb.IsZero() || lhb.Before(cutoff) {
+		m["status"] = "OFFLINE"
+		m["agentStatus"] = "DISCONNECTED"
+	}
+	return m
 }
 
 // ─── Server CRUD ─────────────────────────────────────────────────────────────
@@ -37,7 +78,7 @@ func (h *ServersHandler) List(c *gin.Context) {
 	for rows.Next() {
 		m := scanServer(rows)
 		if m != nil {
-			out = append(out, m)
+			out = append(out, h.applyStaleness(m))
 		}
 	}
 	c.JSON(http.StatusOK, out)
@@ -60,7 +101,7 @@ func (h *ServersHandler) Get(c *gin.Context) {
 	defer rows.Close()
 	if rows.Next() {
 		m := scanServer(rows)
-		c.JSON(http.StatusOK, m)
+		c.JSON(http.StatusOK, h.applyStaleness(m))
 		return
 	}
 	c.JSON(http.StatusNotFound, gin.H{"error": "server not found"})
@@ -131,6 +172,9 @@ func (h *ServersHandler) Delete(c *gin.Context) {
 		return
 	}
 	_, _ = h.DB.Exec(`DELETE FROM agent_tokens WHERE server_id=$1`, id)
+	_, _ = h.DB.Exec(`DELETE FROM server_metrics WHERE server_id=$1`, id)
+	_, _ = h.DB.Exec(`DELETE FROM alerts WHERE server_id=$1`, id)
+	_, _ = h.DB.Exec(`DELETE FROM in_app_notifications WHERE server_id=$1`, id)
 	_, _ = h.DB.Exec(`DELETE FROM managed_servers WHERE id=$1`, id)
 	u, _ := middleware.CurrentUser(c)
 	audit.Write(h.DB, u, "delete", "managed_server", strconv.FormatInt(id, 10), "ok", "")
@@ -287,7 +331,7 @@ func (h *ServersHandler) IngestMetrics(c *gin.Context) {
 	}
 	// Update server info fields if provided.
 	if body.Hostname != "" || body.OS != "" {
-		_, _ = h.DB.Exec(`
+		if _, err := h.DB.Exec(`
 			UPDATE managed_servers SET
 			  hostname=CASE WHEN $1!='' THEN $1 ELSE hostname END,
 			  os=CASE WHEN $2!='' THEN $2 ELSE os END,
@@ -295,13 +339,24 @@ func (h *ServersHandler) IngestMetrics(c *gin.Context) {
 			  arch=CASE WHEN $4!='' THEN $4 ELSE arch END,
 			  cpu_info=CASE WHEN $5!='' THEN $5 ELSE cpu_info END,
 			  cpu_cores=CASE WHEN $6>0 THEN $6 ELSE cpu_cores END,
-			  ram_total=CASE WHEN $7>0 THEN $7 ELSE ram_total END,
-			  disk_total=CASE WHEN $8>0 THEN $8 ELSE disk_total END,
+			  ram_total=CASE WHEN $7>0::bigint THEN $7 ELSE ram_total END,
+			  disk_total=CASE WHEN $8>0::bigint THEN $8 ELSE disk_total END,
 			  last_heartbeat=$9, agent_status='CONNECTED', status='ONLINE', updated_at=$9
 			WHERE id=$10`,
 			body.Hostname, body.OS, body.OSVersion, body.Arch,
-			body.CPUInfo, body.CPUCores, body.RAMTotal, body.DiskTotal,
-			now, serverID)
+			body.CPUInfo, int32(body.CPUCores), body.RAMTotal, body.DiskTotal,
+			now, serverID); err != nil {
+			applog.Error(h.DB.GDB, "agent", fmt.Sprintf("metrics sysinfo update failed: %v", err))
+		}
+	} else {
+		// Any metrics payload proves the agent is alive: refresh the
+		// heartbeat even when no system-info fields are included.
+		if _, err := h.DB.Exec(`
+			UPDATE managed_servers SET
+			  last_heartbeat=$1, agent_status='CONNECTED', status='ONLINE', updated_at=$1
+			WHERE id=$2`, now, serverID); err != nil {
+			applog.Error(h.DB.GDB, "agent", fmt.Sprintf("metrics heartbeat update failed: %v", err))
+		}
 	}
 	if h.Broker != nil {
 		h.Broker.Publish("server.metrics", gin.H{
@@ -445,15 +500,19 @@ type AlertsHandler struct {
 
 func (h *AlertsHandler) List(c *gin.Context) {
 	status := c.DefaultQuery("status", "")
+	if status != "" && status != "TRIGGERED" && status != "RESOLVED" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "status must be TRIGGERED or RESOLVED"})
+		return
+	}
 	var rows interface{ Next() bool; Scan(...any) error; Close() error }
 	var err error
 	if status != "" {
 		rows, err = h.DB.Query(`
-			SELECT id,server_id,condition,threshold,severity,status,message,triggered_at,resolved_at
+			SELECT id,server_id,condition,threshold,severity,status,message,triggered_at,resolved_at,fingerprint,source
 			FROM alerts WHERE status=$1 ORDER BY triggered_at DESC LIMIT 200`, status)
 	} else {
 		rows, err = h.DB.Query(`
-			SELECT id,server_id,condition,threshold,severity,status,message,triggered_at,resolved_at
+			SELECT id,server_id,condition,threshold,severity,status,message,triggered_at,resolved_at,fingerprint,source
 			FROM alerts ORDER BY triggered_at DESC LIMIT 200`)
 	}
 	if err != nil {
@@ -472,9 +531,20 @@ func (h *AlertsHandler) Resolve(c *gin.Context) {
 		return
 	}
 	now := time.Now().UTC()
-	_, err = h.DB.Exec(`UPDATE alerts SET status='RESOLVED', resolved_at=$1 WHERE id=$2`, now, id)
+	res, err := h.DB.Exec(`UPDATE alerts SET status='RESOLVED', resolved_at=$1 WHERE id=$2 AND status='TRIGGERED'`, now, id)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		var count int
+		_ = h.DB.QueryRow(`SELECT COUNT(*) FROM alerts WHERE id=$1`, id).Scan(&count)
+		if count == 0 {
+			c.JSON(http.StatusNotFound, gin.H{"error": "alert not found"})
+			return
+		}
+		// Already resolved: no-op, no audit noise.
+		c.JSON(http.StatusOK, gin.H{"ok": true})
 		return
 	}
 	u, _ := middleware.CurrentUser(c)
@@ -582,11 +652,13 @@ func scanAlerts(rows scannable) []gin.H {
 		var threshold float64
 		var triggeredAt time.Time
 		var resolvedAt *time.Time
-		if err := rows.Scan(&id, &sid, &cond, &threshold, &severity, &status, &message, &triggeredAt, &resolvedAt); err == nil {
+		var fingerprint, source string
+		if err := rows.Scan(&id, &sid, &cond, &threshold, &severity, &status, &message, &triggeredAt, &resolvedAt, &fingerprint, &source); err == nil {
 			out = append(out, gin.H{
 				"id": id, "serverId": sid, "condition": cond, "threshold": threshold,
 				"severity": severity, "status": status, "message": message,
 				"triggeredAt": triggeredAt, "resolvedAt": resolvedAt,
+				"fingerprint": fingerprint, "source": source,
 			})
 		}
 	}

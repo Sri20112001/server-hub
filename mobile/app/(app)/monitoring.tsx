@@ -22,7 +22,7 @@ import {
   VolumeX,
 } from "lucide-react-native";
 import { monitoringApi } from "../../src/api/monitoring";
-import type { AmAlert, AmSilence } from "../../src/api/monitoring";
+import type { AmAlert, AmSilence } from "../../src/types";
 import { colors } from "../../src/theme/colors";
 
 type Tab = "dashboard" | "alerts" | "silences";

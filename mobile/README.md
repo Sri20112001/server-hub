@@ -29,6 +29,15 @@ npm install
 npx expo start
 ```
 
+### Backend URL
+
+`EXPO_PUBLIC_API_URL` (in `mobile/.env`) is the **default** API URL, baked in
+at Expo start/build time — editing `.env` requires restarting Expo
+(`npx expo start --clear`). When the server's LAN IP changes, prefer the
+server-URL field on the login screen instead: it probes `GET /health`,
+takes effect immediately with no rebuild, and is stored in SecureStore
+(`src/api/serverUrl.ts`, untouched by the shared-code migration).
+
 ## Authentication
 
 The backend returns a JWT on login (`/server-hub/api/auth/login`). The token is
