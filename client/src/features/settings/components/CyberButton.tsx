@@ -1,5 +1,8 @@
+import React from 'react';
 
-export function CyberButton({ children, onClick, disabled, type = 'button', className = '' }: any) {
+type CyberButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement>;
+
+export function CyberButton({ children, onClick, disabled, type = 'button', className = '' }: CyberButtonProps) {
   return (
     <button
       type={type}

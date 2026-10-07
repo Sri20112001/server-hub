@@ -1,5 +1,8 @@
+import React from 'react';
 
-export function DangerButton({ children, onClick, disabled, className = '' }: any) {
+type DangerButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement>;
+
+export function DangerButton({ children, onClick, disabled, className = '' }: DangerButtonProps) {
   return (
     <button
       onClick={onClick}

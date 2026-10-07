@@ -6,6 +6,15 @@ import { Kicker, Modal, Field } from "../../components/ui";
 import { useEvents } from "../../lib/useEvents";
 import type { BusEvent } from "../../lib/types";
 
+function useNow(interval = 1000) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), interval);
+    return () => clearInterval(id);
+  }, [interval]);
+  return now;
+}
+
 type Tab = "dashboard" | "alerts" | "targets" | "silences" | "metrics";
 const TABS: { id: Tab; label: string }[] = [
   { id: "dashboard", label: "Dashboard" },
@@ -114,8 +123,8 @@ function DashboardTab() {
   const [targets, setTargets] = useState<PromTargetsData | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const load = useCallback(() => {
-    setLoading(true);
+  const load = useCallback((showSpinner = true) => {
+    if (showSpinner) setLoading(true);
     Promise.allSettled([
       api.monitoringOverview().then(setOverview),
       api.prometheusStatus().then(r => setPromOk(r.healthy ?? r.available)),
@@ -125,7 +134,7 @@ function DashboardTab() {
     ]).finally(() => setLoading(false));
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { setTimeout(() => load(false), 0); }, [load]);
 
   useEvents((ev: BusEvent) => {
     if (ev.type === "monitoring.alert.firing" || ev.type === "monitoring.alert.resolved") {
@@ -232,15 +241,15 @@ function AlertsTab() {
   const [silenceComment, setSilenceComment] = useState("");
   const [busy, setBusy] = useState(false);
 
-  const load = useCallback(() => {
-    setLoading(true);
+  const load = useCallback((showSpinner = true) => {
+    if (showSpinner) setLoading(true);
     api.monitoringAlerts()
       .then(setAlerts)
       .catch(e => setError(e.message))
       .finally(() => setLoading(false));
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { setTimeout(() => load(false), 0); }, [load]);
 
   useEvents((ev: BusEvent) => {
     if (ev.type === "monitoring.alert.firing" || ev.type === "monitoring.alert.resolved") load();
@@ -384,6 +393,7 @@ function AlertsTab() {
 // ── Targets tab ───────────────────────────────────────────────────────────────
 
 function TargetsTab() {
+  const now = useNow();
   const [targets, setTargets] = useState<PromTargetsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -441,7 +451,7 @@ function TargetsTab() {
                   </span>
                 </td>
                 <td className="px-4 py-2.5 border-t border-line dark:border-edge font-mono text-[12px] text-muted dark:text-fog">
-                  {t.lastScrape ? `${Math.round((Date.now() - new Date(t.lastScrape).getTime()) / 1000)}s ago` : "—"}
+                  {t.lastScrape ? `${Math.round((now - new Date(t.lastScrape).getTime()) / 1000)}s ago` : "—"}
                 </td>
                 <td className="px-4 py-2.5 border-t border-line dark:border-edge font-mono text-[12px] text-muted dark:text-fog">
                   {t.lastScrapeDuration ? `${(t.lastScrapeDuration * 1000).toFixed(0)}ms` : "—"}
@@ -466,15 +476,15 @@ function SilencesTab() {
   const [error, setError] = useState("");
   const [deleting, setDeleting] = useState<string | null>(null);
 
-  const load = useCallback(() => {
-    setLoading(true);
+  const load = useCallback((showSpinner = true) => {
+    if (showSpinner) setLoading(true);
     api.monitoringSilences()
       .then(setSilences)
       .catch(e => setError(e.message))
       .finally(() => setLoading(false));
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { setTimeout(() => load(false), 0); }, [load]);
 
   useEvents((ev: BusEvent) => {
     if (ev.type === "monitoring.alert.firing" || ev.type === "monitoring.alert.resolved") {
@@ -578,8 +588,10 @@ function MetricsTab() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    setLoading(true);
-    setError("");
+    setTimeout(() => {
+      setLoading(true);
+      setError("");
+    }, 0);
     api.monitoringMetrics(metric, range)
       .then(r => setData(r.data))
       .catch(e => { setError(e.message); setData(null); })
