@@ -31,7 +31,7 @@ export default function FleetScreen() {
       refetchInterval: 30_000,
     });
 
-  const projects = dash?.projects ?? [];
+  const projects = useMemo(() => dash?.projects ?? [], [dash?.projects]);
 
   const filtered = useMemo(() => {
     let list = projects;

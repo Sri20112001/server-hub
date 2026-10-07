@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"archive/tar"
+	"archive/zip"
 	"compress/gzip"
 	"database/sql"
 	"encoding/json"
@@ -185,6 +186,33 @@ func (h *BackupsHandler) manifest(pid int64, name, deployPath string) map[string
 	}
 }
 
+// GET /server-hub/api/backups/:id/download — stream archive as .zip.
+func (h *BackupsHandler) Download(c *gin.Context) {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		return
+	}
+	var path, name string
+	var status string
+	if err := h.DB.QueryRow(`SELECT b.path, p.name, b.status
+		FROM backups b JOIN projects p ON p.id = b.project_id WHERE b.id=?`, id).
+		Scan(&path, &name, &status); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "backup not found"})
+		return
+	}
+	if status != "SUCCESS" {
+		c.JSON(http.StatusConflict, gin.H{"error": "backup not available (status=" + status + ")"})
+		return
+	}
+	filename := sanitize(name) + "-" + strconv.FormatInt(id, 10) + ".zip"
+	c.Header("Content-Disposition", `attachment; filename="`+filename+`"`)
+	c.Header("Content-Type", "application/zip")
+	zw := zip.NewWriter(c.Writer)
+	_ = writeZip(zw, path)
+	_ = zw.Close()
+}
+
 // GET /server-hub/api/backups/:id — one backup's metadata.
 func (h *BackupsHandler) Get(c *gin.Context) {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
@@ -283,6 +311,41 @@ func (h *BackupsHandler) Restore(c *gin.Context) {
 		})
 	}()
 	c.JSON(http.StatusAccepted, gin.H{"ok": true, "operationId": op.ID, "backupId": id})
+}
+
+func writeZip(zw *zip.Writer, srcDir string) error {
+	return filepath.WalkDir(srcDir, func(path string, d os.DirEntry, err error) error {
+		if err != nil || path == srcDir {
+			return nil
+		}
+		rel, err := filepath.Rel(srcDir, path)
+		if err != nil {
+			return nil
+		}
+		rel = filepath.ToSlash(rel)
+		info, err := d.Info()
+		if err != nil {
+			return nil
+		}
+		if info.IsDir() {
+			_, _ = zw.Create(rel + "/")
+			return nil
+		}
+		if !info.Mode().IsRegular() {
+			return nil
+		}
+		w, err := zw.Create(rel)
+		if err != nil {
+			return nil
+		}
+		f, err := os.Open(path)
+		if err != nil {
+			return nil
+		}
+		_, _ = io.Copy(w, f)
+		f.Close()
+		return nil
+	})
 }
 
 func sanitize(s string) string {

@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Outlet, useLocation, useNavigate, Link } from "react-router";
 import {
   Activity,
+  AlertTriangle,
+  ClipboardList,
   Database,
   FolderGit2,
   LayoutGrid,
@@ -10,10 +12,12 @@ import {
   Radar,
   Rocket,
   Search,
+  Server,
   Ship,
   SlidersHorizontal,
   Sun,
   User,
+  BarChart2,
   X,
 } from "lucide-react";
 import { api } from "../lib/api";
@@ -81,6 +85,36 @@ function CommandPalette({ onClose }: { onClose: () => void }) {
         title: "View Host Telemetry",
         sub: "page",
         run: () => nav("/telemetry"),
+      },
+      {
+        icon: <BarChart2 size={15} />,
+        title: "Monitoring",
+        sub: "page",
+        run: () => nav("/monitoring"),
+      },
+      {
+        icon: <Server size={15} />,
+        title: "Managed Servers",
+        sub: "page",
+        run: () => nav("/servers"),
+      },
+      {
+        icon: <AlertTriangle size={15} />,
+        title: "Alerts",
+        sub: "page",
+        run: () => nav("/alerts"),
+      },
+      {
+        icon: <Activity size={15} />,
+        title: "Health Checks",
+        sub: "page",
+        run: () => nav("/health-checks"),
+      },
+      {
+        icon: <ClipboardList size={15} />,
+        title: "Audit Log",
+        sub: "page",
+        run: () => nav("/audit"),
       },
       {
         icon: <SlidersHorizontal size={15} />,
@@ -272,6 +306,28 @@ export function AppShell({ online }: { online: boolean }) {
           )}
         </button>
         <button
+          className={dockBtn(loc.pathname.startsWith("/servers"))}
+          title="Servers"
+          aria-label="Servers"
+          onClick={() => onDock("/servers")}
+        >
+          <Server size={19} />
+          {loc.pathname.startsWith("/servers") && (
+            <span className="absolute bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-accent dark:bg-ember" />
+          )}
+        </button>
+        <button
+          className={dockBtn(loc.pathname === "/alerts")}
+          title="Alerts"
+          aria-label="Alerts"
+          onClick={() => onDock("/alerts")}
+        >
+          <AlertTriangle size={19} />
+          {loc.pathname === "/alerts" && (
+            <span className="absolute bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-accent dark:bg-ember" />
+          )}
+        </button>
+        <button
           className={dockBtn(loc.pathname === "/fleet")}
           title="Fleet"
           aria-label="Fleet"
@@ -301,6 +357,17 @@ export function AppShell({ online }: { online: boolean }) {
         >
           <Activity size={19} />
           {loc.pathname === "/telemetry" && (
+            <span className="absolute bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-accent dark:bg-ember" />
+          )}
+        </button>
+        <button
+          className={dockBtn(loc.pathname === "/monitoring")}
+          title="Monitoring"
+          aria-label="Monitoring"
+          onClick={() => onDock("/monitoring")}
+        >
+          <BarChart2 size={19} />
+          {loc.pathname === "/monitoring" && (
             <span className="absolute bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-accent dark:bg-ember" />
           )}
         </button>

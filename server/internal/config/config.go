@@ -28,6 +28,12 @@ type Config struct {
 	// LogRetentionDays is deprecated and ignored: all log tables are
 	// append-only and retained forever (DB triggers reject DELETE/UPDATE).
 	LogRetentionDays int
+	// Prometheus / Alertmanager integration (optional).
+	PrometheusURL              string
+	PrometheusTimeoutSec       int
+	AlertmanagerURL            string
+	AlertmanagerTimeoutSec     int
+	AlertmanagerWebhookSecret  string
 }
 
 func getenv(key, def string) string {
@@ -89,6 +95,14 @@ func Load() *Config {
 		os.Exit(1)
 	}
 
+	promTimeout, _ := strconv.Atoi(getenv("PROMETHEUS_TIMEOUT_SEC", "10"))
+	if promTimeout <= 0 {
+		promTimeout = 10
+	}
+	amTimeout, _ := strconv.Atoi(getenv("ALERTMANAGER_TIMEOUT_SEC", "10"))
+	if amTimeout <= 0 {
+		amTimeout = 10
+	}
 	return &Config{
 		Port:        getenv("PORT", "4000"),
 		DatabaseURL: os.Getenv("DATABASE_URL"),
@@ -106,5 +120,10 @@ func Load() *Config {
 		AlertDisk:       getenvFloat("ALERT_DISK_PCT", 80),
 		HealthIntervalSec: interval,
 		LogRetentionDays:  retention,
+		PrometheusURL:             os.Getenv("PROMETHEUS_URL"),
+		PrometheusTimeoutSec:      promTimeout,
+		AlertmanagerURL:           os.Getenv("ALERTMANAGER_URL"),
+		AlertmanagerTimeoutSec:    amTimeout,
+		AlertmanagerWebhookSecret: os.Getenv("ALERTMANAGER_WEBHOOK_SECRET"),
 	}
 }

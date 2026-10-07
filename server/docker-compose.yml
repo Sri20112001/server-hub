@@ -7,6 +7,8 @@ name: server-hub
 #   Set it in the environment or server/.env (see server/.env.example).
 # - Never publish the serverhub API port beyond localhost without a
 #   TLS-terminating reverse proxy (Caddy/Apache/Nginx) in front.
+# - Prometheus and Alertmanager are NOT published externally; only
+#   serverhub reaches them over the internal Compose network.
 services:
   postgres:
     image: postgres:16-alpine
@@ -26,6 +28,76 @@ services:
       timeout: 5s
       retries: 5
 
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    container_name: serverhub-prometheus
+    restart: unless-stopped
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=30d"
+      - "--web.enable-lifecycle"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - promdata:/prometheus
+    # NOT published externally — only serverhub reaches it.
+    expose:
+      - "9090"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:9090/-/healthy"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    container_name: serverhub-alertmanager
+    restart: unless-stopped
+    command:
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+      - "--storage.path=/alertmanager"
+    volumes:
+      - ./alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - amdata:/alertmanager
+    expose:
+      - "9093"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:9093/-/healthy"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  node-exporter:
+    image: prom/node-exporter:v1.8.1
+    container_name: serverhub-node-exporter
+    restart: unless-stopped
+    pid: host
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - "--path.procfs=/host/proc"
+      - "--path.sysfs=/host/sys"
+      - "--path.rootfs=/rootfs"
+      - "--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($|/)"
+    expose:
+      - "9100"
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    container_name: serverhub-cadvisor
+    restart: unless-stopped
+    privileged: true
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    expose:
+      - "8080"
+
   serverhub:
     build:
       context: ..
@@ -39,6 +111,10 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     depends_on:
       postgres:
+        condition: service_healthy
+      prometheus:
+        condition: service_healthy
+      alertmanager:
         condition: service_healthy
     environment:
       PORT: "4000"
@@ -57,6 +133,14 @@ services:
       ALERT_CPU_PCT: ${ALERT_CPU_PCT:-85}
       ALERT_RAM_PCT: ${ALERT_RAM_PCT:-90}
       ALERT_DISK_PCT: ${ALERT_DISK_PCT:-80}
+      # Prometheus + Alertmanager (internal Compose hostnames)
+      PROMETHEUS_URL: http://prometheus:9090
+      PROMETHEUS_TIMEOUT_SEC: "10"
+      ALERTMANAGER_URL: http://alertmanager:9093
+      ALERTMANAGER_TIMEOUT_SEC: "10"
+      ALERTMANAGER_WEBHOOK_SECRET: ${ALERTMANAGER_WEBHOOK_SECRET:-}
 
 volumes:
   pgdata:
+  promdata:
+  amdata:

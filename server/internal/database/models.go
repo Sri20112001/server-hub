@@ -211,6 +211,102 @@ type RefreshToken struct {
 
 func (RefreshToken) TableName() string { return "refresh_tokens" }
 
+// ─── Managed Servers (Phase 1-9) ────────────────────────────────────────────
+
+// ServerGroup organises managed servers (e.g. Production, Development).
+type ServerGroup struct {
+	ID          uint      `gorm:"primaryKey;autoIncrement" json:"id"`
+	Name        string    `gorm:"uniqueIndex;not null" json:"name"`
+	Description string    `gorm:"not null;default:''" json:"description"`
+	CreatedAt   time.Time `gorm:"default:CURRENT_TIMESTAMP" json:"createdAt"`
+}
+
+func (ServerGroup) TableName() string { return "server_groups" }
+
+// ManagedServer is a remote Linux server registered in ServerHub.
+type ManagedServer struct {
+	ID            uint       `gorm:"primaryKey;autoIncrement" json:"id"`
+	Name          string     `gorm:"not null;index" json:"name"`
+	Hostname      string     `gorm:"not null;default:''" json:"hostname"`
+	IPAddress     string     `gorm:"not null;default:''" json:"ipAddress"`
+	OS            string     `gorm:"not null;default:''" json:"os"`
+	OSVersion     string     `gorm:"not null;default:''" json:"osVersion"`
+	Arch          string     `gorm:"not null;default:''" json:"arch"`
+	CPUInfo       string     `gorm:"not null;default:''" json:"cpuInfo"`
+	CPUCores      int        `gorm:"not null;default:0" json:"cpuCores"`
+	RAMTotal      int64      `gorm:"not null;default:0" json:"ramTotal"`
+	DiskTotal     int64      `gorm:"not null;default:0" json:"diskTotal"`
+	Status        string     `gorm:"not null;default:UNKNOWN;index" json:"status"`
+	AgentStatus   string     `gorm:"not null;default:UNKNOWN" json:"agentStatus"`
+	LastHeartbeat *time.Time `gorm:"index" json:"lastHeartbeat"`
+	GroupID       *uint      `gorm:"index" json:"groupId"`
+	CreatedAt     time.Time  `gorm:"default:CURRENT_TIMESTAMP" json:"createdAt"`
+	UpdatedAt     time.Time  `gorm:"default:CURRENT_TIMESTAMP" json:"updatedAt"`
+}
+
+func (ManagedServer) TableName() string { return "managed_servers" }
+
+// AgentToken authenticates a ServerHub Agent. Only the SHA-256 hash is stored.
+type AgentToken struct {
+	ID         uint       `gorm:"primaryKey;autoIncrement" json:"id"`
+	ServerID   uint       `gorm:"not null;index" json:"serverId"`
+	TokenHash  string     `gorm:"uniqueIndex;not null" json:"-"`
+	Label      string     `gorm:"not null;default:''" json:"label"`
+	Revoked    bool       `gorm:"not null;default:false" json:"revoked"`
+	CreatedAt  time.Time  `gorm:"default:CURRENT_TIMESTAMP" json:"createdAt"`
+	LastUsedAt *time.Time `json:"lastUsedAt"`
+}
+
+func (AgentToken) TableName() string { return "agent_tokens" }
+
+// ServerMetric stores periodic resource snapshots from a managed server.
+type ServerMetric struct {
+	ID           uint      `gorm:"primaryKey;autoIncrement" json:"id"`
+	ServerID     uint      `gorm:"not null;index:idx_sm_server_ts" json:"serverId"`
+	Timestamp    time.Time `gorm:"not null;index:idx_sm_server_ts" json:"timestamp"`
+	CPUUsage     float64   `gorm:"not null;default:0" json:"cpuUsage"`
+	MemoryUsage  float64   `gorm:"not null;default:0" json:"memoryUsage"`
+	MemoryUsedMB float64   `gorm:"not null;default:0" json:"memoryUsedMB"`
+	DiskUsage    float64   `gorm:"not null;default:0" json:"diskUsage"`
+	DiskUsedGB   float64   `gorm:"not null;default:0" json:"diskUsedGB"`
+	NetRx        int64     `gorm:"not null;default:0" json:"netRx"`
+	NetTx        int64     `gorm:"not null;default:0" json:"netTx"`
+	LoadAvg1     float64   `gorm:"not null;default:0" json:"loadAvg1"`
+	UptimeSec    int64     `gorm:"not null;default:0" json:"uptimeSec"`
+}
+
+func (ServerMetric) TableName() string { return "server_metrics" }
+
+// Alert is a threshold-triggered alert with TRIGGERED/RESOLVED state machine.
+type Alert struct {
+	ID          uint       `gorm:"primaryKey;autoIncrement" json:"id"`
+	ServerID    *uint      `gorm:"index" json:"serverId"`
+	Condition   string     `gorm:"not null" json:"condition"`
+	Threshold   float64    `gorm:"not null;default:0" json:"threshold"`
+	Severity    string     `gorm:"not null;default:WARNING" json:"severity"`
+	Status      string     `gorm:"not null;default:TRIGGERED;index" json:"status"`
+	Message     string     `gorm:"not null;default:''" json:"message"`
+	TriggeredAt time.Time  `gorm:"index;default:CURRENT_TIMESTAMP" json:"triggeredAt"`
+	ResolvedAt  *time.Time `json:"resolvedAt"`
+}
+
+func (Alert) TableName() string { return "alerts" }
+
+// InAppNotification is the in-app notification center entry.
+type InAppNotification struct {
+	ID        uint      `gorm:"primaryKey;autoIncrement" json:"id"`
+	Username  string    `gorm:"index;not null" json:"username"`
+	Title     string    `gorm:"not null" json:"title"`
+	Body      string    `gorm:"not null;default:''" json:"body"`
+	Category  string    `gorm:"not null;default:system" json:"category"`
+	Read      bool      `gorm:"not null;default:false" json:"read"`
+	ServerID  *uint     `gorm:"index" json:"serverId"`
+	AlertID   *uint     `gorm:"index" json:"alertId"`
+	CreatedAt time.Time `gorm:"index;default:CURRENT_TIMESTAMP" json:"createdAt"`
+}
+
+func (InAppNotification) TableName() string { return "in_app_notifications" }
+
 // AppLog is the central activity/log store for the future log-aggregator UI.
 // Every significant event (HTTP requests, deploys, health transitions,
 // auth, backups) lands here with a level + source + optional project link.

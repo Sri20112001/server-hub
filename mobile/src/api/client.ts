@@ -23,7 +23,7 @@ export class ApiError extends Error {
   }
 }
 
-export const client = axios.create({
+export const client = axios.create({ // eslint-disable-line import/no-named-as-default-member
   baseURL: API_BASE,
   timeout: 15000,
   headers: { "Content-Type": "application/json" },

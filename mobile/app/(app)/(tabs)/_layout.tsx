@@ -7,6 +7,10 @@ import {
   Sailboat,
   LayoutGrid,
   Rocket,
+  Server,
+  AlertTriangle,
+  Bell,
+  Activity,
   Settings as SettingsIcon,
   type LucideIcon,
 } from "lucide-react-native";
@@ -130,6 +134,42 @@ export default function TabsLayout() {
             <TabIcon icon={Rocket} label="Deploys" focused={focused} />
           ),
           tabBarAccessibilityLabel: "Deployments",
+        }}
+      />
+      <Tabs.Screen
+        name="servers"
+        options={{
+          tabBarIcon: ({ focused }) => (
+            <TabIcon icon={Server} label="Servers" focused={focused} />
+          ),
+          tabBarAccessibilityLabel: "Servers",
+        }}
+      />
+      <Tabs.Screen
+        name="alerts"
+        options={{
+          tabBarIcon: ({ focused }) => (
+            <TabIcon icon={AlertTriangle} label="Alerts" focused={focused} />
+          ),
+          tabBarAccessibilityLabel: "Alerts",
+        }}
+      />
+      <Tabs.Screen
+        name="notifications"
+        options={{
+          tabBarIcon: ({ focused }) => (
+            <TabIcon icon={Bell} label="Notifs" focused={focused} />
+          ),
+          tabBarAccessibilityLabel: "Notifications",
+        }}
+      />
+      <Tabs.Screen
+        name="monitoring"
+        options={{
+          tabBarIcon: ({ focused }) => (
+            <TabIcon icon={Activity} label="Monitor" focused={focused} />
+          ),
+          tabBarAccessibilityLabel: "Monitoring",
         }}
       />
       <Tabs.Screen

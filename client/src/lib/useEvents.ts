@@ -21,6 +21,12 @@ const TYPES = [
   "backup.restoreFailed",
   "backup.deleted",
   "telemetry.threshold",
+  "server.heartbeat",
+  "server.metrics",
+  "alert.triggered",
+  "alert.resolved",
+  "monitoring.alert.firing",
+  "monitoring.alert.resolved",
 ] as const;
 
 /** Subscribes to the live signal bus (SSE). Reconnects on drop. */

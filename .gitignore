@@ -1,5 +1,10 @@
 # Node / Client
 client/node_modules/
+mobile/node_modules/
+agent/tmp/
+agent/serverhub-agent
+agent/serverhub-agent.exe
+agent/serverhub-agent-*
 client/dist/
 client/dist-ssr/
 npm-debug.log*
@@ -17,6 +22,7 @@ server/main
 server/coverage.out
 server/coverage.html
 server/.air.toml
+agent/.air.toml
 
 # Environment variables
 .env

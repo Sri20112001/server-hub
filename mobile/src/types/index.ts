@@ -164,6 +164,59 @@ export interface NotifySettings {
 // Fleet status — mirrors web toFleetStatus()
 export type FleetStatus = "sailing" | "choppy" | "lost" | "docked";
 
+// ─── Managed Servers ─────────────────────────────────────────────────────────
+
+export interface ManagedServer {
+  id: number;
+  name: string;
+  hostname: string;
+  ipAddress: string;
+  os: string;
+  osVersion: string;
+  arch: string;
+  cpuInfo: string;
+  cpuCores: number;
+  ramTotal: number;
+  diskTotal: number;
+  status: "ONLINE" | "OFFLINE" | "WARNING" | "UNKNOWN";
+  agentStatus: "CONNECTED" | "DISCONNECTED" | "UNKNOWN";
+  lastHeartbeat: string | null;
+  groupId: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ServerGroup {
+  id: number;
+  name: string;
+  description: string;
+  createdAt: string;
+}
+
+export interface Alert {
+  id: number;
+  serverId: number | null;
+  condition: string;
+  threshold: number;
+  severity: "INFO" | "WARNING" | "CRITICAL";
+  status: "TRIGGERED" | "RESOLVED";
+  message: string;
+  triggeredAt: string;
+  resolvedAt: string | null;
+}
+
+export interface InAppNotification {
+  id: number;
+  username: string;
+  title: string;
+  body: string;
+  category: string;
+  read: boolean;
+  serverId: number | null;
+  alertId: number | null;
+  createdAt: string;
+}
+
 export function toFleetStatus(raw: string | undefined): FleetStatus {
   const s = (raw ?? "").toLowerCase();
   if (s === "healthy" || s === "running" || s === "success" || s === "ok") return "sailing";

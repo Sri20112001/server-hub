@@ -186,6 +186,8 @@ export const api = {
     ),
   deleteBackup: (id: number) =>
     req<{ ok: boolean }>(`/server-hub/api/backups/${id}`, { method: "DELETE" }),
+  downloadBackupUrl: (id: number) =>
+    `${API_BASE}/server-hub/api/backups/${id}/download`,
   restoreBackup: (id: number) =>
     req<{ ok: boolean; operationId: string; backupId: number }>(
       `/server-hub/api/backups/${id}/restore?confirm=true`,
@@ -253,4 +255,98 @@ export const api = {
     }),
   logoutAll: () =>
     req<{ ok: boolean }>("/server-hub/api/auth/logout-all", { method: "POST" }),
+
+  // managed servers
+  servers: () => req<import("./types").ManagedServer[]>("/server-hub/api/servers"),
+  managedServer: (id: number) => req<import("./types").ManagedServer>(`/server-hub/api/servers/${id}`),
+  createServer: (body: { name: string; hostname?: string; ipAddress?: string; groupId?: number }) =>
+    req<{ id: number; name: string }>("/server-hub/api/servers", { method: "POST", body: JSON.stringify(body) }),
+  updateServer: (id: number, body: Partial<{ name: string; hostname: string; ipAddress: string; groupId: number }>) =>
+    req<{ ok: boolean }>(`/server-hub/api/servers/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+  deleteServer: (id: number) =>
+    req<{ ok: boolean }>(`/server-hub/api/servers/${id}`, { method: "DELETE" }),
+  serverMetrics: (id: number, range = "1h") =>
+    req<{ range: string; points: import("./types").ServerMetricPoint[] }>(`/server-hub/api/servers/${id}/metrics?range=${range}`),
+  serverMetricsLatest: (id: number) =>
+    req<import("./types").ServerMetricPoint>(`/server-hub/api/servers/${id}/metrics/latest`),
+
+  // agent tokens
+  agentTokens: (serverId: number) =>
+    req<import("./types").AgentToken[]>(`/server-hub/api/servers/${serverId}/tokens`),
+  createAgentToken: (serverId: number, label?: string) =>
+    req<{ id: number; token: string; label: string }>(`/server-hub/api/servers/${serverId}/tokens`, {
+      method: "POST", body: JSON.stringify({ label: label ?? "" }),
+    }),
+  revokeAgentToken: (serverId: number, tokenId: number) =>
+    req<{ ok: boolean }>(`/server-hub/api/servers/${serverId}/tokens/${tokenId}`, { method: "DELETE" }),
+
+  // server groups
+  serverGroups: () => req<import("./types").ServerGroup[]>("/server-hub/api/server-groups"),
+  createServerGroup: (name: string, description?: string) =>
+    req<{ id: number; name: string }>("/server-hub/api/server-groups", {
+      method: "POST", body: JSON.stringify({ name, description: description ?? "" }),
+    }),
+  deleteServerGroup: (id: number) =>
+    req<{ ok: boolean }>(`/server-hub/api/server-groups/${id}`, { method: "DELETE" }),
+
+  // alerts
+  alerts: (status?: string) =>
+    req<import("./types").Alert[]>(`/server-hub/api/alerts${status ? `?status=${status}` : ""}`),
+  resolveAlert: (id: number) =>
+    req<{ ok: boolean }>(`/server-hub/api/alerts/${id}/resolve`, { method: "PATCH" }),
+
+  // in-app notifications
+  notifications: () => req<import("./types").InAppNotification[]>("/server-hub/api/notifications"),
+  markNotificationRead: (id: number) =>
+    req<{ ok: boolean }>(`/server-hub/api/notifications/${id}/read`, { method: "PATCH" }),
+  markAllNotificationsRead: () =>
+    req<{ ok: boolean }>("/server-hub/api/notifications/read-all", { method: "POST" }),
+
+  // health checks
+  healthChecks: () => req<import("./types").HealthCheck[]>("/server-hub/api/health-checks"),
+  createHealthCheck: (body: Partial<import("./types").HealthCheck>) =>
+    req<{ id: number; name: string }>("/server-hub/api/health-checks", { method: "POST", body: JSON.stringify(body) }),
+  updateHealthCheck: (id: number, body: Partial<import("./types").HealthCheck>) =>
+    req<{ ok: boolean }>(`/server-hub/api/health-checks/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+  deleteHealthCheck: (id: number) =>
+    req<{ ok: boolean }>(`/server-hub/api/health-checks/${id}`, { method: "DELETE" }),
+  healthCheckResults: (id: number) =>
+    req<import("./types").HealthCheckResult[]>(`/server-hub/api/health-checks/${id}/results`),
+
+  // monitoring — Prometheus + Alertmanager
+  monitoringOverview: () =>
+    req<import("./types").MonitoringOverview>("/server-hub/api/monitoring/overview"),
+  prometheusStatus: () =>
+    req<import("./types").PrometheusStatus>("/server-hub/api/monitoring/prometheus/status"),
+  prometheusTargets: () =>
+    req<{ data: import("./types").PromTargetsData }>("/server-hub/api/monitoring/prometheus/targets"),
+  prometheusRules: () =>
+    req<{ data: unknown }>("/server-hub/api/monitoring/prometheus/rules"),
+  prometheusQuery: (query: string) =>
+    req<{ data: unknown }>(`/server-hub/api/monitoring/prometheus/query?query=${encodeURIComponent(query)}`),
+  prometheusQueryRange: (query: string, rangeStr: string, step = "60") => {
+    const now = Math.floor(Date.now() / 1000);
+    const durations: Record<string, number> = { "1h": 3600, "6h": 21600, "24h": 86400, "7d": 604800 };
+    const dur = durations[rangeStr] ?? 3600;
+    return req<{ data: import("./types").PromRangeResult }>(
+      `/server-hub/api/monitoring/prometheus/query-range?query=${encodeURIComponent(query)}&start=${now - dur}&end=${now}&step=${step}`
+    );
+  },
+  monitoringMetrics: (metric: string, range = "1h", step = "60") =>
+    req<{ metric: string; range: string; data: import("./types").PromRangeResult }>(
+      `/server-hub/api/monitoring/metrics?metric=${metric}&range=${range}&step=${step}`
+    ),
+  alertmanagerStatus: () =>
+    req<import("./types").AlertmanagerStatus>("/server-hub/api/monitoring/alertmanager/status"),
+  monitoringAlerts: () =>
+    req<import("./types").AmAlert[]>("/server-hub/api/monitoring/alerts"),
+  monitoringSilences: () =>
+    req<import("./types").AmSilence[]>("/server-hub/api/monitoring/silences"),
+  createSilence: (body: object) =>
+    req<{ silenceID: string }>("/server-hub/api/monitoring/silences", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  deleteSilence: (id: string) =>
+    req<{ ok: boolean }>(`/server-hub/api/monitoring/silences/${encodeURIComponent(id)}`, { method: "DELETE" }),
 };

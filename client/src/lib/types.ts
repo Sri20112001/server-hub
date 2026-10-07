@@ -406,6 +406,187 @@ export interface ContainerStat {
 /** Normalised fleet status used across the UI. */
 export type FleetStatus = "sailing" | "choppy" | "lost" | "docked";
 
+// ─── Managed Servers ─────────────────────────────────────────────────────────
+
+export interface ManagedServer {
+  id: number;
+  name: string;
+  hostname: string;
+  ipAddress: string;
+  os: string;
+  osVersion: string;
+  arch: string;
+  cpuInfo: string;
+  cpuCores: number;
+  ramTotal: number;
+  diskTotal: number;
+  status: "ONLINE" | "OFFLINE" | "WARNING" | "UNKNOWN";
+  agentStatus: "CONNECTED" | "DISCONNECTED" | "UNKNOWN";
+  lastHeartbeat: string | null;
+  groupId: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ServerGroup {
+  id: number;
+  name: string;
+  description: string;
+  createdAt: string;
+}
+
+export interface ServerMetricPoint {
+  id: number;
+  serverId: number;
+  timestamp: string;
+  cpuUsage: number;
+  memoryUsage: number;
+  memoryUsedMB: number;
+  diskUsage: number;
+  diskUsedGB: number;
+  netRx: number;
+  netTx: number;
+  loadAvg1: number;
+  uptimeSec: number;
+}
+
+export interface AgentToken {
+  id: number;
+  serverId: number;
+  label: string;
+  revoked: boolean;
+  createdAt: string;
+  lastUsedAt: string | null;
+}
+
+export interface Alert {
+  id: number;
+  serverId: number | null;
+  condition: string;
+  threshold: number;
+  severity: "INFO" | "WARNING" | "CRITICAL";
+  status: "TRIGGERED" | "RESOLVED";
+  message: string;
+  triggeredAt: string;
+  resolvedAt: string | null;
+}
+
+export interface InAppNotification {
+  id: number;
+  username: string;
+  title: string;
+  body: string;
+  category: string;
+  read: boolean;
+  serverId: number | null;
+  alertId: number | null;
+  createdAt: string;
+}
+
+export interface HealthCheck {
+  id: number;
+  name: string;
+  type: "http" | "tcp" | "ping";
+  target: string;
+  interval: number;
+  timeout: number;
+  expectedStatus: number;
+  enabled: boolean;
+  status: "UP" | "DOWN" | "UNKNOWN";
+  responseTimeMs: number | null;
+  lastCheckedAt: string | null;
+  serverId: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface HealthCheckResult {
+  id: number;
+  healthCheckId: number;
+  timestamp: string;
+  status: "UP" | "DOWN";
+  responseTimeMs: number;
+  error: string;
+}
+
+// ─── Prometheus / Alertmanager monitoring ────────────────────────────────────
+
+export interface MonitoringOverview {
+  available: boolean;
+  cpu: number | null;
+  memory: number | null;
+  disk: number | null;
+  networkRx: number | null;
+  networkTx: number | null;
+}
+
+export interface PrometheusStatus {
+  available: boolean;
+  healthy?: boolean;
+  status: string;
+}
+
+export interface AlertmanagerStatus {
+  available: boolean;
+  healthy?: boolean;
+  status: string;
+}
+
+/** Raw Prometheus target as returned by /api/v1/targets */
+export interface PromTarget {
+  discoveredLabels: Record<string, string>;
+  labels: Record<string, string>;
+  scrapePool: string;
+  scrapeUrl: string;
+  globalUrl: string;
+  lastError: string;
+  lastScrape: string;
+  lastScrapeDuration: number;
+  health: "up" | "down" | "unknown";
+}
+
+export interface PromTargetsData {
+  activeTargets: PromTarget[];
+  droppedTargets: PromTarget[];
+}
+
+/** Alertmanager alert as returned by /api/v2/alerts */
+export interface AmAlert {
+  fingerprint: string;
+  status: {
+    state: "active" | "suppressed" | "unprocessed";
+    silencedBy: string[];
+    inhibitedBy: string[];
+  };
+  labels: Record<string, string>;
+  annotations: Record<string, string>;
+  startsAt: string;
+  endsAt: string;
+  generatorURL: string;
+  receivers: { name: string }[];
+}
+
+/** Alertmanager silence as returned by /api/v2/silences */
+export interface AmSilence {
+  id: string;
+  status: { state: "active" | "expired" | "pending" };
+  updatedAt: string;
+  comment: string;
+  createdBy: string;
+  startsAt: string;
+  endsAt: string;
+  matchers: { name: string; value: string; isRegex: boolean; isEqual: boolean }[];
+}
+
+/** Prometheus range query result (matrix) */
+export interface PromRangeResult {
+  resultType: string;
+  result: {
+    metric: Record<string, string>;
+    values: [number, string][];
+  }[];
+}
+
 export function toFleetStatus(raw: string | undefined): FleetStatus {
   const s = (raw ?? "").toLowerCase();
   if (s === "healthy" || s === "running" || s === "success" || s === "ok") return "sailing";

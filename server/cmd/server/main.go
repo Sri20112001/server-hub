@@ -15,6 +15,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 
+	"serverhub/internal/alerting"
 	"serverhub/internal/applog"
 	"serverhub/internal/config"
 	"serverhub/internal/database"
@@ -22,7 +23,9 @@ import (
 	"serverhub/internal/events"
 	"serverhub/internal/handlers"
 	"serverhub/internal/health"
+	"serverhub/internal/healthcheck"
 	"serverhub/internal/middleware"
+	"serverhub/internal/monitoring"
 	"serverhub/internal/telemetry"
 )
 
@@ -72,6 +75,21 @@ func main() {
 	telemetry.StartLoop(db, broker, telemetry.Thresholds{
 		CPU: cfg.AlertCPU, RAM: cfg.AlertRAM, Disk: cfg.AlertDisk,
 	})
+	alerting.StartLoop(db, broker, alerting.Thresholds{
+		CPU: cfg.AlertCPU, RAM: cfg.AlertRAM, Disk: cfg.AlertDisk,
+	})
+	healthcheck.StartLoop(db, broker)
+
+	promClient := monitoring.NewPrometheusClient(cfg.PrometheusURL, cfg.PrometheusTimeoutSec)
+	amClient := monitoring.NewAlertmanagerClient(cfg.AlertmanagerURL, cfg.AlertmanagerTimeoutSec)
+	if promClient.Available() {
+		log.Printf("Prometheus configured at %s", cfg.PrometheusURL)
+		applog.Info(gdb, "system", "prometheus configured at "+cfg.PrometheusURL)
+	}
+	if amClient.Available() {
+		log.Printf("Alertmanager configured at %s", cfg.AlertmanagerURL)
+		applog.Info(gdb, "system", "alertmanager configured at "+cfg.AlertmanagerURL)
+	}
 
 	r := gin.Default()
 	// FRONTEND_URL may hold a comma-separated list of allowed origins
@@ -204,6 +222,7 @@ func main() {
 		viewer.GET("/projects/:id/backups", backH.List)
 		operator.POST("/projects/:id/backups", backH.Create)
 		viewer.GET("/backups/:id", backH.Get)
+		viewer.GET("/backups/:id/download", backH.Download)
 		operator.DELETE("/backups/:id", backH.Delete)
 		operator.POST("/backups/:id/restore", backH.Restore)
 
@@ -230,6 +249,75 @@ func main() {
 		admin.POST("/users", usrH.Create)
 		admin.PUT("/users/:username/role", usrH.SetRole)
 		admin.DELETE("/users/:username", usrH.Delete)
+
+		// ── Managed servers (Phase 1-9) ──────────────────────────────────
+		srvH := &handlers.ServersHandler{DB: db, Broker: broker}
+		viewer.GET("/servers", srvH.List)
+		operator.POST("/servers", srvH.Create)
+		viewer.GET("/servers/:id", srvH.Get)
+		operator.PATCH("/servers/:id", srvH.Update)
+		admin.DELETE("/servers/:id", srvH.Delete)
+		viewer.GET("/servers/:id/metrics", srvH.Metrics)
+		viewer.GET("/servers/:id/metrics/latest", srvH.LatestMetrics)
+		admin.GET("/servers/:id/tokens", srvH.ListTokens)
+		admin.POST("/servers/:id/tokens", srvH.CreateToken)
+		admin.DELETE("/servers/:id/tokens/:tokenId", srvH.RevokeToken)
+
+		// Server groups
+		grpH := &handlers.ServerGroupsHandler{DB: db}
+		viewer.GET("/server-groups", grpH.List)
+		operator.POST("/server-groups", grpH.Create)
+		admin.DELETE("/server-groups/:id", grpH.Delete)
+
+		// Alerts
+		altH := &handlers.AlertsHandler{DB: db}
+		viewer.GET("/alerts", altH.List)
+		operator.PATCH("/alerts/:id/resolve", altH.Resolve)
+
+		// In-app notifications
+		notifH := &handlers.NotificationsInAppHandler{DB: db}
+		viewer.GET("/notifications", notifH.List)
+		viewer.PATCH("/notifications/:id/read", notifH.MarkRead)
+		viewer.POST("/notifications/read-all", notifH.MarkAllRead)
+
+		// Health checks
+		hcH := &handlers.HealthChecksHandler{DB: db}
+		viewer.GET("/health-checks", hcH.List)
+		operator.POST("/health-checks", hcH.Create)
+		operator.PATCH("/health-checks/:id", hcH.Update)
+		admin.DELETE("/health-checks/:id", hcH.Delete)
+		viewer.GET("/health-checks/:id/results", hcH.Results)
+
+		// ── Prometheus + Alertmanager monitoring ─────────────────────────────
+		monH := &handlers.MonitoringHandler{
+			DB: db, Cfg: cfg, Broker: broker,
+			Prometheus: promClient, Alertmgr: amClient,
+		}
+		// Prometheus proxy (viewer+)
+		viewer.GET("/monitoring/prometheus/status", monH.PrometheusStatus)
+		viewer.GET("/monitoring/prometheus/targets", monH.PrometheusTargets)
+		viewer.GET("/monitoring/prometheus/rules", monH.PrometheusRules)
+		// Raw PromQL restricted to admin (arbitrary query = privileged)
+		admin.GET("/monitoring/prometheus/query", monH.PrometheusQuery)
+		admin.GET("/monitoring/prometheus/query-range", monH.PrometheusQueryRange)
+		// High-level monitoring APIs (viewer+)
+		viewer.GET("/monitoring/overview", monH.Overview)
+		viewer.GET("/monitoring/metrics", monH.Metrics)
+		// Alertmanager proxy (viewer+)
+		viewer.GET("/monitoring/alertmanager/status", monH.AlertmanagerStatus)
+		viewer.GET("/monitoring/alerts", monH.AlertmanagerAlerts)
+		viewer.GET("/monitoring/silences", monH.ListSilences)
+		operator.POST("/monitoring/silences", monH.CreateSilence)
+		operator.DELETE("/monitoring/silences/:id", monH.DeleteSilence)
+	}
+
+	// Agent endpoints — authenticated by agent token, not user JWT.
+	agentMw := middleware.AgentAuth(db)
+	agentGrp := r.Group("/server-hub/api/agent", agentMw)
+	{
+		agentSrvH := &handlers.ServersHandler{DB: db, Broker: broker}
+		agentGrp.POST("/heartbeat", agentSrvH.Heartbeat)
+		agentGrp.POST("/metrics", agentSrvH.IngestMetrics)
 	}
 
 	// Container exec session (single-use token auth, no session cookie).
@@ -238,6 +326,13 @@ func main() {
 	// Public GitHub webhook (HMAC-signed, no session required).
 	whH := &handlers.WebhookHandler{DB: db, Cfg: cfg, Broker: broker}
 	r.POST("/server-hub/api/webhooks/github", whH.GitHub)
+
+	// Alertmanager webhook (shared-secret authenticated, no session required).
+	monWebhookH := &handlers.MonitoringHandler{
+		DB: db, Cfg: cfg, Broker: broker,
+		Prometheus: promClient, Alertmgr: amClient,
+	}
+	r.POST("/server-hub/api/webhooks/alertmanager", monWebhookH.AlertmanagerWebhook)
 
 	// Serve frontend if FRONTEND_DIR is set (e.g. /app/client/dist)
 	if frontendDir := os.Getenv("FRONTEND_DIR"); frontendDir != "" {

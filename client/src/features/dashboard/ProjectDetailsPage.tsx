@@ -4,6 +4,7 @@ import {
   Archive,
   ArrowLeft,
   Copy,
+  Download,
   Eye,
   EyeOff,
   Hash,
@@ -393,6 +394,14 @@ function DetailsBody({
                   </div>
                 </div>
                 <span className="flex items-center gap-2 flex-wrap">
+                  <a
+                    href={api.downloadBackupUrl(b.id)}
+                    download
+                    className="inline-flex items-center gap-2 rounded-input text-[13px] font-medium px-4 py-2 cursor-pointer border border-transparent whitespace-nowrap transition-colors duration-150 bg-white dark:bg-panel border-line dark:border-edge text-ink dark:text-bone hover:bg-paper dark:hover:bg-emboss px-3 py-1.5 text-xs"
+                    aria-label={`Download snapshot ${b.id}`}
+                  >
+                    <Download size={12} />
+                  </a>
                   <button
                     className="inline-flex items-center gap-2 rounded-input text-[13px] font-medium px-4 py-2 cursor-pointer border border-transparent whitespace-nowrap transition-colors duration-150 disabled:opacity-55 disabled:cursor-not-allowed bg-white dark:bg-panel border-line dark:border-edge text-ink dark:text-bone hover:bg-paper dark:hover:bg-emboss px-3 py-1.5 text-xs"
                     disabled={d.busy}
