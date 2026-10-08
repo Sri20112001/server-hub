@@ -477,13 +477,13 @@ export function DashboardPage({ setOnline }: { setOnline: (v: boolean) => void }
         </div>
         <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto">
           <button
-            className="inline-flex flex-1 sm:flex-none items-center justify-center gap-2 rounded-input text-[13px] font-medium px-4 py-2 cursor-pointer border border-transparent whitespace-nowrap transition-colors duration-150 disabled:opacity-55 disabled:cursor-not-allowed bg-white dark:bg-panel border-line dark:border-edge text-ink dark:text-bone hover:bg-paper dark:hover:bg-emboss"
+            className="inline-flex flex-1 sm:flex-none items-center justify-center gap-2 rounded-input text-[13px] font-medium px-4 py-2 cursor-pointer border whitespace-nowrap transition-colors duration-150 disabled:opacity-55 disabled:cursor-not-allowed bg-white dark:bg-panel border-line dark:border-edge text-ink dark:text-bone hover:bg-paper dark:hover:bg-emboss"
             onClick={() => void load()}
           >
             <RefreshCw size={14} /> Run Diagnostics
           </button>
           <button
-            className="inline-flex flex-1 sm:flex-none items-center justify-center gap-2 rounded-input text-[13px] font-medium px-4 py-2 cursor-pointer border border-transparent whitespace-nowrap transition-colors duration-150 disabled:opacity-55 disabled:cursor-not-allowed bg-accent dark:bg-ember text-white dark:text-black hover:bg-accent-hover dark:hover:bg-ember-hover"
+            className="inline-flex flex-1 sm:flex-none items-center justify-center gap-2 rounded-input text-[13px] font-medium px-4 py-2 cursor-pointer border border-transparent whitespace-nowrap transition-colors duration-150 disabled:opacity-55 disabled:cursor-not-allowed bg-accent dark:bg-ember text-white dark:text-black hover:bg-accent-hover dark:hover:bg-ember-hover shadow-sm"
             onClick={() => setShowCreate(true)}
           >
             <Plus size={14} /> New Dispatch
@@ -510,11 +510,11 @@ export function DashboardPage({ setOnline }: { setOnline: (v: boolean) => void }
           foot={<span>{data.counts.services} stations crewed</span>}
         >
           <div className="flex items-center gap-2 flex-wrap items-baseline mt-2">
-            <span className="font-head text-[34px] font-bold">{data.counts.projects}</span>
+            <span className="font-head text-[34px] font-bold text-ink dark:text-bone">{data.counts.projects}</span>
             <span className="text-muted dark:text-fog">ships active</span>
           </div>
           <div className="text-muted dark:text-fog text-xs mt-1.5">
-            <span className="font-mono">{docked}</span> idle in shipyard
+            <span className="font-mono text-ink dark:text-bone font-medium">{docked}</span> idle in shipyard
           </div>
         </StatShell>
 
@@ -529,12 +529,12 @@ export function DashboardPage({ setOnline }: { setOnline: (v: boolean) => void }
           }
         >
           <div className="flex items-center gap-2 flex-wrap items-baseline mt-2">
-            <span className="font-head text-[34px] font-bold">{data.counts.deployments}</span>
+            <span className="font-head text-[34px] font-bold text-ink dark:text-bone">{data.counts.deployments}</span>
             <span className="text-muted dark:text-fog">launches logged</span>
           </div>
           <div className="text-muted dark:text-fog text-xs mt-1.5">
-            <span className="font-mono">{deployStats.todayCount}</span> today ·{" "}
-            <span className="font-mono">{deployStats.rate}%</span> success rate
+            <span className="font-mono text-ink dark:text-bone font-medium">{deployStats.todayCount}</span> today ·{" "}
+            <span className="font-mono text-ink dark:text-bone font-medium">{deployStats.rate}%</span> success rate
           </div>
         </StatShell>
 
@@ -554,20 +554,20 @@ export function DashboardPage({ setOnline }: { setOnline: (v: boolean) => void }
       {/* fleet */}
       <div className="flex items-center justify-between gap-4 mt-8 mb-4">
         <div className="flex items-center gap-2 flex-wrap">
-          <h2 className="font-head text-[22px] font-bold tracking-[-0.02em]">Fleet</h2>
-          <span className="inline-flex items-center gap-1.5 font-mono text-[11px] bg-tint dark:bg-emboss border border-line dark:border-edge text-ink dark:text-bone rounded-md px-2 py-[3px] whitespace-nowrap">
+          <h2 className="font-head text-[22px] font-bold tracking-[-0.02em] text-ink dark:text-bone">Fleet</h2>
+          <span className="inline-flex items-center gap-1.5 font-mono text-[11px] bg-paper dark:bg-emboss border border-line dark:border-edge text-ink dark:text-bone rounded-md px-2 py-[3px] whitespace-nowrap">
             {data.projects.length} Active Units
           </span>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <button
-            className="inline-flex items-center gap-2 rounded-input font-medium cursor-pointer border border-transparent whitespace-nowrap transition-colors duration-150 disabled:opacity-55 disabled:cursor-not-allowed bg-white dark:bg-panel border-line dark:border-edge text-ink dark:text-bone hover:bg-paper dark:hover:bg-emboss px-3 py-1.5 text-xs"
+            className="inline-flex items-center gap-2 rounded-input font-medium cursor-pointer border whitespace-nowrap transition-colors duration-150 disabled:opacity-55 disabled:cursor-not-allowed bg-white dark:bg-panel border-line dark:border-edge text-ink dark:text-bone hover:bg-paper dark:hover:bg-emboss px-3 py-1.5 text-xs"
             onClick={() => setShowScan(true)}
           >
             <Radar size={13} /> Scan
           </button>
           <button
-            className="inline-flex items-center gap-2 rounded-input font-medium cursor-pointer border border-transparent whitespace-nowrap transition-colors duration-150 disabled:opacity-55 disabled:cursor-not-allowed bg-white dark:bg-panel border-line dark:border-edge text-ink dark:text-bone hover:bg-paper dark:hover:bg-emboss px-3 py-1.5 text-xs"
+            className="inline-flex items-center gap-2 rounded-input font-medium cursor-pointer border whitespace-nowrap transition-colors duration-150 disabled:opacity-55 disabled:cursor-not-allowed bg-white dark:bg-panel border-line dark:border-edge text-ink dark:text-bone hover:bg-paper dark:hover:bg-emboss px-3 py-1.5 text-xs"
             onClick={() => setShowCreate(true)}
           >
             <Plus size={13} /> New Ship
@@ -595,7 +595,7 @@ export function DashboardPage({ setOnline }: { setOnline: (v: boolean) => void }
           {data.projects.length > FLEET_PREVIEW_LIMIT && (
             <div className="flex justify-center mt-5">
               <button
-                className="inline-flex items-center gap-2 rounded-input font-medium cursor-pointer border whitespace-nowrap transition-colors duration-150 bg-white dark:bg-panel border-line dark:border-edge text-ink dark:text-bone hover:bg-paper dark:hover:bg-emboss px-4 py-2 text-[13px]"
+                className="inline-flex items-center gap-2 rounded-input font-medium cursor-pointer border whitespace-nowrap transition-colors duration-150 bg-white dark:bg-panel border-line dark:border-edge text-ink dark:text-bone hover:bg-paper dark:hover:bg-emboss px-4 py-2 text-[13px] shadow-sm"
                 onClick={() => nav("/fleet")}
               >
                 View all {data.projects.length} ships <ArrowRight size={14} />
@@ -609,53 +609,53 @@ export function DashboardPage({ setOnline }: { setOnline: (v: boolean) => void }
       <div className="flex items-center justify-between gap-4 mt-8 mb-4">
         <div>
           <Kicker>Deployment activity</Kicker>
-          <h2 className="font-head text-[22px] font-bold tracking-[-0.02em] mt-1">Recent launches</h2>
+          <h2 className="font-head text-[22px] font-bold tracking-[-0.02em] mt-1 text-ink dark:text-bone">Recent launches</h2>
         </div>
       </div>
-      <div className="bg-white dark:bg-panel border border-line dark:border-edge rounded-card p-0 overflow-hidden">
+      <div className="bg-white dark:bg-panel border border-line dark:border-edge rounded-card p-0 overflow-hidden shadow-sm">
         <div className="overflow-x-auto -mx-px">
           <table className="w-full min-w-[560px] md:min-w-0 border-collapse text-[13px]">
             <thead>
-              <tr>
-                <th className="text-left text-[11px] font-semibold tracking-[0.08em] uppercase text-muted dark:text-fog px-4 py-2.5 bg-paper dark:bg-abyss first:rounded-l-[10px] last:rounded-r-[10px] last:text-right">Commit SHA</th>
-                <th className="text-left text-[11px] font-semibold tracking-[0.08em] uppercase text-muted dark:text-fog px-4 py-2.5 bg-paper dark:bg-abyss first:rounded-l-[10px] last:rounded-r-[10px] last:text-right">Target / Vessel</th>
-                <th className="hidden md:table-cell text-left text-[11px] font-semibold tracking-[0.08em] uppercase text-muted dark:text-fog px-4 py-2.5 bg-paper dark:bg-abyss first:rounded-l-[10px] last:rounded-r-[10px] last:text-right">Branch</th>
-                <th className="hidden md:table-cell text-left text-[11px] font-semibold tracking-[0.08em] uppercase text-muted dark:text-fog px-4 py-2.5 bg-paper dark:bg-abyss first:rounded-l-[10px] last:rounded-r-[10px] last:text-right">Duration</th>
-                <th className="text-left text-[11px] font-semibold tracking-[0.08em] uppercase text-muted dark:text-fog px-4 py-2.5 bg-paper dark:bg-abyss first:rounded-l-[10px] last:rounded-r-[10px] last:text-right">Timestamp</th>
-                <th className="text-left text-[11px] font-semibold tracking-[0.08em] uppercase text-muted dark:text-fog px-4 py-2.5 bg-paper dark:bg-abyss first:rounded-l-[10px] last:rounded-r-[10px] last:text-right">Status</th>
+              <tr className="border-b border-line dark:border-edge">
+                <th className="text-left text-[11px] font-semibold tracking-[0.08em] uppercase text-muted dark:text-fog px-4 py-2.5 bg-paper dark:bg-abyss">Commit SHA</th>
+                <th className="text-left text-[11px] font-semibold tracking-[0.08em] uppercase text-muted dark:text-fog px-4 py-2.5 bg-paper dark:bg-abyss">Target / Vessel</th>
+                <th className="hidden md:table-cell text-left text-[11px] font-semibold tracking-[0.08em] uppercase text-muted dark:text-fog px-4 py-2.5 bg-paper dark:bg-abyss">Branch</th>
+                <th className="hidden md:table-cell text-left text-[11px] font-semibold tracking-[0.08em] uppercase text-muted dark:text-fog px-4 py-2.5 bg-paper dark:bg-abyss">Duration</th>
+                <th className="text-left text-[11px] font-semibold tracking-[0.08em] uppercase text-muted dark:text-fog px-4 py-2.5 bg-paper dark:bg-abyss">Timestamp</th>
+                <th className="text-left text-[11px] font-semibold tracking-[0.08em] uppercase text-muted dark:text-fog px-4 py-2.5 bg-paper dark:bg-abyss">Status</th>
               </tr>
             </thead>
             <tbody>
               {data.recentDeployments.length === 0 && (
                 <tr className="group">
-                  <td colSpan={6} className="px-4 py-3 border-t border-line dark:border-edge align-middle text-center text-muted dark:text-fog">
+                  <td colSpan={6} className="px-4 py-6 border-t border-line dark:border-edge align-middle text-center text-muted dark:text-fog">
                     No launches recorded yet.
                   </td>
                 </tr>
               )}
               {data.recentDeployments.map((d) => (
-                <tr key={d.id} className="group">
-                  <td className="px-4 py-3 border-t border-line dark:border-edge align-middle last:text-right group-hover:bg-paper dark:group-hover:bg-emboss">
-                    <span className="inline-flex items-center gap-1.5 font-mono text-[11px] bg-tint dark:bg-emboss border border-line dark:border-edge text-ink dark:text-bone rounded-md px-2 py-[3px] whitespace-nowrap">
+                <tr key={d.id} className="group hover:bg-paper/60 dark:hover:bg-emboss/40 transition-colors">
+                  <td className="px-4 py-3 border-t border-line dark:border-edge align-middle">
+                    <span className="inline-flex items-center gap-1.5 font-mono text-[11px] bg-paper dark:bg-emboss border border-line dark:border-edge text-ink dark:text-bone rounded-md px-2 py-[3px] whitespace-nowrap">
                       <Hash size={11} /> {shortSha(d.commitSha)}
                     </span>
                   </td>
-                  <td className="px-4 py-3 border-t border-line dark:border-edge align-middle last:text-right group-hover:bg-paper dark:group-hover:bg-emboss">
-                    <div className="font-medium">{projectById.get(d.projectId)?.name ?? `#${d.projectId}`}</div>
+                  <td className="px-4 py-3 border-t border-line dark:border-edge align-middle">
+                    <div className="font-medium text-ink dark:text-bone">{projectById.get(d.projectId)?.name ?? `#${d.projectId}`}</div>
                     <div className="font-mono text-muted dark:text-fog text-xs">{d.trigger ?? ""}</div>
                   </td>
-                  <td className="hidden md:table-cell px-4 py-3 border-t border-line dark:border-edge align-middle last:text-right group-hover:bg-paper dark:group-hover:bg-emboss">
-                    <span className="inline-flex items-center gap-1.5 font-mono text-[11px] bg-tint dark:bg-emboss border border-line dark:border-edge text-ink dark:text-bone rounded-md px-2 py-[3px] whitespace-nowrap">
+                  <td className="hidden md:table-cell px-4 py-3 border-t border-line dark:border-edge align-middle">
+                    <span className="inline-flex items-center gap-1.5 font-mono text-[11px] bg-paper dark:bg-emboss border border-line dark:border-edge text-ink dark:text-bone rounded-md px-2 py-[3px] whitespace-nowrap">
                       <GitBranch size={11} /> {d.branch || "—"}
                     </span>
                   </td>
-                  <td className="hidden md:table-cell px-4 py-3 border-t border-line dark:border-edge align-middle last:text-right group-hover:bg-paper dark:group-hover:bg-emboss font-mono">
+                  <td className="hidden md:table-cell px-4 py-3 border-t border-line dark:border-edge align-middle font-mono text-muted dark:text-fog">
                     {fmtDuration(d.durationSec)}
                   </td>
-                  <td className="px-4 py-3 border-t border-line dark:border-edge align-middle last:text-right group-hover:bg-paper dark:group-hover:bg-emboss">
+                  <td className="px-4 py-3 border-t border-line dark:border-edge align-middle text-muted dark:text-fog font-mono text-xs">
                     {timeAgo(d.startedAt)}
                   </td>
-                  <td className="px-4 py-3 border-t border-line dark:border-edge align-middle last:text-right group-hover:bg-paper dark:group-hover:bg-emboss">
+                  <td className="px-4 py-3 border-t border-line dark:border-edge align-middle">
                     <StatusPill status={d.status} />
                   </td>
                 </tr>
@@ -663,12 +663,12 @@ export function DashboardPage({ setOnline }: { setOnline: (v: boolean) => void }
             </tbody>
           </table>
         </div>
-        <div className="flex flex-col sm:flex-row sm:items-center gap-2 flex-wrap justify-between px-4 py-[0.7rem] border-t border-line dark:border-edge text-muted dark:text-fog text-xs">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2 flex-wrap justify-between px-4 py-3 border-t border-line dark:border-edge text-muted dark:text-fog text-xs bg-paper/30 dark:bg-abyss/30">
           <span>
             Showing {data.recentDeployments.length} of {data.counts.deployments} launches logged
           </span>
           <button
-            className="inline-flex items-center gap-2 rounded-input font-medium cursor-pointer border border-transparent whitespace-nowrap transition-colors duration-150 disabled:opacity-55 disabled:cursor-not-allowed bg-white dark:bg-panel border-line dark:border-edge text-ink dark:text-bone hover:bg-paper dark:hover:bg-emboss px-3 py-1.5 text-xs"
+            className="inline-flex items-center gap-2 rounded-input font-medium cursor-pointer border whitespace-nowrap transition-colors duration-150 disabled:opacity-55 disabled:cursor-not-allowed bg-white dark:bg-panel border-line dark:border-edge text-ink dark:text-bone hover:bg-paper dark:hover:bg-emboss px-3 py-1.5 text-xs"
             onClick={() => setConfirmWipe(true)}
             title="Wipe deployment history"
           >
@@ -681,16 +681,16 @@ export function DashboardPage({ setOnline }: { setOnline: (v: boolean) => void }
       <div className="mt-8">
         <div className="flex items-center justify-between gap-4 mb-3">
           <div className="flex items-center gap-2 flex-wrap">
-            <h2 className="font-head text-[18px] font-bold tracking-[-0.02em]">Sub-orbital Feed</h2>
-            <span className="inline-flex items-center gap-1.5 font-mono text-[11px] bg-tint dark:bg-emboss border border-line dark:border-edge text-ink dark:text-bone rounded-md px-2 py-[3px] whitespace-nowrap">
+            <h2 className="font-head text-[18px] font-bold tracking-[-0.02em] text-ink dark:text-bone">Sub-orbital Feed</h2>
+            <span className="inline-flex items-center gap-1.5 font-mono text-[11px] bg-paper dark:bg-emboss border border-line dark:border-edge text-ink dark:text-bone rounded-md px-2 py-[3px] whitespace-nowrap">
               LIVE TTY
             </span>
           </div>
-          <span className="inline-flex items-center gap-1.5 font-mono text-[11px] bg-tint dark:bg-emboss border border-line dark:border-edge text-ink dark:text-bone rounded-md px-2 py-[3px] whitespace-nowrap">
+          <span className="inline-flex items-center gap-1.5 font-mono text-[11px] bg-paper dark:bg-emboss border border-line dark:border-edge text-muted dark:text-fog rounded-md px-2 py-[3px] whitespace-nowrap">
             AUDIT BUS
           </span>
         </div>
-        <div className="font-mono text-xs leading-[1.7] bg-paper dark:bg-abyss border border-line dark:border-edge rounded-xl px-5 py-4 overflow-x-auto whitespace-pre-wrap break-words">
+        <div className="font-mono text-xs leading-[1.7] bg-paper dark:bg-abyss border border-line dark:border-edge rounded-xl px-5 py-4 overflow-x-auto whitespace-pre-wrap break-words text-ink dark:text-bone shadow-inner">
           {feed.length === 0 ? (
             <span className="text-muted dark:text-fog">— silence on the bus —</span>
           ) : (
@@ -768,7 +768,7 @@ export function ShipCard({
   const f = toFleetStatus(project.status);
   return (
     <div
-      className="bg-white dark:bg-panel border border-line dark:border-edge rounded-card p-5 transition-colors duration-150 cursor-pointer hover:border-accent dark:hover:border-ember"
+      className="bg-white dark:bg-panel border border-line dark:border-edge rounded-card p-5 transition-all duration-150 cursor-pointer hover:border-accent dark:hover:border-ember shadow-sm hover:shadow-chrome"
       onClick={onOpen}
     >
       <div className="flex items-center justify-between gap-4">
@@ -780,19 +780,19 @@ export function ShipCard({
               onChange={selection.onToggle}
               onClick={(e) => e.stopPropagation()}
               aria-label={`Select ${project.name}`}
-              className="w-4 h-4 accent-current cursor-pointer"
+              className="w-4 h-4 accent-accent dark:accent-ember cursor-pointer rounded"
             />
           )}
           <span className={`w-2 h-2 rounded-full ${DOT_TONE[f]}`} />
-          <span className="font-head font-bold text-[17px]">{project.name}</span>
+          <span className="font-head font-bold text-[17px] text-ink dark:text-bone">{project.name}</span>
         </div>
         {project.environment && (
-          <span className="inline-flex items-center gap-1.5 font-mono text-[11px] bg-tint dark:bg-emboss border border-line dark:border-edge text-ink dark:text-bone rounded-md px-2 py-[3px] whitespace-nowrap">
+          <span className="inline-flex items-center gap-1.5 font-mono text-[11px] bg-paper dark:bg-emboss border border-line dark:border-edge text-ink dark:text-bone rounded-md px-2 py-[3px] whitespace-nowrap">
             v·{project.environment}
           </span>
         )}
       </div>
-      <div className="font-mono text-muted dark:text-fog text-[11px] mt-1">
+      <div className="font-mono text-muted dark:text-fog text-[11px] mt-1 truncate">
         ~/{project.repository || project.name}
       </div>
       <div className="flex items-center gap-2 flex-wrap mt-2.5">
@@ -800,14 +800,14 @@ export function ShipCard({
         {services.slice(0, 4).map((s) => (
           <span
             key={s.id}
-            className="inline-flex items-center gap-1.5 font-mono text-[11px] bg-tint dark:bg-emboss border border-line dark:border-edge text-ink dark:text-bone rounded-md px-2 py-[3px] whitespace-nowrap"
+            className="inline-flex items-center gap-1.5 font-mono text-[11px] bg-paper dark:bg-emboss border border-line dark:border-edge text-ink dark:text-bone rounded-md px-2 py-[3px] whitespace-nowrap"
           >
             <span className={`w-1.5 h-1.5 rounded-full ${DOT_TONE[toFleetStatus(s.status)]}`} />
             {s.name}
           </span>
         ))}
         {services.length > 4 && (
-          <span className="inline-flex items-center gap-1.5 font-mono text-[11px] bg-tint dark:bg-emboss border border-line dark:border-edge text-ink dark:text-bone rounded-md px-2 py-[3px] whitespace-nowrap">
+          <span className="inline-flex items-center gap-1.5 font-mono text-[11px] bg-paper dark:bg-emboss border border-line dark:border-edge text-ink dark:text-bone rounded-md px-2 py-[3px] whitespace-nowrap">
             +{services.length - 4}
           </span>
         )}
@@ -816,17 +816,17 @@ export function ShipCard({
         <div className="flex items-center gap-4 flex-wrap">
           <div>
             <Kicker>Stations</Kicker>
-            <div className="font-mono text-[13px]">{services.length}</div>
+            <div className="font-mono text-[13px] text-ink dark:text-bone font-medium">{services.length}</div>
           </div>
           <div>
             <Kicker>Last launch</Kicker>
-            <div className="font-mono text-[13px]">
+            <div className="font-mono text-[13px] text-ink dark:text-bone font-medium">
               {last ? `${timeAgo(last.startedAt)}` : "—"}
             </div>
           </div>
         </div>
         {last?.commitSha && (
-          <span className="inline-flex items-center gap-1.5 font-mono text-[11px] bg-tint dark:bg-emboss border border-line dark:border-edge text-ink dark:text-bone rounded-md px-2 py-[3px] whitespace-nowrap">
+          <span className="inline-flex items-center gap-1.5 font-mono text-[11px] bg-white dark:bg-panel border border-line dark:border-edge text-ink dark:text-bone rounded-md px-2 py-[3px] whitespace-nowrap shadow-sm">
             <Hash size={11} /> {shortSha(last.commitSha)}
           </span>
         )}

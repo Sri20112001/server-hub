@@ -123,46 +123,46 @@ function DetailsBody({
       </div>
 
       {/* helm */}
-      <div className="bg-white dark:bg-panel border border-line dark:border-edge rounded-card p-4 sm:p-5 mt-5">
+      <div className="bg-white dark:bg-panel border border-line dark:border-edge rounded-card p-4 sm:p-5 mt-5 shadow-sm">
         <Kicker>Helm</Kicker>
         <div className="grid grid-cols-2 gap-2 mt-2.5 sm:flex sm:items-center sm:flex-wrap">
           <button
-            className="inline-flex items-center gap-2 rounded-input text-[13px] font-medium px-4 py-2 cursor-pointer border border-transparent whitespace-nowrap transition-colors duration-150 disabled:opacity-55 disabled:cursor-not-allowed bg-accent dark:bg-ember text-white dark:text-black hover:bg-accent-hover dark:hover:bg-ember-hover px-3 py-1.5 text-xs"
+            className="inline-flex items-center gap-2 rounded-input text-xs font-medium px-3.5 py-2 cursor-pointer border border-transparent whitespace-nowrap transition-colors duration-150 disabled:opacity-55 disabled:cursor-not-allowed bg-accent dark:bg-ember text-white dark:text-black hover:bg-accent-hover dark:hover:bg-ember-hover shadow-sm"
             disabled={d.busy}
             onClick={() => void d.shipIt()}
           >
             <Rocket size={13} /> Ship it
           </button>
-          <button className="inline-flex items-center gap-2 rounded-input text-[13px] font-medium px-4 py-2 cursor-pointer border border-transparent whitespace-nowrap transition-colors duration-150 disabled:opacity-55 disabled:cursor-not-allowed bg-white dark:bg-panel border-line dark:border-edge text-ink dark:text-bone hover:bg-paper dark:hover:bg-emboss px-3 py-1.5 text-xs" disabled={d.busy} onClick={() => void d.runLifecycle("start")}>
-            <Play size={13} /> Wake up
+          <button className="inline-flex items-center gap-2 rounded-input text-xs font-medium px-3.5 py-2 cursor-pointer border whitespace-nowrap transition-colors duration-150 disabled:opacity-55 disabled:cursor-not-allowed bg-white dark:bg-panel border-line dark:border-edge text-ink dark:text-bone hover:bg-paper dark:hover:bg-emboss shadow-sm" disabled={d.busy} onClick={() => void d.runLifecycle("start")}>
+            <Play size={13} className="text-moss" /> Wake up
           </button>
-          <button className="inline-flex items-center gap-2 rounded-input text-[13px] font-medium px-4 py-2 cursor-pointer border border-transparent whitespace-nowrap transition-colors duration-150 disabled:opacity-55 disabled:cursor-not-allowed bg-white dark:bg-panel border-line dark:border-edge text-ink dark:text-bone hover:bg-paper dark:hover:bg-emboss px-3 py-1.5 text-xs" disabled={d.busy} onClick={() => d.setPending("stop")}>
-            <Power size={13} /> Nap
+          <button className="inline-flex items-center gap-2 rounded-input text-xs font-medium px-3.5 py-2 cursor-pointer border whitespace-nowrap transition-colors duration-150 disabled:opacity-55 disabled:cursor-not-allowed bg-white dark:bg-panel border-line dark:border-edge text-ink dark:text-bone hover:bg-paper dark:hover:bg-emboss shadow-sm" disabled={d.busy} onClick={() => d.setPending("stop")}>
+            <Power size={13} className="text-brick" /> Nap
           </button>
-          <button className="inline-flex items-center gap-2 rounded-input text-[13px] font-medium px-4 py-2 cursor-pointer border border-transparent whitespace-nowrap transition-colors duration-150 disabled:opacity-55 disabled:cursor-not-allowed bg-white dark:bg-panel border-line dark:border-edge text-ink dark:text-bone hover:bg-paper dark:hover:bg-emboss px-3 py-1.5 text-xs" disabled={d.busy} onClick={() => d.setPending("restart")}>
-            <RotateCcw size={13} /> Fresh start
+          <button className="inline-flex items-center gap-2 rounded-input text-xs font-medium px-3.5 py-2 cursor-pointer border whitespace-nowrap transition-colors duration-150 disabled:opacity-55 disabled:cursor-not-allowed bg-white dark:bg-panel border-line dark:border-edge text-ink dark:text-bone hover:bg-paper dark:hover:bg-emboss shadow-sm" disabled={d.busy} onClick={() => d.setPending("restart")}>
+            <RotateCcw size={13} className="text-status-amber" /> Fresh start
           </button>
-          <button className="inline-flex items-center gap-2 rounded-input text-[13px] font-medium px-4 py-2 cursor-pointer border border-transparent whitespace-nowrap transition-colors duration-150 disabled:opacity-55 disabled:cursor-not-allowed bg-white dark:bg-panel border-line dark:border-edge text-ink dark:text-bone hover:bg-paper dark:hover:bg-emboss px-3 py-1.5 text-xs" disabled={d.busy || d.services.filter((s) => s.containerName).length === 0} onClick={() => d.setShowTerminal(true)} title="Open an interactive shell in a station container">
+          <button className="inline-flex items-center gap-2 rounded-input text-xs font-medium px-3.5 py-2 cursor-pointer border whitespace-nowrap transition-colors duration-150 disabled:opacity-55 disabled:cursor-not-allowed bg-white dark:bg-panel border-line dark:border-edge text-ink dark:text-bone hover:bg-paper dark:hover:bg-emboss shadow-sm" disabled={d.busy || d.services.filter((s) => s.containerName).length === 0} onClick={() => d.setShowTerminal(true)} title="Open an interactive shell in a station container">
             <Terminal size={13} /> Terminal
           </button>
         </div>
       </div>
 
       {/* facts */}
-      <div className="bg-white dark:bg-panel border border-line dark:border-edge rounded-card p-5 mt-4">
+      <div className="bg-white dark:bg-panel border border-line dark:border-edge rounded-card p-5 mt-4 shadow-sm">
         <Kicker>Rigging</Kicker>
-        <div className="mt-2.5 flex flex-col gap-4">
+        <div className="mt-2.5 flex flex-col gap-3 divide-y divide-line dark:divide-edge">
           {facts.map(([k, v]) => (
-            <div key={k} className="flex items-center justify-between gap-4 text-[13px]">
+            <div key={k} className="flex items-center justify-between gap-4 text-[13px] pt-2.5 first:pt-0">
               <span className="text-muted dark:text-fog">{k}</span>
-              <span className="font-mono text-right max-w-[60%] overflow-hidden text-ellipsis" title={v}>
+              <span className="font-mono text-ink dark:text-bone text-right max-w-[60%] overflow-hidden text-ellipsis truncate" title={v}>
                 {v}
               </span>
             </div>
           ))}
-          <div className="flex items-center justify-between gap-4 text-[13px]">
+          <div className="flex items-center justify-between gap-4 text-[13px] pt-2.5">
             <span className="text-muted dark:text-fog">Auto-deploy</span>
-            <span className="inline-flex items-center gap-1.5 h-6 px-2.5 rounded-full font-mono text-[11px] bg-paper dark:bg-abyss text-ink dark:text-bone whitespace-nowrap border-0">
+            <span className="inline-flex items-center gap-1.5 h-6 px-2.5 rounded-full font-mono text-[11px] bg-paper dark:bg-emboss text-ink dark:text-bone whitespace-nowrap border border-line dark:border-edge">
               {project.autoDeploy ? "ON — webhook steers" : "OFF — manual helm"}
             </span>
           </div>
@@ -170,7 +170,7 @@ function DetailsBody({
       </div>
 
       {/* stations */}
-      <div className="bg-white dark:bg-panel border border-line dark:border-edge rounded-card p-4 sm:p-5 mt-4">
+      <div className="bg-white dark:bg-panel border border-line dark:border-edge rounded-card p-4 sm:p-5 mt-4 shadow-sm">
         <Kicker>Stations · {d.services.length}</Kicker>
         <div className="mt-2.5">
           {d.services.length === 0 ? (
@@ -179,25 +179,25 @@ function DetailsBody({
             <div className="overflow-x-auto -mx-1 px-1">
             <table className="w-full min-w-[420px] sm:min-w-0 border-collapse text-[13px]">
               <thead>
-                <tr>
-                  <th className="text-left text-[11px] font-semibold tracking-[0.08em] uppercase text-muted dark:text-fog px-4 py-2.5 bg-paper dark:bg-abyss first:rounded-l-[10px] last:rounded-r-[10px] last:text-right">Station</th>
-                  <th className="text-left text-[11px] font-semibold tracking-[0.08em] uppercase text-muted dark:text-fog px-4 py-2.5 bg-paper dark:bg-abyss first:rounded-l-[10px] last:rounded-r-[10px] last:text-right">Type</th>
-                  <th className="text-left text-[11px] font-semibold tracking-[0.08em] uppercase text-muted dark:text-fog px-4 py-2.5 bg-paper dark:bg-abyss first:rounded-l-[10px] last:rounded-r-[10px] last:text-right">Status</th>
+                <tr className="border-b border-line dark:border-edge">
+                  <th className="text-left text-[11px] font-semibold tracking-[0.08em] uppercase text-muted dark:text-fog px-4 py-2.5 bg-paper dark:bg-abyss">Station</th>
+                  <th className="text-left text-[11px] font-semibold tracking-[0.08em] uppercase text-muted dark:text-fog px-4 py-2.5 bg-paper dark:bg-abyss">Type</th>
+                  <th className="text-left text-[11px] font-semibold tracking-[0.08em] uppercase text-muted dark:text-fog px-4 py-2.5 bg-paper dark:bg-abyss">Status</th>
                 </tr>
               </thead>
               <tbody>
                 {d.services.map((s) => (
-                  <tr key={s.id} className="group">
-                    <td className="px-4 py-3 border-t border-line dark:border-edge align-middle last:text-right group-hover:bg-paper dark:group-hover:bg-emboss">
-                      <div className="font-mono">{s.name}</div>
+                  <tr key={s.id} className="group hover:bg-paper/60 dark:hover:bg-emboss/40 transition-colors">
+                    <td className="px-4 py-3 border-t border-line dark:border-edge align-middle">
+                      <div className="font-mono text-ink dark:text-bone">{s.name}</div>
                       {s.containerName && <div className="font-mono text-muted dark:text-fog text-xs">{s.containerName}</div>}
                     </td>
-                    <td className="px-4 py-3 border-t border-line dark:border-edge align-middle last:text-right group-hover:bg-paper dark:group-hover:bg-emboss">
-                      <span className="inline-flex items-center gap-1.5 font-mono text-[11px] bg-tint dark:bg-emboss border border-line dark:border-edge text-ink dark:text-bone rounded-md px-2 py-[3px] whitespace-nowrap">
+                    <td className="px-4 py-3 border-t border-line dark:border-edge align-middle">
+                      <span className="inline-flex items-center gap-1.5 font-mono text-[11px] bg-paper dark:bg-emboss border border-line dark:border-edge text-ink dark:text-bone rounded-md px-2 py-[3px] whitespace-nowrap">
                         {s.type}
                       </span>
                     </td>
-                    <td className="px-4 py-3 border-t border-line dark:border-edge align-middle last:text-right group-hover:bg-paper dark:group-hover:bg-emboss">
+                    <td className="px-4 py-3 border-t border-line dark:border-edge align-middle">
                       <StatusPill status={s.status} />
                     </td>
                   </tr>
@@ -210,7 +210,7 @@ function DetailsBody({
       </div>
 
       {/* live logs */}
-      <div className="bg-white dark:bg-panel border border-line dark:border-edge rounded-card p-4 sm:p-5 mt-4">
+      <div className="bg-white dark:bg-panel border border-line dark:border-edge rounded-card p-4 sm:p-5 mt-4 shadow-sm">
         <div className="flex items-center gap-2 flex-wrap mb-2.5">
           <ScrollText size={15} />
           <Kicker>Live logs</Kicker>
@@ -236,7 +236,7 @@ function DetailsBody({
                       aria-pressed={active}
                       className={`font-mono text-[11px] px-2.5 py-1.5 rounded-md border cursor-pointer transition-colors duration-150 ${
                         active
-                          ? "bg-tint dark:bg-emboss border-line dark:border-edge text-ink dark:text-bone"
+                          ? "bg-paper dark:bg-emboss border-line dark:border-edge text-ink dark:text-bone"
                           : "bg-transparent border-transparent text-muted dark:text-fog hover:text-ink dark:hover:text-bone"
                       }`}
                     >
@@ -257,13 +257,13 @@ function DetailsBody({
       </div>
 
       {/* launches */}
-      <div className="bg-white dark:bg-panel border border-line dark:border-edge rounded-card p-4 sm:p-5 mt-4">
+      <div className="bg-white dark:bg-panel border border-line dark:border-edge rounded-card p-4 sm:p-5 mt-4 shadow-sm">
         <Kicker>Launch log · {d.deployments.length}</Kicker>
         <div className="mt-2.5 flex flex-col gap-3">
           {d.deployments.length === 0 && <EmptyState title="No launches yet" />}
           {d.deployments.map((dep) => (
             <div key={dep.id} className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between text-[13px] bg-paper dark:bg-abyss sm:bg-transparent sm:dark:bg-transparent border border-line dark:border-edge sm:border-0 rounded-xl sm:rounded-none px-3 py-2.5 sm:p-0">
-              <span className="inline-flex items-center gap-1.5 font-mono text-[11px] bg-tint dark:bg-emboss border border-line dark:border-edge text-ink dark:text-bone rounded-md px-2 py-[3px] whitespace-nowrap self-start">
+              <span className="inline-flex items-center gap-1.5 font-mono text-[11px] bg-paper dark:bg-emboss border border-line dark:border-edge text-ink dark:text-bone rounded-md px-2 py-[3px] whitespace-nowrap self-start">
                 <Hash size={11} /> {shortSha(dep.commitSha)}
               </span>
               <span className="flex items-center gap-3 flex-wrap font-mono text-muted dark:text-fog text-xs">
@@ -273,12 +273,12 @@ function DetailsBody({
               <span className="flex items-center gap-2">
               <StatusPill status={dep.status} />
               <button
-                className="inline-flex items-center gap-2 rounded-input text-[13px] font-medium px-4 py-2 cursor-pointer border border-transparent whitespace-nowrap transition-colors duration-150 disabled:opacity-55 disabled:cursor-not-allowed bg-white dark:bg-panel border-line dark:border-edge text-ink dark:text-bone hover:bg-paper dark:hover:bg-emboss px-3 py-1.5 text-xs"
+                className="inline-flex items-center gap-2 rounded-input text-xs font-medium px-3 py-1.5 cursor-pointer border whitespace-nowrap transition-colors duration-150 disabled:opacity-55 disabled:cursor-not-allowed bg-white dark:bg-panel border-line dark:border-edge text-ink dark:text-bone hover:bg-paper dark:hover:bg-emboss shadow-sm"
                 title={`Roll back to ${shortSha(dep.commitSha)}`}
                 disabled={d.busy}
                 onClick={() => d.setPendingRollback(dep)}
               >
-                <History size={12} />
+                <History size={12} /> Rollback
               </button>
               </span>
             </div>
@@ -287,23 +287,23 @@ function DetailsBody({
       </div>
 
       {/* vault */}
-      <div className="bg-white dark:bg-panel border border-line dark:border-edge rounded-card p-4 sm:p-5 mt-4">
+      <div className="bg-white dark:bg-panel border border-line dark:border-edge rounded-card p-4 sm:p-5 mt-4 shadow-sm">
         <Kicker>Vault · {d.secrets.length} sealed</Kicker>
         <div className="mt-2.5 flex flex-col gap-3">
           {d.secrets.map((s) => (
-            <div key={s.id} className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between text-[13px]">
-              <span className="font-mono break-all">{s.name}</span>
+            <div key={s.id} className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between text-[13px] py-1 border-b border-line dark:border-edge last:border-0">
+              <span className="font-mono text-ink dark:text-bone break-all">{s.name}</span>
               <span className="flex items-center gap-2 flex-wrap">
-                <span className="inline-flex items-center gap-1.5 font-mono text-[11px] bg-tint dark:bg-emboss border border-line dark:border-edge text-ink dark:text-bone rounded-md px-2 py-[3px] whitespace-nowrap">
+                <span className="inline-flex items-center gap-1.5 font-mono text-[11px] bg-paper dark:bg-emboss border border-line dark:border-edge text-ink dark:text-bone rounded-md px-2 py-[3px] whitespace-nowrap">
                   {s.environment}
                 </span>
                 {d.revealed[s.id] ? (
                   <span className="flex items-center gap-2 flex-wrap">
-                    <code className="font-mono text-[11px] bg-paper dark:bg-abyss px-1.5 py-[2px] rounded-md">
+                    <code className="font-mono text-[11px] bg-paper dark:bg-abyss px-1.5 py-[2px] rounded-md text-ink dark:text-bone border border-line dark:border-edge">
                       {d.revealed[s.id].slice(0, 24)}{d.revealed[s.id].length > 24 ? "…" : ""}
                     </code>
                     <button
-                      className="inline-flex items-center gap-2 rounded-input text-[13px] font-medium px-4 py-2 cursor-pointer border border-transparent whitespace-nowrap transition-colors duration-150 disabled:opacity-55 disabled:cursor-not-allowed bg-white dark:bg-panel border-line dark:border-edge text-ink dark:text-bone hover:bg-paper dark:hover:bg-emboss px-3 py-1.5 text-xs"
+                      className="inline-flex items-center gap-1.5 rounded-input font-medium px-2.5 py-1 cursor-pointer border whitespace-nowrap transition-colors duration-150 disabled:opacity-55 disabled:cursor-not-allowed bg-white dark:bg-panel border-line dark:border-edge text-ink dark:text-bone hover:bg-paper dark:hover:bg-emboss text-xs shadow-sm"
                       title="Copy"
                       onClick={() => {
                         void navigator.clipboard.writeText(d.revealed[s.id]);
@@ -312,12 +312,12 @@ function DetailsBody({
                     >
                       <Copy size={12} />
                     </button>
-                    <button className="inline-flex items-center gap-2 rounded-input text-[13px] font-medium px-4 py-2 cursor-pointer border border-transparent whitespace-nowrap transition-colors duration-150 disabled:opacity-55 disabled:cursor-not-allowed bg-white dark:bg-panel border-line dark:border-edge text-ink dark:text-bone hover:bg-paper dark:hover:bg-emboss px-3 py-1.5 text-xs" onClick={() => void d.peek(s.id)} aria-label="Hide">
+                    <button className="inline-flex items-center gap-1.5 rounded-input font-medium px-2.5 py-1 cursor-pointer border whitespace-nowrap transition-colors duration-150 disabled:opacity-55 disabled:cursor-not-allowed bg-white dark:bg-panel border-line dark:border-edge text-ink dark:text-bone hover:bg-paper dark:hover:bg-emboss text-xs shadow-sm" onClick={() => void d.peek(s.id)} aria-label="Hide">
                       <EyeOff size={12} />
                     </button>
                   </span>
                 ) : (
-                  <button className="inline-flex items-center gap-2 rounded-input text-[13px] font-medium px-4 py-2 cursor-pointer border border-transparent whitespace-nowrap transition-colors duration-150 disabled:opacity-55 disabled:cursor-not-allowed bg-white dark:bg-panel border-line dark:border-edge text-ink dark:text-bone hover:bg-paper dark:hover:bg-emboss px-3 py-1.5 text-xs" onClick={() => void d.peek(s.id)}>
+                  <button className="inline-flex items-center gap-1.5 rounded-input font-medium px-2.5 py-1 cursor-pointer border whitespace-nowrap transition-colors duration-150 disabled:opacity-55 disabled:cursor-not-allowed bg-white dark:bg-panel border-line dark:border-edge text-ink dark:text-bone hover:bg-paper dark:hover:bg-emboss text-xs shadow-sm" onClick={() => void d.peek(s.id)}>
                     <Eye size={12} /> Peek
                   </button>
                 )}
@@ -325,11 +325,11 @@ function DetailsBody({
             </div>
           ))}
           {d.secrets.length === 0 && <EmptyState title="Vault is empty" hint="Seal your first secret below." />}
-          <form onSubmit={(e) => void d.addSecret(e)}>
+          <form onSubmit={(e) => void d.addSecret(e)} className="mt-2 pt-3 border-t border-line dark:border-edge">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Field label="Name">
                 <input
-                  className="w-full bg-white dark:bg-panel border border-line dark:border-edge rounded-input font-body text-[13px] text-ink dark:text-bone px-3 py-2.5 outline-none focus:border-accent dark:focus:border-ember placeholder:text-stone dark:placeholder:text-fog font-mono"
+                  className="w-full bg-paper dark:bg-emboss border border-line dark:border-edge rounded-input font-body text-[13px] text-ink dark:text-bone px-3 py-2 outline-none focus:border-accent dark:focus:border-ember placeholder:text-muted dark:placeholder:text-fog font-mono"
                   value={d.newName}
                   onChange={(e) => d.setNewName(e.target.value)}
                   placeholder="JWT_SECRET"
@@ -337,7 +337,7 @@ function DetailsBody({
               </Field>
               <Field label="Value">
                 <input
-                  className="w-full bg-white dark:bg-panel border border-line dark:border-edge rounded-input font-body text-[13px] text-ink dark:text-bone px-3 py-2.5 outline-none focus:border-accent dark:focus:border-ember placeholder:text-stone dark:placeholder:text-fog font-mono"
+                  className="w-full bg-paper dark:bg-emboss border border-line dark:border-edge rounded-input font-body text-[13px] text-ink dark:text-bone px-3 py-2 outline-none focus:border-accent dark:focus:border-ember placeholder:text-muted dark:placeholder:text-fog font-mono"
                   type="password"
                   value={d.newValue}
                   onChange={(e) => d.setNewValue(e.target.value)}
@@ -347,7 +347,7 @@ function DetailsBody({
             </div>
             <button
               type="submit"
-              className="inline-flex items-center gap-2 rounded-input text-[13px] font-medium px-4 py-2 cursor-pointer border border-transparent whitespace-nowrap transition-colors duration-150 disabled:opacity-55 disabled:cursor-not-allowed bg-white dark:bg-panel border-line dark:border-edge text-ink dark:text-bone hover:bg-paper dark:hover:bg-emboss px-3 py-1.5 text-xs mt-4"
+              className="inline-flex items-center gap-2 rounded-input text-xs font-medium px-4 py-2 cursor-pointer border border-transparent whitespace-nowrap transition-colors duration-150 disabled:opacity-55 disabled:cursor-not-allowed bg-accent dark:bg-ember text-white dark:text-black hover:bg-accent-hover dark:hover:bg-ember-hover shadow-sm mt-4"
               disabled={!d.newName.trim() || !d.newValue}
             >
               <Plus size={12} /> Seal secret
@@ -357,14 +357,14 @@ function DetailsBody({
       </div>
 
       {/* snapshots */}
-      <div className="bg-white dark:bg-panel border border-line dark:border-edge rounded-card p-4 sm:p-5 mt-4">
+      <div className="bg-white dark:bg-panel border border-line dark:border-edge rounded-card p-4 sm:p-5 mt-4 shadow-sm">
         <div className="flex flex-col min-[420px]:flex-row min-[420px]:items-center gap-2 min-[420px]:justify-between mb-2.5">
           <div className="flex items-center gap-2 flex-wrap">
             <Archive size={15} />
             <Kicker>Snapshots · {d.backups.length}</Kicker>
           </div>
           <button
-            className="inline-flex items-center gap-2 rounded-input text-[13px] font-medium px-4 py-2 cursor-pointer border border-transparent whitespace-nowrap transition-colors duration-150 disabled:opacity-55 disabled:cursor-not-allowed bg-white dark:bg-panel border-line dark:border-edge text-ink dark:text-bone hover:bg-paper dark:hover:bg-emboss px-3 py-1.5 text-xs"
+            className="inline-flex items-center gap-2 rounded-input text-xs font-medium px-3.5 py-1.5 cursor-pointer border border-transparent whitespace-nowrap transition-colors duration-150 disabled:opacity-55 disabled:cursor-not-allowed bg-accent dark:bg-ember text-white dark:text-black hover:bg-accent-hover dark:hover:bg-ember-hover shadow-sm"
             disabled={d.busy}
             onClick={() => void d.createBackup()}
           >
@@ -379,9 +379,9 @@ function DetailsBody({
         ) : (
           <div className="flex flex-col gap-2.5">
             {d.backups.map((b) => (
-              <div key={b.id} className="flex flex-col min-[420px]:flex-row min-[420px]:items-center gap-2 min-[420px]:justify-between text-[13px]">
+              <div key={b.id} className="flex flex-col min-[420px]:flex-row min-[420px]:items-center gap-2 min-[420px]:justify-between text-[13px] py-1 border-b border-line dark:border-edge last:border-0">
                 <div>
-                  <div className="font-mono">
+                  <div className="font-mono text-ink dark:text-bone">
                     {new Date(b.createdAt.replace(" ", "T") + "Z").toLocaleString("en-GB", {
                       day: "2-digit",
                       month: "short",
@@ -397,20 +397,20 @@ function DetailsBody({
                   <a
                     href={api.downloadBackupUrl(b.id)}
                     download
-                    className="inline-flex items-center gap-2 rounded-input text-[13px] font-medium px-4 py-2 cursor-pointer border border-transparent whitespace-nowrap transition-colors duration-150 bg-white dark:bg-panel border-line dark:border-edge text-ink dark:text-bone hover:bg-paper dark:hover:bg-emboss px-3 py-1.5 text-xs"
+                    className="inline-flex items-center gap-1.5 rounded-input text-xs font-medium px-2.5 py-1.5 cursor-pointer border whitespace-nowrap transition-colors duration-150 bg-white dark:bg-panel border-line dark:border-edge text-ink dark:text-bone hover:bg-paper dark:hover:bg-emboss shadow-sm"
                     aria-label={`Download snapshot ${b.id}`}
                   >
                     <Download size={12} />
                   </a>
                   <button
-                    className="inline-flex items-center gap-2 rounded-input text-[13px] font-medium px-4 py-2 cursor-pointer border border-transparent whitespace-nowrap transition-colors duration-150 disabled:opacity-55 disabled:cursor-not-allowed bg-white dark:bg-panel border-line dark:border-edge text-ink dark:text-bone hover:bg-paper dark:hover:bg-emboss px-3 py-1.5 text-xs"
+                    className="inline-flex items-center gap-1.5 rounded-input text-xs font-medium px-3 py-1.5 cursor-pointer border whitespace-nowrap transition-colors duration-150 disabled:opacity-55 disabled:cursor-not-allowed bg-white dark:bg-panel border-line dark:border-edge text-ink dark:text-bone hover:bg-paper dark:hover:bg-emboss shadow-sm"
                     disabled={d.busy}
                     onClick={() => d.setPendingRestore(b)}
                   >
                     Restore
                   </button>
                   <button
-                    className="inline-flex items-center gap-2 rounded-input text-[13px] font-medium px-4 py-2 cursor-pointer border border-transparent whitespace-nowrap transition-colors duration-150 disabled:opacity-55 disabled:cursor-not-allowed bg-white dark:bg-panel border-line dark:border-edge text-ink dark:text-bone hover:bg-paper dark:hover:bg-emboss px-3 py-1.5 text-xs"
+                    className="inline-flex items-center gap-1.5 rounded-input text-xs font-medium px-2.5 py-1.5 cursor-pointer border whitespace-nowrap transition-colors duration-150 disabled:opacity-55 disabled:cursor-not-allowed bg-white dark:bg-panel border-line dark:border-edge text-muted dark:text-fog hover:text-brick hover:bg-red-50 dark:hover:bg-red-950/30 shadow-sm"
                     disabled={d.busy}
                     onClick={() => void d.deleteBackup(b.id)}
                     aria-label={`Delete snapshot ${b.id}`}

@@ -8,13 +8,13 @@ import { useUi } from "../../stores/store";
 import { DashboardSkeleton, EmptyState, Kicker } from "../../components/ui";
 
 const chip =
-  "inline-flex items-center gap-1.5 font-mono text-[11px] bg-tint dark:bg-emboss border border-line dark:border-edge text-ink dark:text-bone rounded-md px-2 py-[3px] whitespace-nowrap";
+  "inline-flex items-center gap-1.5 font-mono text-[11px] bg-paper dark:bg-emboss border border-line dark:border-edge text-ink dark:text-bone rounded-md px-2 py-[3px] whitespace-nowrap";
 const btnGhost =
-  "inline-flex items-center gap-2 rounded-input font-medium cursor-pointer whitespace-nowrap transition-colors duration-150 disabled:opacity-55 disabled:cursor-not-allowed bg-white dark:bg-panel border border-line dark:border-edge text-ink dark:text-bone hover:bg-paper dark:hover:bg-emboss px-3 py-1.5 text-xs";
+  "inline-flex items-center gap-2 rounded-input font-medium cursor-pointer whitespace-nowrap transition-colors duration-150 disabled:opacity-55 disabled:cursor-not-allowed bg-white dark:bg-panel border border-line dark:border-edge text-ink dark:text-bone hover:bg-paper dark:hover:bg-emboss px-3 py-1.5 text-xs shadow-sm";
 const btnAccent =
-  "inline-flex items-center gap-2 rounded-input text-[13px] font-medium px-4 py-2 cursor-pointer border border-transparent whitespace-nowrap transition-colors duration-150 disabled:opacity-55 disabled:cursor-not-allowed bg-accent dark:bg-ember text-white dark:text-black hover:bg-accent-hover dark:hover:bg-ember-hover";
+  "inline-flex items-center gap-2 rounded-input text-[13px] font-medium px-4 py-2 cursor-pointer border border-transparent whitespace-nowrap transition-colors duration-150 disabled:opacity-55 disabled:cursor-not-allowed bg-accent dark:bg-ember text-white dark:text-black hover:bg-accent-hover dark:hover:bg-ember-hover shadow-sm";
 const inputCls =
-  "bg-white dark:bg-panel border border-line dark:border-edge rounded-input px-3 py-2 text-[13px] text-ink dark:text-bone outline-none w-full focus:border-accent dark:focus:border-ember";
+  "bg-paper dark:bg-emboss border border-line dark:border-edge rounded-input px-3 py-2 text-[13px] text-ink dark:text-bone outline-none w-full focus:border-accent dark:focus:border-ember";
 
 function serverTarget(s: DbServerInfo): DbTarget {
   return { engine: s.engine, source: s.source, host: s.host, port: s.port, container: s.container };

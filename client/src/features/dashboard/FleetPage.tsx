@@ -129,12 +129,12 @@ export function FleetPage({ setOnline }: { setOnline: (v: boolean) => void }) {
       <div className="flex items-end justify-between gap-4 flex-wrap">
         <div>
           <button
-            className="inline-flex items-center gap-1.5 bg-transparent border-0 cursor-pointer text-muted dark:text-fog hover:text-ink dark:hover:text-bone text-[13px] mb-2 px-0"
+            className="inline-flex items-center gap-1.5 bg-transparent border-0 cursor-pointer text-muted dark:text-fog hover:text-ink dark:hover:text-bone text-[13px] mb-2 px-0 transition-colors"
             onClick={() => nav("/")}
           >
             <ArrowLeft size={14} /> Dashboard
           </button>
-          <h1 className="font-head text-[32px] font-bold tracking-[-0.03em] leading-[1.2] max-md:text-[26px]">
+          <h1 className="font-head text-[32px] font-bold tracking-[-0.03em] leading-[1.2] max-md:text-[26px] text-ink dark:text-bone">
             Fleet registry
           </h1>
           <p className="text-muted dark:text-fog mt-1.5">
@@ -143,46 +143,54 @@ export function FleetPage({ setOnline }: { setOnline: (v: boolean) => void }) {
             </Kicker>
           </p>
         </div>
-        <label className="flex items-center gap-2 bg-white dark:bg-panel border border-line dark:border-edge rounded-input px-3 py-2 text-[13px] text-muted dark:text-fog focus-within:border-accent dark:focus-within:border-ember w-full sm:w-auto">
+        <label className="flex items-center gap-2 bg-white dark:bg-panel border border-line dark:border-edge rounded-input px-3 py-2 text-[13px] text-muted dark:text-fog focus-within:border-accent dark:focus-within:border-ember w-full sm:w-auto shadow-sm">
           <Search size={14} className="shrink-0" />
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Filter ships…"
-            className="bg-transparent outline-none text-ink dark:text-bone placeholder:text-muted dark:placeholder:text-fog w-full sm:w-44"
+            className="bg-transparent outline-none text-ink dark:text-bone placeholder:text-muted dark:placeholder:text-fog w-full sm:w-48 font-body"
           />
+          {q && (
+            <button
+              onClick={() => setQ("")}
+              className="text-muted dark:text-fog hover:text-ink dark:hover:text-bone bg-transparent border-0 cursor-pointer p-0.5"
+            >
+              <X size={12} />
+            </button>
+          )}
         </label>
       </div>
 
       {picked.size > 0 && (
-        <div className="sticky top-16 z-30 bg-white dark:bg-panel border border-line dark:border-edge rounded-card px-4 py-3 mt-6 flex items-center gap-2 flex-wrap">
-          <span className="font-mono text-[13px]">
+        <div className="sticky top-16 z-30 bg-white dark:bg-panel border border-line dark:border-edge rounded-card px-4 py-3 mt-6 flex items-center gap-2 flex-wrap shadow-chrome">
+          <span className="font-mono text-[13px] text-ink dark:text-bone font-medium">
             {picked.size} ship{picked.size === 1 ? "" : "s"} picked
           </span>
           <span className="flex-1" />
           <button
-            className="inline-flex items-center gap-2 rounded-input font-medium cursor-pointer whitespace-nowrap transition-colors duration-150 disabled:opacity-55 disabled:cursor-not-allowed bg-white dark:bg-panel border border-line dark:border-edge text-ink dark:text-bone hover:bg-paper dark:hover:bg-emboss px-3 py-1.5 text-xs"
+            className="inline-flex items-center gap-2 rounded-input font-medium cursor-pointer whitespace-nowrap transition-colors duration-150 disabled:opacity-55 disabled:cursor-not-allowed bg-paper dark:bg-emboss/40 border border-line dark:border-edge text-ink dark:text-bone hover:bg-paper/80 dark:hover:bg-emboss px-3 py-1.5 text-xs"
             disabled={bulkBusy}
             onClick={() => void runBulk("start", false)}
           >
-            <Play size={12} /> Wake all
+            <Play size={12} className="text-moss" /> Wake all
           </button>
           <button
-            className="inline-flex items-center gap-2 rounded-input font-medium cursor-pointer whitespace-nowrap transition-colors duration-150 disabled:opacity-55 disabled:cursor-not-allowed bg-white dark:bg-panel border border-line dark:border-edge text-ink dark:text-bone hover:bg-paper dark:hover:bg-emboss px-3 py-1.5 text-xs"
+            className="inline-flex items-center gap-2 rounded-input font-medium cursor-pointer whitespace-nowrap transition-colors duration-150 disabled:opacity-55 disabled:cursor-not-allowed bg-paper dark:bg-emboss/40 border border-line dark:border-edge text-ink dark:text-bone hover:bg-paper/80 dark:hover:bg-emboss px-3 py-1.5 text-xs"
             disabled={bulkBusy}
             onClick={() => setPendingBulk("stop")}
           >
-            <Power size={12} /> Nap all
+            <Power size={12} className="text-brick" /> Nap all
           </button>
           <button
-            className="inline-flex items-center gap-2 rounded-input font-medium cursor-pointer whitespace-nowrap transition-colors duration-150 disabled:opacity-55 disabled:cursor-not-allowed bg-white dark:bg-panel border border-line dark:border-edge text-ink dark:text-bone hover:bg-paper dark:hover:bg-emboss px-3 py-1.5 text-xs"
+            className="inline-flex items-center gap-2 rounded-input font-medium cursor-pointer whitespace-nowrap transition-colors duration-150 disabled:opacity-55 disabled:cursor-not-allowed bg-paper dark:bg-emboss/40 border border-line dark:border-edge text-ink dark:text-bone hover:bg-paper/80 dark:hover:bg-emboss px-3 py-1.5 text-xs"
             disabled={bulkBusy}
             onClick={() => setPendingBulk("restart")}
           >
-            <RotateCcw size={12} /> Restart all
+            <RotateCcw size={12} className="text-status-amber" /> Restart all
           </button>
           <button
-            className="inline-flex items-center gap-1.5 bg-transparent border-0 cursor-pointer text-muted dark:text-fog hover:text-ink dark:hover:text-bone text-xs px-1"
+            className="inline-flex items-center gap-1.5 bg-transparent border-0 cursor-pointer text-muted dark:text-fog hover:text-ink dark:hover:text-bone text-xs px-2 py-1 transition-colors"
             onClick={() => setPicked(new Set())}
             aria-label="Clear selection"
           >
@@ -203,9 +211,10 @@ export function FleetPage({ setOnline }: { setOnline: (v: boolean) => void }) {
           />
         ) : (
           <>
-            <label className="flex items-center gap-2 text-[13px] mb-3 cursor-pointer select-none text-muted dark:text-fog">
+            <label className="flex items-center gap-2 text-[13px] mb-3 cursor-pointer select-none text-muted dark:text-fog hover:text-ink dark:hover:text-bone transition-colors">
               <input
                 type="checkbox"
+                className="w-4 h-4 accent-accent dark:accent-ember cursor-pointer rounded"
                 checked={filtered.length > 0 && filtered.every((p) => picked.has(p.id))}
                 onChange={() =>
                   setPicked((prev) => {

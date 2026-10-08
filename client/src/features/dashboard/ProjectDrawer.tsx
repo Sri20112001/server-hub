@@ -45,33 +45,33 @@ export function ProjectDrawer({
 
   return (
     <div
-      className="fixed inset-0 z-[60] flex justify-end bg-[rgba(28,25,23,0.28)] dark:bg-[rgba(0,0,0,0.55)]"
+      className="fixed inset-0 z-[60] flex justify-end bg-[rgba(28,25,23,0.35)] dark:bg-[rgba(0,0,0,0.65)] backdrop-blur-xs"
       onClick={onClose}
     >
       <aside
-        className="bg-paper dark:bg-abyss border-l border-line dark:border-edge w-full sm:max-w-[440px] h-[100dvh] overflow-y-auto px-4 sm:px-6 pt-6 pb-[calc(3rem+env(safe-area-inset-bottom,0px))]"
+        className="bg-paper dark:bg-abyss border-l border-line dark:border-edge w-full sm:max-w-[440px] h-[100dvh] overflow-y-auto px-4 sm:px-6 pt-6 pb-[calc(3rem+env(safe-area-inset-bottom,0px))] shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between gap-4">
           <div>
             <Kicker>Ship manifest</Kicker>
-            <h2 className="text-[24px] mt-1">{project.name}</h2>
+            <h2 className="text-[24px] font-head font-bold mt-1 text-ink dark:text-bone">{project.name}</h2>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             <StatusPill status={project.status} />
-            <button className="inline-flex items-center gap-2 rounded-input text-[13px] font-medium px-4 py-2 cursor-pointer border border-transparent whitespace-nowrap transition-colors duration-150 disabled:opacity-55 disabled:cursor-not-allowed bg-white dark:bg-panel border-line dark:border-edge text-ink dark:text-bone hover:bg-paper dark:hover:bg-emboss px-3 py-1.5 text-xs" onClick={onClose} aria-label="Close">
+            <button className="inline-flex items-center justify-center rounded-input p-1.5 cursor-pointer border border-line dark:border-edge bg-white dark:bg-panel text-muted dark:text-fog hover:text-ink dark:hover:text-bone hover:bg-paper dark:hover:bg-emboss transition-colors" onClick={onClose} aria-label="Close">
               <X size={14} />
             </button>
           </div>
         </div>
 
-        <div className="bg-white dark:bg-panel border border-line dark:border-edge rounded-card p-5 mt-4">
+        <div className="bg-white dark:bg-panel border border-line dark:border-edge rounded-card p-5 mt-4 shadow-sm">
           <Kicker>Rigging</Kicker>
-          <div className="mt-2.5 flex flex-col gap-4">
+          <div className="mt-2.5 flex flex-col gap-3 divide-y divide-line dark:divide-edge">
             {facts.map(([k, v]) => (
-              <div key={k} className="flex items-center justify-between gap-4 text-[13px]">
+              <div key={k} className="flex items-center justify-between gap-4 text-[13px] pt-2.5 first:pt-0">
                 <span className="text-muted dark:text-fog">{k}</span>
-                <span className="font-mono text-right max-w-[60%] overflow-hidden text-ellipsis" title={v}>
+                <span className="font-mono text-ink dark:text-bone text-right max-w-[60%] overflow-hidden text-ellipsis truncate" title={v}>
                   {v}
                 </span>
               </div>
@@ -79,12 +79,12 @@ export function ProjectDrawer({
           </div>
         </div>
 
-        <div className="bg-white dark:bg-panel border border-line dark:border-edge rounded-card p-5 mt-4">
+        <div className="bg-white dark:bg-panel border border-line dark:border-edge rounded-card p-5 mt-4 shadow-sm">
           <Kicker>Manifest</Kicker>
           <div className="mt-2.5 grid grid-cols-2 gap-3">
             {counts.map(([k, v]) => (
               <div key={k} className="bg-paper dark:bg-abyss border border-line dark:border-edge rounded-xl px-4 py-3">
-                <div className="font-head text-[22px] font-bold">{v}</div>
+                <div className="font-head text-[22px] font-bold text-ink dark:text-bone">{v}</div>
                 <div className="text-muted dark:text-fog text-xs mt-0.5">{k}</div>
               </div>
             ))}
@@ -92,7 +92,7 @@ export function ProjectDrawer({
         </div>
 
         <button
-          className="inline-flex items-center justify-center gap-2 rounded-input text-[13px] font-medium px-4 py-2.5 cursor-pointer border border-transparent whitespace-nowrap transition-colors duration-150 disabled:opacity-55 disabled:cursor-not-allowed bg-accent dark:bg-ember text-white dark:text-black hover:bg-accent-hover dark:hover:bg-ember-hover w-full mt-4"
+          className="inline-flex items-center justify-center gap-2 rounded-input text-[13px] font-medium px-4 py-2.5 cursor-pointer border border-transparent whitespace-nowrap transition-colors duration-150 bg-accent dark:bg-ember text-white dark:text-black hover:bg-accent-hover dark:hover:bg-ember-hover w-full mt-4 shadow-sm"
           onClick={() => {
             onClose();
             nav(`/projects/${project.id}`);
