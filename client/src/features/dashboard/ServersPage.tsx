@@ -8,35 +8,35 @@ import { useEvents } from "../../lib/useEvents";
 import { useUi } from "../../stores/store";
 
 const STATUS_COLOR: Record<string, string> = {
-  ONLINE: "bg-green-500",
-  OFFLINE: "bg-red-500",
-  WARNING: "bg-yellow-400",
-  UNKNOWN: "bg-zinc-500",
+  ONLINE: "bg-moss",
+  OFFLINE: "bg-brick",
+  WARNING: "bg-status-amber",
+  UNKNOWN: "bg-stone",
 };
 
 const STATUS_TEXT: Record<string, string> = {
-  ONLINE: "text-green-400",
-  OFFLINE: "text-red-400",
-  WARNING: "text-yellow-400",
-  UNKNOWN: "text-zinc-400",
+  ONLINE: "text-moss",
+  OFFLINE: "text-brick",
+  WARNING: "text-status-amber",
+  UNKNOWN: "text-stone",
 };
 
 function ServerCard({ s, onClick }: { s: ManagedServer; onClick: () => void }) {
   return (
     <button
       onClick={onClick}
-      className="w-full text-left bg-panel border border-edge rounded-xl p-4 hover:border-ember/50 transition-colors cursor-pointer"
+      className="w-full text-left bg-white dark:bg-panel border border-line dark:border-edge rounded-card p-4 hover:border-accent dark:hover:border-ember transition-colors cursor-pointer"
     >
       <div className="flex items-start justify-between mb-3">
         <div className="flex items-center gap-2">
-          <span className={`w-2 h-2 rounded-full ${STATUS_COLOR[s.status] ?? "bg-zinc-500"}`} />
-          <span className="font-semibold text-bone text-sm">{s.name}</span>
+          <span className={`w-2 h-2 rounded-full ${STATUS_COLOR[s.status] ?? "bg-stone"}`} />
+          <span className="font-semibold text-ink dark:text-bone text-sm">{s.name}</span>
         </div>
-        <span className={`text-xs font-mono ${STATUS_TEXT[s.status] ?? "text-zinc-400"}`}>
+        <span className={`text-xs font-mono ${STATUS_TEXT[s.status] ?? "text-muted dark:text-fog"}`}>
           {s.status}
         </span>
       </div>
-      <div className="text-xs text-fog font-mono space-y-0.5">
+      <div className="text-xs text-muted dark:text-fog font-mono space-y-0.5">
         {s.hostname && <div>{s.hostname}</div>}
         {s.ipAddress && <div>{s.ipAddress}</div>}
         {s.os && <div>{s.os} {s.osVersion}</div>}
@@ -47,7 +47,7 @@ function ServerCard({ s, onClick }: { s: ManagedServer; onClick: () => void }) {
         <Stat label="Agent" value={s.agentStatus} />
       </div>
       {s.lastHeartbeat && (
-        <div className="mt-2 text-[10px] text-fog font-mono">
+        <div className="mt-2 text-[10px] text-muted dark:text-fog font-mono">
           Last seen: {new Date(s.lastHeartbeat).toLocaleString()}
         </div>
       )}
@@ -57,9 +57,9 @@ function ServerCard({ s, onClick }: { s: ManagedServer; onClick: () => void }) {
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="bg-emboss rounded-lg p-2">
-      <div className="text-fog text-[10px] uppercase tracking-wider">{label}</div>
-      <div className="text-bone font-mono text-xs mt-0.5 truncate">{value}</div>
+    <div className="bg-paper dark:bg-abyss border border-line dark:border-edge rounded-lg p-2">
+      <div className="text-muted dark:text-fog text-[10px] uppercase tracking-wider">{label}</div>
+      <div className="text-ink dark:text-bone font-mono text-xs mt-0.5 truncate">{value}</div>
     </div>
   );
 }
@@ -87,25 +87,25 @@ function AddServerModal({ onClose, onCreated }: { onClose: () => void; onCreated
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
-      <div className="bg-panel border border-edge rounded-xl p-6 w-full max-w-md" onClick={(e) => e.stopPropagation()}>
-        <h2 className="text-bone font-bold text-lg mb-4">Add Server</h2>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(28,25,23,0.28)] dark:bg-[rgba(0,0,0,0.55)] p-4" onClick={onClose}>
+      <div className="bg-white dark:bg-panel border border-line dark:border-edge rounded-card p-6 w-full max-w-md shadow-chrome" onClick={(e) => e.stopPropagation()}>
+        <h2 className="text-ink dark:text-bone font-head font-bold text-lg mb-4">Add Server</h2>
         <div className="space-y-3">
           <Field label="Name *" value={name} onChange={setName} placeholder="production-api" />
           <Field label="Hostname" value={hostname} onChange={setHostname} placeholder="api.example.com" />
           <Field label="IP Address" value={ip} onChange={setIp} placeholder="192.168.1.10" />
         </div>
-        <p className="text-fog text-xs mt-3">
+        <p className="text-muted dark:text-fog text-xs mt-3">
           After adding, generate an agent token and install the agent on the server.
         </p>
         <div className="flex gap-2 mt-5 justify-end">
-          <button onClick={onClose} className="px-4 py-2 text-sm text-fog hover:text-bone border border-edge rounded-lg">
+          <button onClick={onClose} className="px-4 py-2 text-sm text-muted dark:text-fog hover:text-ink dark:hover:text-bone border border-line dark:border-edge rounded-input">
             Cancel
           </button>
           <button
             onClick={submit}
             disabled={busy || !name.trim()}
-            className="px-4 py-2 text-sm bg-ember text-black font-semibold rounded-lg disabled:opacity-50"
+            className="px-4 py-2 text-sm bg-accent dark:bg-ember text-white dark:text-black font-semibold rounded-input hover:bg-accent-hover dark:hover:bg-ember-hover disabled:opacity-50"
           >
             {busy ? "Adding…" : "Add Server"}
           </button>
@@ -120,9 +120,9 @@ function Field({ label, value, onChange, placeholder }: {
 }) {
   return (
     <div>
-      <label className="text-fog text-xs mb-1 block">{label}</label>
+      <label className="text-muted dark:text-fog text-xs mb-1 block">{label}</label>
       <input
-        className="w-full bg-emboss border border-edge rounded-lg px-3 py-2 text-bone text-sm outline-none focus:border-ember"
+        className="w-full bg-white dark:bg-panel border border-line dark:border-edge rounded-input px-3 py-2 text-ink dark:text-bone text-sm outline-none focus:border-accent dark:focus:border-ember placeholder:text-stone dark:placeholder:text-fog font-mono"
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
@@ -168,24 +168,24 @@ export function ServersPage({ setOnline }: { setOnline: (v: boolean) => void }) 
   };
 
   return (
-    <div className="min-h-screen bg-abyss pt-20 pb-28 px-4 sm:px-6 max-w-6xl mx-auto">
+    <main className="w-full max-w-6xl mx-auto px-4 sm:px-6 pt-24 pb-36">
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
-          <Server size={22} className="text-ember" />
-          <h1 className="text-bone font-bold text-xl">Servers</h1>
+          <Server size={22} className="text-accent dark:text-ember" />
+          <h1 className="font-head text-[22px] font-bold text-ink dark:text-bone tracking-[-0.02em]">Servers</h1>
         </div>
         <div className="flex gap-2">
           <button
             onClick={() => void refetch()}
-            className="w-9 h-9 rounded-full bg-emboss flex items-center justify-center text-fog hover:text-bone"
+            className="w-9 h-9 rounded-full bg-white dark:bg-panel border border-line dark:border-edge flex items-center justify-center text-muted dark:text-fog hover:text-ink dark:hover:text-bone shadow-chrome"
             aria-label="Refresh"
           >
             <RefreshCw size={15} />
           </button>
           <button
             onClick={() => setShowAdd(true)}
-            className="flex items-center gap-1.5 px-3 py-2 bg-ember text-black text-sm font-semibold rounded-lg"
+            className="flex items-center gap-1.5 px-3 py-2 bg-accent dark:bg-ember text-white dark:text-black text-sm font-semibold rounded-input hover:bg-accent-hover dark:hover:bg-ember-hover"
           >
             <Plus size={15} /> Add Server
           </button>
@@ -195,14 +195,14 @@ export function ServersPage({ setOnline }: { setOnline: (v: boolean) => void }) 
       {/* Summary */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-6">
         {[
-          { label: "Total", value: counts.total, color: "text-bone" },
-          { label: "Online", value: counts.online, color: "text-green-400" },
-          { label: "Offline", value: counts.offline, color: "text-red-400" },
-          { label: "Warning", value: counts.warning, color: "text-yellow-400" },
-          { label: "Unknown", value: counts.unknown, color: "text-zinc-400" },
+          { label: "Total", value: counts.total, color: "text-ink dark:text-bone" },
+          { label: "Online", value: counts.online, color: "text-moss" },
+          { label: "Offline", value: counts.offline, color: "text-brick" },
+          { label: "Warning", value: counts.warning, color: "text-status-amber" },
+          { label: "Unknown", value: counts.unknown, color: "text-stone" },
         ].map((c) => (
-          <div key={c.label} className="bg-panel border border-edge rounded-xl p-4">
-            <div className="text-fog text-xs uppercase tracking-wider mb-1">{c.label}</div>
+          <div key={c.label} className="bg-white dark:bg-panel border border-line dark:border-edge rounded-card p-4 shadow-chrome">
+            <div className="text-muted dark:text-fog text-xs uppercase tracking-wider mb-1">{c.label}</div>
             <div className={`font-bold text-2xl font-mono ${c.color}`}>{c.value}</div>
           </div>
         ))}
@@ -213,7 +213,11 @@ export function ServersPage({ setOnline }: { setOnline: (v: boolean) => void }) 
         <div className="flex gap-2 mb-4 flex-wrap">
           <button
             onClick={() => setGroupFilter(null)}
-            className={`px-3 py-1 rounded-full text-xs font-mono border ${groupFilter === null ? "border-ember text-ember" : "border-edge text-fog"}`}
+            className={`px-3 py-1 rounded-full text-xs font-mono border transition-colors ${
+              groupFilter === null
+                ? "border-accent dark:border-ember text-accent dark:text-ember bg-tint/50 dark:bg-emboss"
+                : "border-line dark:border-edge text-muted dark:text-fog hover:text-ink dark:hover:text-bone bg-white dark:bg-panel"
+            }`}
           >
             All
           </button>
@@ -221,7 +225,11 @@ export function ServersPage({ setOnline }: { setOnline: (v: boolean) => void }) 
             <button
               key={g.id}
               onClick={() => setGroupFilter(g.id)}
-              className={`px-3 py-1 rounded-full text-xs font-mono border ${groupFilter === g.id ? "border-ember text-ember" : "border-edge text-fog"}`}
+              className={`px-3 py-1 rounded-full text-xs font-mono border transition-colors ${
+                groupFilter === g.id
+                  ? "border-accent dark:border-ember text-accent dark:text-ember bg-tint/50 dark:bg-emboss"
+                  : "border-line dark:border-edge text-muted dark:text-fog hover:text-ink dark:hover:text-bone bg-white dark:bg-panel"
+              }`}
             >
               {g.name}
             </button>
@@ -233,19 +241,19 @@ export function ServersPage({ setOnline }: { setOnline: (v: boolean) => void }) 
       {isLoading && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="bg-panel border border-edge rounded-xl p-4 h-40 animate-pulse" />
+            <div key={i} className="bg-white dark:bg-panel border border-line dark:border-edge rounded-card p-4 h-40 animate-pulse" />
           ))}
         </div>
       )}
 
       {isError && (
-        <div className="text-red-400 text-sm p-4 bg-panel border border-edge rounded-xl">
-          Failed to load servers. <button onClick={() => void refetch()} className="underline">Retry</button>
+        <div className="text-brick text-sm p-4 bg-red-50 dark:bg-red-950/30 border border-brick/30 rounded-card">
+          Failed to load servers. <button onClick={() => void refetch()} className="underline font-medium">Retry</button>
         </div>
       )}
 
       {!isLoading && !isError && filtered.length === 0 && (
-        <div className="text-center py-16 text-fog">
+        <div className="text-center py-16 text-muted dark:text-fog">
           <Server size={40} className="mx-auto mb-3 opacity-30" />
           <p className="text-sm">No servers yet. Add one to get started.</p>
         </div>
@@ -263,6 +271,6 @@ export function ServersPage({ setOnline }: { setOnline: (v: boolean) => void }) 
           onCreated={() => void qc.invalidateQueries({ queryKey: ["servers"] })}
         />
       )}
-    </div>
+    </main>
   );
 }

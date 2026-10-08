@@ -70,10 +70,10 @@ export function SettingsPage({ setOnline }: { setOnline: (v: boolean) => void })
   return (
     <main className="w-full max-w-[800px] mx-auto px-6 max-md:px-4 pt-24 pb-36">
       <Kicker>Server preferences & access</Kicker>
-      <h1 className="font-head text-[36px] font-bold tracking-[-0.03em] leading-[1.2] max-md:text-[28px] mt-2 mb-2 text-gray-900 dark:text-white drop-shadow-sm">
+      <h1 className="font-head text-[36px] font-bold tracking-[-0.03em] leading-[1.2] max-md:text-[28px] mt-2 mb-2 text-ink dark:text-bone">
         Settings
       </h1>
-      <p className="text-gray-500 dark:text-gray-400 mb-8 text-base">
+      <p className="text-muted dark:text-fog mb-8 text-base">
         Configure host environment, telemetry notification channels, and operational daemon privileges.
       </p>
 

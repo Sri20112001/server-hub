@@ -102,7 +102,7 @@ function buildConditionJson(f: FormState): string | undefined {
   return JSON.stringify(cond);
 }
 
-const inputClasses = "w-full bg-white dark:bg-black/50 border border-gray-300 dark:border-white/10 rounded-lg font-body text-sm text-gray-900 dark:text-white px-4 py-2.5 outline-none focus:border-cyan-500 dark:focus:border-cyan-400 focus:ring-1 focus:ring-cyan-500/50 placeholder:text-gray-400 dark:placeholder:text-gray-600 transition-all";
+const inputClasses = "w-full bg-paper dark:bg-emboss border border-line dark:border-edge rounded-input font-body text-sm text-ink dark:text-bone px-4 py-2.5 outline-none focus:border-accent dark:focus:border-ember placeholder:text-muted dark:placeholder:text-fog transition-colors";
 
 export function NotificationRulesSection() {
   const { user } = useAuth();
@@ -256,15 +256,15 @@ export function NotificationRulesSection() {
     <GlassCard>
       <div className="flex items-start justify-between gap-3 mb-6">
         <div>
-          <h2 className="text-xl font-semibold text-gray-900 dark:text-white">Notification Rules</h2>
-          <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">
+          <h2 className="text-xl font-semibold text-ink dark:text-bone">Notification Rules</h2>
+          <p className="text-muted dark:text-fog text-sm mt-1">
             Route matching events to recipient groups.{" "}
             {rules.length === 0
               ? "No rules configured — existing notifications keep using the default behavior."
               : `${rules.length} rule${rules.length === 1 ? "" : "s"} configured.`}
           </p>
         </div>
-        <span className="text-gray-500 dark:text-gray-400 flex items-center justify-center w-10 h-10 rounded-full bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10">
+        <span className="text-muted dark:text-fog flex items-center justify-center w-10 h-10 rounded-full bg-paper dark:bg-emboss border border-line dark:border-edge">
           <BellRing size={18} />
         </span>
       </div>
@@ -274,16 +274,16 @@ export function NotificationRulesSection() {
           {rules.map((r) => (
             <div
               key={r.id}
-              className="flex items-center justify-between gap-3 py-3 px-3 bg-white dark:bg-black/30 border border-gray-200 dark:border-white/10 rounded-xl"
+              className="flex items-center justify-between gap-3 py-3 px-3 bg-white dark:bg-panel border border-line dark:border-edge rounded-card"
             >
               <div className="min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="font-semibold text-sm text-gray-900 dark:text-white">{r.name}</span>
+                  <span className="font-semibold text-sm text-ink dark:text-bone">{r.name}</span>
                   {!r.enabled && (
-                    <span className="font-mono text-[11px] text-gray-500 dark:text-gray-400">disabled</span>
+                    <span className="font-mono text-[11px] text-muted dark:text-fog">disabled</span>
                   )}
                 </div>
-                <div className="text-gray-500 dark:text-gray-400 text-xs font-mono mt-0.5">
+                <div className="text-muted dark:text-fog text-xs font-mono mt-0.5">
                   {r.eventType}
                   {r.severity ? ` · ${r.severity}` : ""} → {r.groupName || `#${r.notificationGroupId}`} ·{" "}
                   {r.channels} · cooldown {r.cooldownSeconds}s{r.notifyOnRecovery ? " · recovery" : ""}
@@ -295,7 +295,7 @@ export function NotificationRulesSection() {
                 )}
                 {canEdit && (
                   <button
-                    className="text-gray-400 hover:text-cyan-500 dark:text-gray-500 dark:hover:text-cyan-400 bg-transparent border-0 cursor-pointer p-1.5"
+                    className="text-muted dark:text-fog hover:text-ink dark:hover:text-bone bg-transparent border-0 cursor-pointer p-1.5 transition-colors"
                     onClick={() => startEdit(r)}
                     aria-label={`Edit ${r.name}`}
                   >
@@ -304,7 +304,7 @@ export function NotificationRulesSection() {
                 )}
                 {isAdmin && (
                   <button
-                    className="text-gray-400 hover:text-red-500 dark:text-gray-500 dark:hover:text-red-400 bg-transparent border-0 cursor-pointer p-1.5"
+                    className="text-muted dark:text-fog hover:text-brick bg-transparent border-0 cursor-pointer p-1.5 transition-colors"
                     onClick={() => void remove(r)}
                     aria-label={`Delete ${r.name}`}
                   >
@@ -324,7 +324,7 @@ export function NotificationRulesSection() {
       )}
 
       {canEdit && editing && (
-        <div className="bg-gray-50 dark:bg-black/20 rounded-xl p-4 border border-gray-200 dark:border-white/10 flex flex-col gap-4">
+        <div className="bg-paper dark:bg-emboss/40 rounded-card p-4 border border-line dark:border-edge flex flex-col gap-4">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="Rule name *">
               <input className={inputClasses} value={form.name} onChange={(e) => set("name", e.target.value)} placeholder="Critical offline pages" autoComplete="off" />
@@ -351,7 +351,7 @@ export function NotificationRulesSection() {
             </Field>
           </div>
           <div className="flex items-center justify-between gap-4">
-            <span className="text-sm text-gray-500 dark:text-gray-400">Extra condition (optional)</span>
+            <span className="text-sm text-muted dark:text-fog">Extra condition (optional)</span>
             <Toggle checked={form.useCondition} onChange={() => set("useCondition", !form.useCondition)} label="Use condition" />
           </div>
           {form.useCondition && (
@@ -385,10 +385,10 @@ export function NotificationRulesSection() {
               </select>
             </Field>
             <div className="flex items-end gap-5 pb-3">
-              <label className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+              <label className="flex items-center gap-2 text-sm text-muted dark:text-fog">
                 <input type="checkbox" checked={form.email} onChange={(e) => set("email", e.target.checked)} /> Email
               </label>
-              <label className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+              <label className="flex items-center gap-2 text-sm text-muted dark:text-fog">
                 <input type="checkbox" checked={form.inApp} onChange={(e) => set("inApp", e.target.checked)} /> In-app
               </label>
             </div>
@@ -406,11 +406,11 @@ export function NotificationRulesSection() {
             </Field>
             <div className="flex flex-col gap-3 justify-end pb-1">
               <div className="flex items-center justify-between gap-4">
-                <span className="text-sm text-gray-500 dark:text-gray-400">Notify on recovery</span>
+                <span className="text-sm text-muted dark:text-fog">Notify on recovery</span>
                 <Toggle checked={form.notifyOnRecovery} onChange={() => set("notifyOnRecovery", !form.notifyOnRecovery)} label="Notify on recovery" />
               </div>
               <div className="flex items-center justify-between gap-4">
-                <span className="text-sm text-gray-500 dark:text-gray-400">Enabled</span>
+                <span className="text-sm text-muted dark:text-fog">Enabled</span>
                 <Toggle checked={form.enabled} onChange={() => set("enabled", !form.enabled)} label="Rule enabled" />
               </div>
             </div>
@@ -420,7 +420,7 @@ export function NotificationRulesSection() {
               <Check size={16} /> {busy ? "Saving…" : form.id == null ? "Create rule" : "Save rule"}
             </CyberButton>
             <button
-              className="inline-flex items-center gap-2 rounded-lg text-sm font-medium px-5 py-2.5 cursor-pointer border transition-colors duration-200 bg-white dark:bg-transparent border-gray-300 dark:border-white/20 text-gray-700 dark:text-white hover:bg-gray-50 dark:hover:bg-white/5"
+              className="inline-flex items-center gap-2 rounded-input text-sm font-medium px-4 py-2 cursor-pointer border transition-colors bg-paper dark:bg-emboss/40 border-line dark:border-edge text-ink dark:text-bone hover:bg-paper/80 dark:hover:bg-emboss/70"
               onClick={() => { setEditing(false); setForm(EMPTY_FORM); }}
             >
               Cancel

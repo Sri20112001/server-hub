@@ -19,43 +19,43 @@ export function SecurityTab() {
       <GlassCard>
         <div className="flex items-start justify-between gap-3 mb-6">
           <div>
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white">Profile & Access</h2>
-            <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">Manage operator session identity and root authentication vectors.</p>
+            <h2 className="text-xl font-semibold text-ink dark:text-bone">Profile & Access</h2>
+            <p className="text-muted dark:text-fog text-sm mt-1">Manage operator session identity and root authentication vectors.</p>
           </div>
-          <span className="inline-flex items-center gap-1.5 font-mono text-[11px] bg-gray-100 dark:bg-white/10 border border-gray-200 dark:border-white/20 text-gray-800 dark:text-white rounded-md px-2 py-1 whitespace-nowrap shadow-sm">NODE-01</span>
+          <span className="inline-flex items-center gap-1.5 font-mono text-[11px] bg-paper dark:bg-emboss border border-line dark:border-edge text-ink dark:text-bone rounded-input px-2 py-1 whitespace-nowrap shadow-sm">NODE-01</span>
         </div>
 
-        <div className="bg-gray-50 dark:bg-black/30 border border-gray-200 dark:border-white/10 rounded-xl px-5 py-4 flex items-center justify-between gap-3 flex-wrap">
+        <div className="bg-paper dark:bg-emboss/40 border border-line dark:border-edge rounded-xl px-5 py-4 flex items-center justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-4 flex-wrap">
-            <span className="w-12 h-12 rounded-full bg-gray-200 dark:bg-white/5 border border-gray-300 dark:border-white/10 flex items-center justify-center font-head font-bold text-xl text-cyan-600 dark:text-cyan-400 shadow-inner">
+            <span className="w-12 h-12 rounded-full bg-paper dark:bg-emboss border border-line dark:border-edge flex items-center justify-center font-head font-bold text-xl text-accent dark:text-ember shadow-inner">
               {(user?.username ?? "C").slice(0, 1).toUpperCase()}
             </span>
             <div>
               <div className="flex items-center gap-2 flex-wrap">
-                <strong className="text-gray-900 dark:text-white text-base">{user?.username ?? "—"}</strong>
-                <span className="inline-flex items-center gap-1.5 font-mono text-[11px] bg-cyan-100 dark:bg-cyan-900/30 border border-cyan-200 dark:border-cyan-500/30 text-cyan-800 dark:text-cyan-400 rounded-md px-2 py-0.5 whitespace-nowrap">{user?.role ?? "admin"}</span>
+                <strong className="text-ink dark:text-bone text-base">{user?.username ?? "—"}</strong>
+                <span className="inline-flex items-center gap-1.5 font-mono text-[11px] bg-accent/10 dark:bg-ember/10 border border-accent/30 dark:border-ember/30 text-accent dark:text-ember rounded-input px-2 py-0.5 whitespace-nowrap">{user?.role ?? "admin"}</span>
               </div>
-              <div className="font-mono text-gray-500 dark:text-gray-400 text-xs mt-0.5">single-operator station · cookie session</div>
+              <div className="font-mono text-muted dark:text-fog text-xs mt-0.5">single-operator station · cookie session</div>
             </div>
           </div>
-          <span className="inline-flex items-center gap-1.5 h-7 px-3 rounded-full font-mono text-xs bg-white dark:bg-black/50 border border-gray-200 dark:border-white/10 text-gray-800 dark:text-white whitespace-nowrap shadow-sm">
-            <span className="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]" /> Auth: Local
+          <span className="inline-flex items-center gap-1.5 h-7 px-3 rounded-full font-mono text-xs bg-white dark:bg-panel border border-line dark:border-edge text-ink dark:text-bone whitespace-nowrap shadow-sm">
+            <span className="w-2 h-2 rounded-full bg-moss" /> Auth: Local
           </span>
         </div>
 
         <div className="mt-8">
-          <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4">Rotate Master Password</h3>
+          <h3 className="text-sm font-semibold text-ink dark:text-bone mb-4">Rotate Master Password</h3>
           <PasswordForm pushToast={pushToast} />
         </div>
       </GlassCard>
 
       {/* Danger Zone */}
-      <GlassCard className="!border-red-500/30 !bg-red-50/50 dark:!bg-red-950/20">
-        <div className="flex items-center gap-2.5 flex-wrap text-red-600 dark:text-red-500 mb-2">
-          <TriangleAlert size={20} className="drop-shadow-[0_0_8px_rgba(239,68,68,0.5)]" />
-          <h2 className="text-xl font-bold text-gray-900 dark:text-white">Danger Zone</h2>
+      <GlassCard className="!border-brick/30 !bg-red-50/50 dark:!bg-red-950/20">
+        <div className="flex items-center gap-2.5 flex-wrap text-brick mb-2">
+          <TriangleAlert size={20} />
+          <h2 className="text-xl font-bold text-ink dark:text-bone">Danger Zone</h2>
         </div>
-        <p className="text-gray-600 dark:text-red-200/70 text-sm mb-6">
+        <p className="text-muted dark:text-red-200/70 text-sm mb-6">
           Irreversible operations. Proceed with operational clearance.
         </p>
         <div className="flex items-center gap-4 flex-wrap">
@@ -131,7 +131,7 @@ function PasswordForm({ pushToast }: { pushToast: (m: string, err?: boolean) => 
     }
   };
 
-  const inputClasses = "w-full bg-white dark:bg-black/50 border border-gray-300 dark:border-white/10 rounded-lg font-body text-sm text-gray-900 dark:text-white px-4 py-2.5 outline-none focus:border-cyan-500 dark:focus:border-cyan-400 focus:ring-1 focus:ring-cyan-500/50 placeholder:text-gray-400 dark:placeholder:text-gray-600 font-mono transition-all";
+  const inputClasses = "w-full bg-paper dark:bg-emboss border border-line dark:border-edge rounded-input font-body text-sm text-ink dark:text-bone px-4 py-2.5 outline-none focus:border-accent dark:focus:border-ember placeholder:text-muted dark:placeholder:text-fog font-mono transition-colors";
 
   return (
     <form onSubmit={(e) => void changePassword(e)} className="flex flex-col gap-5">
@@ -147,7 +147,7 @@ function PasswordForm({ pushToast }: { pushToast: (m: string, err?: boolean) => 
             />
             <button
               type="button"
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 bg-transparent border-0 cursor-pointer flex p-1 transition-colors"
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted dark:text-fog hover:text-ink dark:hover:text-bone bg-transparent border-0 cursor-pointer flex p-1 transition-colors"
               onClick={() => setShowPw((v) => !v)}
               aria-label="Toggle visibility"
             >
