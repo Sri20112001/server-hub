@@ -58,3 +58,35 @@ an in-process worker (`internal/retention`):
   groups, rules, logs are untouched.
 - The worker stops with the server (SIGINT/SIGTERM graceful shutdown) and
   a repeated run is a safe no-op.
+
+## Per-server Prometheus history (Phase 3C)
+
+Two viewer-readable endpoints expose allowlisted Prometheus history for one
+managed server. The backend builds every expression; callers supply only
+`metric`, `range`, and `step`:
+
+- `GET /server-hub/api/servers/:id/prometheus/metrics?metric=cpu_usage&range=24h&step=1m`
+  → `{serverId, metric, range, step, series: [{name, values: [{timestamp, value}]}]}`
+- `GET /server-hub/api/servers/:id/prometheus/metrics/latest?metric=cpu_usage`
+  → `{serverId, metric, value, timestamp}` (`value`/`timestamp` null when
+  Prometheus has no current sample)
+
+Supported logical metrics (all pinned to `{server_id="<id>"}` from the
+validated route parameter — never from client input):
+
+| Logical metric | PromQL strategy | Series behavior |
+|---|---|---|
+| `cpu_usage` | `100 - avg(rate(node_cpu_seconds_total{mode="idle"}[5m]))*100` | single aggregate across cores |
+| `memory_usage` | `100*(1 - MemAvailable/MemTotal)` | single host gauge |
+| `disk_usage` | same ratio on `mountpoint="/"` only | canonical root filesystem; pseudo-filesystems excluded by the pin |
+| `load_1m` | `node_load1` gauge | single host gauge |
+| `network_receive` | `sum(rate(receive_bytes[5m]))`, `device!="lo"` | explicit total across non-loopback interfaces |
+| `network_transmit` | same for transmit | same as above |
+
+Rules: server must exist first (`404` before any Prometheus call);
+unknown metric/range/step → `400`; Prometheus disabled/unavailable →
+`503`/`502` (never 500); ranges `1h|6h|24h|7d`, steps `15s`–window;
+responses carry no exporter labels (`instance`/`job`/`device` dropped —
+identity is the logical metric name). PostgreSQL `server_metrics`
+(range ≤30d, agent snapshots) and Prometheus history remain separate
+sources with separate endpoints; nothing is copied between them.

@@ -347,6 +347,10 @@ func main() {
 		viewer.GET("/monitoring/silences", monH.ListSilences)
 		operator.POST("/monitoring/silences", monH.CreateSilence)
 		operator.DELETE("/monitoring/silences/:id", monH.DeleteSilence)
+		// Per-server Prometheus history (viewer+; allowlisted metrics only,
+		// PromQL built server-side from the :id route parameter)
+		viewer.GET("/servers/:id/prometheus/metrics", monH.ServerPrometheusMetrics)
+		viewer.GET("/servers/:id/prometheus/metrics/latest", monH.ServerPrometheusLatest)
 	}
 
 	// Agent endpoints — authenticated by agent token, not user JWT.
