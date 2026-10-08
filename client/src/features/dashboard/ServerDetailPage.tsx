@@ -331,9 +331,6 @@ export function ServerDetailPage({ setOnline }: { setOnline: (v: boolean) => voi
     </main>
   );
 
-  const STATUS_COLOR: Record<string, string> = {
-    ONLINE: "text-moss", OFFLINE: "text-brick", WARNING: "text-status-amber", UNKNOWN: "text-stone",
-  };
   const STATUS_DOT: Record<string, string> = {
     ONLINE: "bg-moss", OFFLINE: "bg-brick", WARNING: "bg-status-amber", UNKNOWN: "bg-stone",
   };
@@ -355,14 +352,24 @@ export function ServerDetailPage({ setOnline }: { setOnline: (v: boolean) => voi
       </button>
 
       {/* Header */}
-      <div className="flex items-start justify-between mb-4">
+      <div className="flex items-start justify-between mb-4 flex-wrap gap-3">
         <div>
-          <div className="flex items-center gap-2 mb-1">
+          <div className="flex items-center gap-2.5 mb-1 flex-wrap">
             <span className={`w-2.5 h-2.5 rounded-full ${STATUS_DOT[server.status] ?? "bg-stone"}`} />
             <h1 className="text-ink dark:text-bone font-head font-bold text-xl">{server.name}</h1>
-            <span className={`text-sm font-mono ${STATUS_COLOR[server.status] ?? "text-muted dark:text-fog"}`}>{server.status}</span>
+            <span className={`text-[11px] font-mono uppercase tracking-wider font-semibold px-2 py-0.5 rounded border ${
+              server.status === "ONLINE"
+                ? "border-moss/30 bg-moss/10 text-moss"
+                : server.status === "OFFLINE"
+                ? "border-brick/30 bg-brick/10 text-brick"
+                : server.status === "WARNING"
+                ? "border-status-amber/30 bg-status-amber/10 text-status-amber"
+                : "border-line dark:border-edge bg-paper dark:bg-abyss text-stone"
+            }`}>
+              {server.status}
+            </span>
           </div>
-          <div className="flex items-center gap-2 text-muted dark:text-fog text-sm flex-wrap">
+          <div className="flex items-center gap-2 text-muted dark:text-fog text-sm flex-wrap font-mono text-xs">
             {server.hostname && <span>{server.hostname}</span>}
             {server.ipAddress && <span>· {server.ipAddress}</span>}
             {server.os && <span>· {server.os} {server.osVersion}</span>}
@@ -372,7 +379,7 @@ export function ServerDetailPage({ setOnline }: { setOnline: (v: boolean) => voi
           void qc.invalidateQueries({ queryKey: ["server", serverId] });
           void qc.invalidateQueries({ queryKey: ["server-prometheus", serverId] });
         }}
-          className="w-9 h-9 rounded-full bg-white dark:bg-panel border border-line dark:border-edge flex items-center justify-center text-muted dark:text-fog hover:text-ink dark:hover:text-bone shadow-chrome cursor-pointer"
+          className="w-9 h-9 rounded-full bg-white dark:bg-panel border border-line dark:border-edge flex items-center justify-center text-muted dark:text-fog hover:text-ink dark:hover:text-bone shadow-sm cursor-pointer"
           aria-label="Refresh"
         >
           <RefreshCw size={15} />
@@ -383,19 +390,19 @@ export function ServerDetailPage({ setOnline }: { setOnline: (v: boolean) => voi
       {serverAlerts.length > 0 && (
         <div className="mb-4 space-y-2">
           {serverAlerts.map((a) => (
-            <div key={a.id} className={`flex items-center justify-between px-4 py-2 rounded-card border text-sm ${
-              a.severity === "CRITICAL" ? "border-brick/30 bg-red-50 dark:bg-red-950/30 text-brick dark:text-red-200" : "border-status-amber/30 bg-amber-50 dark:bg-amber-950/30 text-status-amber dark:text-amber-200"
+            <div key={a.id} className={`flex items-center justify-between px-4 py-2.5 rounded-card border text-sm ${
+              a.severity === "CRITICAL" ? "border-brick/30 bg-brick/10 text-brick" : "border-status-amber/30 bg-status-amber/10 text-status-amber"
             }`}>
-              <span>{a.message}</span>
+              <span className="font-medium">{a.message}</span>
               <button onClick={async () => { await api.resolveAlert(a.id); void qc.invalidateQueries({ queryKey: ["alerts"] }); }}
-                className="text-xs underline opacity-70 hover:opacity-100 ml-4 cursor-pointer">Resolve</button>
+                className="text-xs underline opacity-80 hover:opacity-100 ml-4 cursor-pointer font-mono">Resolve</button>
             </div>
           ))}
         </div>
       )}
 
       {/* Tabs */}
-      <div className="flex gap-1 mb-6 bg-paper dark:bg-abyss border border-line dark:border-edge rounded-xl p-1 w-fit">
+      <div className="flex gap-1 mb-6 bg-paper dark:bg-abyss border border-line dark:border-edge rounded-card p-1 w-fit">
         {TABS.map((t) => (
           <button key={t.key} onClick={() => setTab(t.key)}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-mono transition-colors cursor-pointer ${
@@ -417,16 +424,16 @@ export function ServerDetailPage({ setOnline }: { setOnline: (v: boolean) => voi
               { label: "CPU", value: server.cpuCores > 0 ? `${server.cpuCores} cores` : "—" },
               { label: "RAM", value: server.ramTotal > 0 ? `${Math.round(server.ramTotal / 1024 / 1024 / 1024)}GB` : "—" },
             ].map((item) => (
-              <div key={item.label} className="bg-white dark:bg-panel border border-line dark:border-edge rounded-card p-3 shadow-chrome">
-                <div className="text-muted dark:text-fog text-[10px] uppercase tracking-wider">{item.label}</div>
-                <div className="text-ink dark:text-bone font-mono text-sm mt-0.5 truncate">{item.value}</div>
+              <div key={item.label} className="bg-white dark:bg-panel border border-line dark:border-edge rounded-card p-4 shadow-sm">
+                <div className="text-muted dark:text-fog text-[10px] uppercase tracking-wider font-medium">{item.label}</div>
+                <div className="text-ink dark:text-bone font-mono text-sm font-semibold mt-1 truncate">{item.value}</div>
               </div>
             ))}
           </div>
 
           {/* Live metrics */}
           {latest ? (
-            <div className="bg-white dark:bg-panel border border-line dark:border-edge rounded-card p-4 shadow-chrome">
+            <div className="bg-white dark:bg-panel border border-line dark:border-edge rounded-card p-5 shadow-sm">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-ink dark:text-bone font-semibold text-sm">Live Metrics</h2>
                 <span className="text-muted dark:text-fog text-xs font-mono">{new Date(latest.timestamp).toLocaleTimeString()}</span>
@@ -434,40 +441,40 @@ export function ServerDetailPage({ setOnline }: { setOnline: (v: boolean) => voi
               <MetricBar label="CPU" pct={latest.cpuUsage} value={`${latest.cpuUsage.toFixed(1)}%`} />
               <MetricBar label="Memory" pct={latest.memoryUsage} value={`${latest.memoryUsage.toFixed(1)}% · ${latest.memoryUsedMB.toFixed(0)}MB`} />
               <MetricBar label="Disk" pct={latest.diskUsage} value={`${latest.diskUsage.toFixed(1)}% · ${latest.diskUsedGB.toFixed(1)}GB`} />
-              <div className="grid grid-cols-3 gap-3 mt-3 text-xs">
+              <div className="grid grid-cols-3 gap-3 mt-4 text-xs">
                 {[
                   { label: "Load Avg", value: latest.loadAvg1.toFixed(2) },
                   { label: "Uptime", value: fmtUptime(latest.uptimeSec) },
                   { label: "Agent", value: server.agentStatus },
                 ].map((s) => (
-                  <div key={s.label} className="bg-paper dark:bg-abyss border border-line dark:border-edge rounded-lg p-2">
-                    <div className="text-muted dark:text-fog text-[10px]">{s.label}</div>
-                    <div className="text-ink dark:text-bone font-mono">{s.value}</div>
+                  <div key={s.label} className="bg-paper dark:bg-abyss border border-line dark:border-edge rounded-lg p-2.5">
+                    <div className="text-muted dark:text-fog text-[10px] uppercase tracking-wider">{s.label}</div>
+                    <div className="text-ink dark:text-bone font-mono font-medium mt-0.5">{s.value}</div>
                   </div>
                 ))}
               </div>
             </div>
           ) : (
-            <div className="bg-white dark:bg-panel border border-line dark:border-edge rounded-card p-6 text-center text-muted dark:text-fog text-sm">
+            <div className="bg-white dark:bg-panel border border-line dark:border-edge rounded-card p-8 text-center text-muted dark:text-fog text-sm shadow-sm">
               No metrics yet. Install and start the agent to begin monitoring.
             </div>
           )}
 
           {/* Last heartbeat */}
-          <div className="bg-white dark:bg-panel border border-line dark:border-edge rounded-card p-4 text-sm shadow-chrome">
-            <div className="flex justify-between">
+          <div className="bg-white dark:bg-panel border border-line dark:border-edge rounded-card p-5 text-sm shadow-sm space-y-2.5">
+            <div className="flex justify-between items-center">
               <span className="text-muted dark:text-fog">Last heartbeat</span>
               <span className="text-ink dark:text-bone font-mono">
                 {server.lastHeartbeat ? new Date(server.lastHeartbeat).toLocaleString() : "Never"}
               </span>
             </div>
-            <div className="flex justify-between mt-2">
+            <div className="flex justify-between items-center border-t border-line dark:border-edge pt-2">
               <span className="text-muted dark:text-fog">Agent status</span>
-              <span className={`font-mono ${server.agentStatus === "CONNECTED" ? "text-moss" : "text-stone"}`}>
+              <span className={`font-mono font-medium ${server.agentStatus === "CONNECTED" ? "text-moss" : "text-stone"}`}>
                 {server.agentStatus}
               </span>
             </div>
-            <div className="flex justify-between mt-2">
+            <div className="flex justify-between items-center border-t border-line dark:border-edge pt-2">
               <span className="text-muted dark:text-fog">Registered</span>
               <span className="text-ink dark:text-bone font-mono">{new Date(server.createdAt).toLocaleDateString()}</span>
             </div>
@@ -477,30 +484,31 @@ export function ServerDetailPage({ setOnline }: { setOnline: (v: boolean) => voi
 
       {/* ── Monitoring tab ── */}
       {tab === "monitoring" && (
-        <div className="space-y-5">
-          <div className="flex gap-1">
+        <div className="space-y-6">
+          <div className="grid grid-cols-5 gap-1 p-1 rounded-card bg-paper dark:bg-abyss border border-line dark:border-edge w-full sm:max-w-xs">
             {RANGES.map((r) => (
               <button key={r} onClick={() => setRange(r)}
-                className={`px-2.5 py-1 rounded-lg text-xs font-mono transition-colors cursor-pointer border ${
+                className={`px-2.5 py-1.5 rounded-lg text-xs font-mono transition-colors cursor-pointer border ${
                   range === r
-                    ? "bg-accent dark:bg-ember text-white dark:text-black font-semibold border-accent dark:border-ember"
-                    : "bg-white dark:bg-panel border-line dark:border-edge text-muted dark:text-fog hover:text-ink dark:hover:text-bone"
+                    ? "bg-white dark:bg-panel border-line dark:border-edge text-ink dark:text-bone font-semibold shadow-sm"
+                    : "bg-transparent border-transparent text-muted dark:text-fog hover:text-ink dark:hover:text-bone"
                 }`}>
                 {r}
               </button>
             ))}
           </div>
+
           {points.length === 0 ? (
-            <div className="bg-white dark:bg-panel border border-line dark:border-edge rounded-card p-8 text-center text-muted dark:text-fog text-sm">
+            <div className="bg-white dark:bg-panel border border-line dark:border-edge rounded-card p-8 text-center text-muted dark:text-fog text-sm shadow-sm">
               No metrics for this range. The agent must be running to collect data.
             </div>
           ) : (
-            <>
+            <div className="bg-white dark:bg-panel border border-line dark:border-edge rounded-card p-5 shadow-sm space-y-5">
               <MetricChart title="CPU Usage" points={points} value={(p) => p.cpuUsage} stroke="#EA580C" fill="#EA580C" unit="%" />
               <MetricChart title="Memory Usage" points={points} value={(p) => p.memoryUsage} stroke="#16A34A" fill="#16A34A" unit="%" />
               <MetricChart title="Disk Usage" points={points} value={(p) => p.diskUsage} stroke="#D97706" fill="#D97706" unit="%" />
               <MetricChart title="Load Average" points={points} value={(p) => p.loadAvg1} stroke="#7C3AED" fill="#7C3AED" unit="" />
-            </>
+            </div>
           )}
 
           {/* ── Prometheus history (Phase 3C; additive, agent charts above untouched) ── */}
@@ -510,11 +518,11 @@ export function ServerDetailPage({ setOnline }: { setOnline: (v: boolean) => voi
               <span className="font-mono text-[11px] text-muted dark:text-fog">via Prometheus</span>
             </div>
             {!promSupported ? (
-              <div className="bg-white dark:bg-panel border border-line dark:border-edge rounded-card p-6 text-center text-muted dark:text-fog text-sm">
+              <div className="bg-white dark:bg-panel border border-line dark:border-edge rounded-card p-6 text-center text-muted dark:text-fog text-sm shadow-sm">
                 Prometheus history supports ranges up to 7d — switch range for Prometheus charts.
               </div>
             ) : (
-              <div className="space-y-5">
+              <div className="bg-white dark:bg-panel border border-line dark:border-edge rounded-card p-5 shadow-sm space-y-5">
                 {PROM_METRICS.map((m, i) => {
                   const q = promQueries[i];
                   if (q.isError) {
@@ -523,7 +531,7 @@ export function ServerDetailPage({ setOnline }: { setOnline: (v: boolean) => voi
                         <div className="flex items-center justify-between mb-1.5">
                           <Kicker>{m.label}</Kicker>
                         </div>
-                        <div className="w-full bg-white dark:bg-panel border border-line dark:border-edge rounded-card px-4 py-6 text-center text-muted dark:text-fog text-xs">
+                        <div className="w-full bg-paper dark:bg-abyss border border-line dark:border-edge rounded-card px-4 py-6 text-center text-muted dark:text-fog text-xs">
                           {promErrorMessage(q.error)}
                         </div>
                       </div>
@@ -535,7 +543,7 @@ export function ServerDetailPage({ setOnline }: { setOnline: (v: boolean) => voi
                         <div className="flex items-center justify-between mb-1.5">
                           <Kicker>{m.label}</Kicker>
                         </div>
-                        <div className="w-full h-28 bg-white dark:bg-panel border border-line dark:border-edge rounded-card animate-pulse" role="status" aria-label={`${m.label} loading`} />
+                        <div className="w-full h-28 bg-paper dark:bg-abyss border border-line dark:border-edge rounded-card animate-pulse" role="status" aria-label={`${m.label} loading`} />
                       </div>
                     );
                   }
@@ -561,79 +569,83 @@ export function ServerDetailPage({ setOnline }: { setOnline: (v: boolean) => voi
 
       {/* ── Audit tab ── */}
       {tab === "audit" && (
-        <div className="bg-white dark:bg-panel border border-line dark:border-edge rounded-card overflow-hidden shadow-chrome">
-          <table className="w-full text-sm border-collapse">
-            <thead>
-              <tr className="bg-paper dark:bg-abyss">
-                <th className="text-left text-muted dark:text-fog text-xs px-4 py-2.5 font-semibold uppercase tracking-wider">Time</th>
-                <th className="text-left text-muted dark:text-fog text-xs px-4 py-2.5 font-semibold uppercase tracking-wider">Actor</th>
-                <th className="text-left text-muted dark:text-fog text-xs px-4 py-2.5 font-semibold uppercase tracking-wider">Action</th>
-                <th className="text-left text-muted dark:text-fog text-xs px-4 py-2.5 font-semibold uppercase tracking-wider hidden sm:table-cell">Result</th>
-              </tr>
-            </thead>
-            <tbody>
-              {auditLogs.length === 0 ? (
-                <tr><td colSpan={4} className="px-4 py-8 text-center text-muted dark:text-fog text-sm">No audit records.</td></tr>
-              ) : auditLogs.map((log) => (
-                <tr key={log.id} className="border-t border-line dark:border-edge hover:bg-paper dark:hover:bg-emboss/50">
-                  <td className="px-4 py-2.5 font-mono text-xs text-muted dark:text-fog whitespace-nowrap">
-                    {new Date(log.timestamp).toLocaleString()}
-                  </td>
-                  <td className="px-4 py-2.5 font-mono text-xs text-ink dark:text-bone">{log.actor}</td>
-                  <td className="px-4 py-2.5 font-mono text-xs text-ink dark:text-bone">{log.action} {log.resource}</td>
-                  <td className={`px-4 py-2.5 font-mono text-xs hidden sm:table-cell ${log.result === "ok" ? "text-moss" : "text-brick"}`}>
-                    {log.result}
-                  </td>
+        <div className="bg-white dark:bg-panel border border-line dark:border-edge rounded-card overflow-hidden shadow-sm">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm border-collapse">
+              <thead>
+                <tr className="bg-paper dark:bg-abyss border-b border-line dark:border-edge">
+                  <th className="text-left text-muted dark:text-fog text-[11px] px-4 py-2.5 font-semibold uppercase tracking-wider">Time</th>
+                  <th className="text-left text-muted dark:text-fog text-[11px] px-4 py-2.5 font-semibold uppercase tracking-wider">Actor</th>
+                  <th className="text-left text-muted dark:text-fog text-[11px] px-4 py-2.5 font-semibold uppercase tracking-wider">Action</th>
+                  <th className="text-left text-muted dark:text-fog text-[11px] px-4 py-2.5 font-semibold uppercase tracking-wider hidden sm:table-cell">Result</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {auditLogs.length === 0 ? (
+                  <tr><td colSpan={4} className="px-4 py-8 text-center text-muted dark:text-fog text-sm">No audit records.</td></tr>
+                ) : auditLogs.map((log) => (
+                  <tr key={log.id} className="border-t border-line dark:border-edge hover:bg-paper/50 dark:hover:bg-abyss/50 transition-colors">
+                    <td className="px-4 py-2.5 font-mono text-xs text-muted dark:text-fog whitespace-nowrap">
+                      {new Date(log.timestamp).toLocaleString()}
+                    </td>
+                    <td className="px-4 py-2.5 font-mono text-xs text-ink dark:text-bone">{log.actor}</td>
+                    <td className="px-4 py-2.5 font-mono text-xs text-ink dark:text-bone">{log.action} {log.resource}</td>
+                    <td className={`px-4 py-2.5 font-mono text-xs hidden sm:table-cell font-medium ${log.result === "ok" ? "text-moss" : "text-brick"}`}>
+                      {log.result}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
       {/* ── Tokens tab ── */}
       {tab === "tokens" && (
-        <div className="bg-white dark:bg-panel border border-line dark:border-edge rounded-card p-4 shadow-chrome">
-          <div className="flex items-center justify-between mb-3">
+        <div className="bg-white dark:bg-panel border border-line dark:border-edge rounded-card p-5 shadow-sm">
+          <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
-              <Key size={15} className="text-muted dark:text-fog" />
+              <Key size={15} className="text-accent dark:text-ember" />
               <h2 className="text-ink dark:text-bone font-semibold text-sm">Agent Tokens</h2>
             </div>
-            <button onClick={() => setShowTokenForm(!showTokenForm)} className="text-xs text-accent dark:text-ember hover:underline font-medium cursor-pointer">
-              + Generate
+            <button onClick={() => setShowTokenForm(!showTokenForm)} className="text-xs text-accent dark:text-ember hover:underline font-semibold cursor-pointer">
+              + Generate Token
             </button>
           </div>
 
           {showTokenForm && (
-            <div className="mb-3 flex gap-2">
-              <input className="flex-1 bg-white dark:bg-panel border border-line dark:border-edge rounded-input px-3 py-1.5 text-ink dark:text-bone text-sm outline-none focus:border-accent dark:focus:border-ember font-mono placeholder:text-stone dark:placeholder:text-fog"
-                placeholder="Token label (optional)" value={tokenLabel} onChange={(e) => setTokenLabel(e.target.value)} />
+            <div className="mb-4 p-3 bg-paper dark:bg-abyss border border-line dark:border-edge rounded-lg flex gap-2">
+              <input className="flex-1 bg-white dark:bg-panel border border-line dark:border-edge rounded-lg px-3 py-1.5 text-ink dark:text-bone text-sm outline-none focus:border-accent dark:focus:border-ember font-mono placeholder:text-stone dark:placeholder:text-fog"
+                placeholder="Token label (e.g. prod-primary-agent)" value={tokenLabel} onChange={(e) => setTokenLabel(e.target.value)} />
               <button onClick={createToken} disabled={creatingToken}
-                className="px-3 py-1.5 bg-accent dark:bg-ember text-white dark:text-black text-sm font-semibold rounded-input hover:bg-accent-hover dark:hover:bg-ember-hover disabled:opacity-50 cursor-pointer">
+                className="px-3.5 py-1.5 bg-accent dark:bg-ember text-white dark:text-black text-sm font-semibold rounded-lg hover:bg-accent-hover dark:hover:bg-ember-hover disabled:opacity-50 cursor-pointer shadow-sm">
                 {creatingToken ? "…" : "Create"}
               </button>
             </div>
           )}
 
           {newToken && (
-            <div className="mb-3 p-3 bg-amber-50 dark:bg-amber-950/20 border border-status-amber/40 rounded-card">
+            <div className="mb-4 p-4 bg-status-amber/10 border border-status-amber/30 rounded-card">
               <p className="text-status-amber text-xs mb-2 font-semibold">Copy this token now — it will not be shown again.</p>
               <div className="flex items-center gap-2">
-                <code className="text-ink dark:text-bone text-xs font-mono flex-1 break-all bg-white dark:bg-panel px-2 py-1 rounded border border-line dark:border-edge">{newToken}</code>
-                <button onClick={copyToken} className="text-muted dark:text-fog hover:text-ink dark:hover:text-bone shrink-0 cursor-pointer p-1"><Copy size={14} /></button>
+                <code className="text-ink dark:text-bone text-xs font-mono flex-1 break-all bg-white dark:bg-panel px-3 py-1.5 rounded-lg border border-line dark:border-edge">{newToken}</code>
+                <button onClick={copyToken} className="text-muted dark:text-fog hover:text-ink dark:hover:text-bone shrink-0 cursor-pointer p-1.5 rounded bg-white dark:bg-panel border border-line dark:border-edge shadow-sm"><Copy size={14} /></button>
               </div>
               <button onClick={() => setNewToken(null)} className="text-xs text-muted dark:text-fog hover:text-ink dark:hover:text-bone mt-2 underline cursor-pointer">Dismiss</button>
             </div>
           )}
 
-          {tokens.length === 0
-            ? <p className="text-muted dark:text-fog text-xs">No tokens yet. Generate one to connect an agent.</p>
-            : tokens.map((t) => <TokenRow key={t.id} token={t} serverId={serverId} onRevoked={() => void refetchTokens()} />)}
+          <div className="divide-y divide-line dark:divide-edge">
+            {tokens.length === 0
+              ? <p className="text-muted dark:text-fog text-xs py-4 text-center">No tokens yet. Generate one to connect an agent.</p>
+              : tokens.map((t) => <TokenRow key={t.id} token={t} serverId={serverId} onRevoked={() => void refetchTokens()} />)}
+          </div>
 
-          <div className="mt-4 p-3 bg-paper dark:bg-abyss border border-line dark:border-edge rounded-xl text-xs text-muted dark:text-fog font-mono">
-            <p className="mb-1 text-ink dark:text-bone font-medium">Agent install (Linux):</p>
-            <p>go build -o serverhub-agent ./cmd/agent</p>
-            <p className="mt-1">AGENT_TOKEN=&lt;token&gt; SERVERHUB_URL=http://&lt;host&gt;:4000 ./serverhub-agent</p>
+          <div className="mt-5 p-4 bg-paper dark:bg-abyss border border-line dark:border-edge rounded-card text-xs text-muted dark:text-fog font-mono">
+            <p className="mb-1 text-ink dark:text-bone font-semibold">Agent install (Linux):</p>
+            <p className="text-[11px] selection:bg-accent/20">go build -o serverhub-agent ./cmd/agent</p>
+            <p className="mt-1 text-[11px] selection:bg-accent/20">AGENT_TOKEN=&lt;token&gt; SERVERHUB_URL=http://&lt;host&gt;:4000 ./serverhub-agent</p>
           </div>
         </div>
       )}
