@@ -126,6 +126,9 @@ services:
       ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD}
       FRONTEND_URL: ${FRONTEND_URL:-https://imagesoft.in/server-hub}
+      # CORS origin (scheme+host only, no path). Empty = derive from
+      # FRONTEND_URL above (path stripped with a warning).
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-}
       GITHUB_WEBHOOK_SECRET: ${GITHUB_WEBHOOK_SECRET:-}
       HEALTH_CHECK_INTERVAL_SEC: "60"
       COOKIE_SECURE: "${COOKIE_SECURE:-true}"

@@ -362,3 +362,48 @@ type NotificationGroupMember struct {
 }
 
 func (NotificationGroupMember) TableName() string { return "notification_group_members" }
+
+// ─── Notification Rules (Phase 2 engine) ────────────────────────────────────
+
+// NotificationRule routes matching events to a notification group.
+// Channels is a comma-separated subset of {EMAIL, IN_APP}.
+// ConditionJSON holds an optional structured Condition (rules package);
+// empty means "match on event type (+ optional severity) only".
+// CooldownSeconds suppresses repeat notifications for the same logical
+// alert within the window (0 = notify every transition, max 30 days).
+type NotificationRule struct {
+	ID                  uint      `gorm:"primaryKey;autoIncrement" json:"id"`
+	Name                string    `gorm:"uniqueIndex;not null" json:"name"`
+	Description         string    `gorm:"not null;default:''" json:"description"`
+	Enabled             bool      `gorm:"not null;default:true;index" json:"enabled"`
+	EventType           string    `gorm:"not null;index" json:"eventType"`
+	Severity            string    `gorm:"not null;default:''" json:"severity"`
+	ConditionJSON       string    `gorm:"not null;default:''" json:"conditionJson"`
+	NotificationGroupID uint      `gorm:"not null;index" json:"notificationGroupId"`
+	Channels            string    `gorm:"not null;default:'EMAIL'" json:"channels"`
+	CooldownSeconds     int       `gorm:"not null;default:0" json:"cooldownSeconds"`
+	NotifyOnRecovery    bool      `gorm:"not null;default:false" json:"notifyOnRecovery"`
+	CreatedBy           string    `gorm:"not null;default:''" json:"createdBy"`
+	UpdatedBy           string    `gorm:"not null;default:''" json:"updatedBy"`
+	CreatedAt           time.Time `gorm:"default:CURRENT_TIMESTAMP" json:"createdAt"`
+	UpdatedAt           time.Time `gorm:"default:CURRENT_TIMESTAMP" json:"updatedAt"`
+}
+
+func (NotificationRule) TableName() string { return "notification_rules" }
+
+// NotificationRuleState tracks per-rule, per-alert notification progress so
+// cooldowns and recovery semantics survive restarts. Identity is
+// (rule_id, fingerprint) with a unique constraint — the same constraint
+// that makes concurrent evaluation safe.
+type NotificationRuleState struct {
+	ID             uint      `gorm:"primaryKey;autoIncrement" json:"id"`
+	RuleID         uint      `gorm:"not null;uniqueIndex:idx_rrs_rule_fp,priority:1" json:"ruleId"`
+	Fingerprint    string    `gorm:"not null;uniqueIndex:idx_rrs_rule_fp,priority:2" json:"fingerprint"`
+	LastNotifiedAt time.Time `gorm:"not null;index" json:"lastNotifiedAt"`
+	LastState      string    `gorm:"not null;default:''" json:"lastState"`
+	LastEventAt    time.Time `gorm:"not null" json:"lastEventAt"`
+	CreatedAt      time.Time `gorm:"default:CURRENT_TIMESTAMP" json:"createdAt"`
+	UpdatedAt      time.Time `gorm:"default:CURRENT_TIMESTAMP" json:"updatedAt"`
+}
+
+func (NotificationRuleState) TableName() string { return "notification_rule_state" }

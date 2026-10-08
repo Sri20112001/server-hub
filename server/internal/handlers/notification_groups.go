@@ -99,6 +99,10 @@ func (h *NotificationGroupsHandler) Create(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "name is required"})
 		return
 	}
+	if len(body.Name) > 100 || len(body.Description) > 500 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "name (max 100) or description (max 500) too long"})
+		return
+	}
 	id, err := h.DB.InsertID(`
 		INSERT INTO notification_groups (name,description,created_at,updated_at)
 		VALUES ($1,$2,NOW(),NOW())`,
@@ -132,6 +136,10 @@ func (h *NotificationGroupsHandler) Update(c *gin.Context) {
 	}
 	if body.Name != nil && strings.TrimSpace(*body.Name) == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "name must not be empty"})
+		return
+	}
+	if (body.Name != nil && len(*body.Name) > 100) || (body.Description != nil && len(*body.Description) > 500) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "name (max 100) or description (max 500) too long"})
 		return
 	}
 	res, err := h.DB.Exec(`
@@ -169,6 +177,17 @@ func (h *NotificationGroupsHandler) Delete(c *gin.Context) {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		return
+	}
+	// A group referenced by notification rules cannot be deleted silently:
+	// disable or delete those rules first (no fallback redirection).
+	var refs int
+	if err := h.DB.QueryRow(`SELECT COUNT(*) FROM notification_rules WHERE notification_group_id=$1`, id).Scan(&refs); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if refs > 0 {
+		c.JSON(http.StatusConflict, gin.H{"error": "group is referenced by notification rules"})
 		return
 	}
 	// Explicit member cleanup first (works even without the FK cascade).
@@ -211,6 +230,10 @@ func (h *NotificationGroupsHandler) AddMember(c *gin.Context) {
 	email := notify.NormalizeMemberEmail(body.Email)
 	if email == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "valid email is required"})
+		return
+	}
+	if len(email) > 254 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "email too long (max 254)"})
 		return
 	}
 	var count int

@@ -4,7 +4,9 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"net/url"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -17,6 +19,10 @@ type Config struct {
 	CookieSecure  bool
 	CookieDomain  string
 	FrontendURL   string
+	// FrontendOrigins holds normalized CORS origins (scheme + host + port,
+	// never a path) derived from FRONTEND_ORIGIN, falling back to
+	// FRONTEND_URL for backward compatibility.
+	FrontendOrigins []string
 	AdminUser     string
 	AdminPass     string
 	WebhookSecret string
@@ -34,9 +40,15 @@ type Config struct {
 	// Prometheus / Alertmanager integration (optional).
 	PrometheusURL              string
 	PrometheusTimeoutSec       int
+	PrometheusEnabled          bool
 	AlertmanagerURL            string
 	AlertmanagerTimeoutSec     int
+	AlertmanagerEnabled        bool
 	AlertmanagerWebhookSecret  string
+	// NotificationRulesEnabled gates the Phase 2 rules engine. Default
+	// false: with no (or disabled) rules the legacy notification pipeline
+	// runs exactly as before.
+	NotificationRulesEnabled bool
 }
 
 func getenv(key, def string) string {
@@ -64,6 +76,88 @@ func getenvFloat(key string, def float64) float64 {
 		}
 	}
 	return def
+}
+
+// SplitOrigins parses a comma-separated origin list into valid CORS origins.
+// A valid origin is scheme + host + optional port only: entries carrying a
+// URL path, query, or fragment (e.g. "https://example.com/server-hub") are
+// rejected — browsers never send paths in Origin headers, so such values can
+// never match and only create a false sense of configuration. A lone trailing
+// slash is stripped. Returns the accepted origins and the rejected inputs.
+func SplitOrigins(s string) (valid, rejected []string) {
+	for _, part := range strings.Split(s, ",") {
+		raw := strings.TrimSpace(part)
+		if raw == "" {
+			continue
+		}
+		u, err := url.Parse(raw)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+			rejected = append(rejected, raw)
+			continue
+		}
+		if u.RawQuery != "" || u.Fragment != "" || (u.EscapedPath() != "" && u.EscapedPath() != "/") {
+			rejected = append(rejected, raw)
+			continue
+		}
+		origin := u.Scheme + "://" + u.Host
+		if !slices.Contains(valid, origin) {
+			valid = append(valid, origin)
+		}
+	}
+	return valid, rejected
+}
+
+// frontendOriginsRaw prefers FRONTEND_ORIGIN, falling back to FRONTEND_URL
+// so existing deployments keep working.
+func frontendOriginsRaw() (raw string, strict bool) {
+	if v := strings.TrimSpace(os.Getenv("FRONTEND_ORIGIN")); v != "" {
+		return v, true
+	}
+	return os.Getenv("FRONTEND_URL"), false
+}
+
+// resolveFrontendOrigins computes the CORS allow-list. Explicit
+// FRONTEND_ORIGIN values are validated strictly (paths rejected). The
+// legacy FRONTEND_URL fallback is normalized leniently — a value like
+// "https://imagesoft.in/server-hub" yields "https://imagesoft.in" — with a
+// warning recommending FRONTEND_ORIGIN, so existing production deployments
+// keep (and actually gain) working CORS instead of silently failing it.
+func resolveFrontendOrigins() []string {
+	raw, strict := frontendOriginsRaw()
+	if strict {
+		return mustOrigins(raw)
+	}
+	var out []string
+	for _, part := range strings.Split(raw, ",") {
+		p := strings.TrimSpace(part)
+		if p == "" {
+			continue
+		}
+		u, err := url.Parse(p)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+			fmt.Fprintf(os.Stderr, "WARNING: ignoring invalid CORS origin %q (origins must be scheme+host, no path)\n", p)
+			continue
+		}
+		if u.RawQuery != "" || u.Fragment != "" || (u.EscapedPath() != "" && u.EscapedPath() != "/") {
+			fmt.Fprintf(os.Stderr, "WARNING: FRONTEND_URL %q contains a path; using origin %q — set FRONTEND_ORIGIN instead\n",
+				p, u.Scheme+"://"+u.Host)
+		}
+		origin := u.Scheme + "://" + u.Host
+		if !slices.Contains(out, origin) {
+			out = append(out, origin)
+		}
+	}
+	return out
+}
+
+// mustOrigins normalizes configured origins, warning about rejected values.
+// Empty configuration yields no origins (callers add localhost defaults).
+func mustOrigins(raw string) []string {
+	valid, rejected := SplitOrigins(raw)
+	for _, r := range rejected {
+		fmt.Fprintf(os.Stderr, "WARNING: ignoring invalid CORS origin %q (origins must be scheme+host, no path)\n", r)
+	}
+	return valid
 }
 
 func Load() *Config {
@@ -106,6 +200,11 @@ func Load() *Config {
 	if amTimeout <= 0 {
 		amTimeout = 10
 	}
+	// Optional integrations stay exactly as before unless explicitly
+	// disabled: a configured URL means enabled.
+	promEnabled := getenv("PROMETHEUS_ENABLED", "true")
+	amEnabled := getenv("ALERTMANAGER_ENABLED", "true")
+	rulesEnabled := getenv("NOTIFICATION_RULES_ENABLED", "false")
 	offlineTimeout, _ := strconv.Atoi(getenv("SERVER_OFFLINE_TIMEOUT_SEC", "180"))
 	if offlineTimeout < 30 {
 		offlineTimeout = 180
@@ -118,6 +217,7 @@ func Load() *Config {
 		CookieSecure:    secure,
 		CookieDomain:    os.Getenv("COOKIE_DOMAIN"),
 		FrontendURL:     getenv("FRONTEND_URL", "http://localhost:5173"),
+		FrontendOrigins: resolveFrontendOrigins(),
 		AdminUser:       getenv("ADMIN_USERNAME", "admin"),
 		AdminPass:       adminPass,
 		WebhookSecret:   os.Getenv("GITHUB_WEBHOOK_SECRET"),
@@ -130,8 +230,11 @@ func Load() *Config {
 		LogRetentionDays:  retention,
 		PrometheusURL:             os.Getenv("PROMETHEUS_URL"),
 		PrometheusTimeoutSec:      promTimeout,
+		PrometheusEnabled:         promEnabled != "false" && promEnabled != "0",
 		AlertmanagerURL:           os.Getenv("ALERTMANAGER_URL"),
 		AlertmanagerTimeoutSec:    amTimeout,
+		AlertmanagerEnabled:       amEnabled != "false" && amEnabled != "0",
+		NotificationRulesEnabled: rulesEnabled == "true" || rulesEnabled == "1",
 		AlertmanagerWebhookSecret: os.Getenv("ALERTMANAGER_WEBHOOK_SECRET"),
 	}
 }

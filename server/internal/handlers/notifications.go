@@ -175,6 +175,20 @@ func (h *NotificationsHandler) Update(c *gin.Context) {
 		}
 		return notifySet(h.DB, key, strings.TrimSpace(*v))
 	}
+	// setEmail validates an optional address field (empty = leave/unset ok).
+	setEmail := func(key string, v *string) error {
+		if v == nil {
+			return nil
+		}
+		addr := strings.TrimSpace(*v)
+		if addr == "" {
+			return notifySet(h.DB, key, "")
+		}
+		if notify.NormalizeMemberEmail(addr) == "" {
+			return fmt.Errorf("invalid email address for %s", key)
+		}
+		return notifySet(h.DB, key, addr)
+	}
 	setPort := func(key string, v *string) error {
 		if v == nil || strings.TrimSpace(*v) == "" {
 			return nil
@@ -195,12 +209,16 @@ func (h *NotificationsHandler) Update(c *gin.Context) {
 		func() error { return setBool(notify.KeySmtpEnabled, body.Email.Enabled) },
 		func() error { return setStr(notify.KeySmtpHost, body.Email.Host) },
 		func() error { return setStr(notify.KeySmtpUser, body.Email.Username) },
-		func() error { return setStr(notify.KeySmtpFrom, body.Email.From) },
-		func() error { return setStr(notify.KeySmtpTo, body.Email.To) },
+		func() error { return setEmail(notify.KeySmtpFrom, body.Email.From) },
+		func() error { return setEmail(notify.KeySmtpTo, body.Email.To) },
 		func() error { return setBool(notify.KeySmtpTLS, body.Email.TLS) },
 	} {
 		if err := fn(); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			if strings.HasPrefix(err.Error(), "invalid email") {
+				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			} else {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			}
 			return
 		}
 	}

@@ -24,6 +24,9 @@ import type {
   MonitoringOverview,
   NotificationGroup,
   NotificationGroupDetail,
+  NotificationRule,
+  NotificationRuleCreate,
+  NotificationRuleUpdate,
   NotifySettings,
   Operation,
   Project,
@@ -173,6 +176,24 @@ export const api = {
     }),
   removeGroupMember: (id: number, memberId: number) =>
     req<{ ok: boolean }>(ep.notificationGroupMember(id, memberId), { method: "DELETE" }),
+
+  // notification rules (Phase 2 engine)
+  notificationRules: () =>
+    req<NotificationRule[]>(ep.notificationRules()),
+  notificationRule: (id: number) =>
+    req<NotificationRule>(ep.notificationRule(id)),
+  createNotificationRule: (body: NotificationRuleCreate) =>
+    req<{ id: number; name: string }>(ep.notificationRules(), {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  updateNotificationRule: (id: number, body: NotificationRuleUpdate) =>
+    req<{ ok: boolean }>(ep.notificationRule(id), {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+  deleteNotificationRule: (id: number) =>
+    req<{ ok: boolean }>(ep.notificationRule(id), { method: "DELETE" }),
 
   // services & deployments
   services: (projectId: number) =>

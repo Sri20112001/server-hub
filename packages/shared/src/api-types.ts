@@ -638,6 +638,69 @@ export interface NotificationGroupDetail {
   updatedAt: string;
 }
 
+// ─── Notification rules (Phase 2 engine) ────────────────────────────────────
+
+/** Supported rule event types (see server/internal/rules/event.go). */
+export type NotificationEventType =
+  | "AGENT_OFFLINE"
+  | "AGENT_ONLINE"
+  | "SERVER_ALERT"
+  | "SERVER_ALERT_RESOLVED";
+
+/** Supported rule channels. */
+export type NotificationChannel = "EMAIL" | "IN_APP";
+
+export interface NotificationRule {
+  id: number;
+  name: string;
+  description: string;
+  enabled: boolean;
+  eventType: NotificationEventType;
+  severity: string;
+  conditionJson: string;
+  notificationGroupId: number;
+  groupName: string;
+  channels: string;
+  cooldownSeconds: number;
+  notifyOnRecovery: boolean;
+  createdBy: string;
+  updatedBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface NotificationRuleCondition {
+  field: "severity" | "condition" | "value" | "serverId";
+  operator: "eq" | "neq" | "gt" | "gte" | "lt" | "lte" | "contains" | "in";
+  value: unknown;
+}
+
+export interface NotificationRuleCreate {
+  name: string;
+  description?: string;
+  enabled?: boolean;
+  eventType: NotificationEventType;
+  severity?: string;
+  conditionJson?: string;
+  notificationGroupId: number;
+  channels?: NotificationChannel[];
+  cooldownSeconds?: number;
+  notifyOnRecovery?: boolean;
+}
+
+export interface NotificationRuleUpdate {
+  name?: string;
+  description?: string;
+  enabled?: boolean;
+  eventType?: NotificationEventType;
+  severity?: string;
+  conditionJson?: string;
+  notificationGroupId?: number;
+  channels?: NotificationChannel[];
+  cooldownSeconds?: number;
+  notifyOnRecovery?: boolean;
+}
+
 export function toFleetStatus(raw: string | undefined): FleetStatus {
   const s = (raw ?? "").toLowerCase();
   if (s === "healthy" || s === "running" || s === "success" || s === "ok") return "sailing";

@@ -59,6 +59,8 @@ func OpenDatabase(databaseURL string) (*DB, error) {
 		&HealthCheckResult{},
 		&NotificationGroup{},
 		&NotificationGroupMember{},
+		&NotificationRule{},
+		&NotificationRuleState{},
 	} {
 		if gdb.Migrator().HasTable(m) {
 			continue

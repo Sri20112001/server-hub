@@ -6,6 +6,7 @@ import { useUi, useAuth } from '../../../stores/store';
 import { Field, Toggle, ConfirmModal } from '../../../components/ui';
 import { GlassCard } from '../components/GlassCard';
 import { CyberButton } from '../components/CyberButton';
+import { NotificationRulesSection } from '../NotificationRulesSection';
 
 interface NotificationsTabProps {
   notify: NotifySettings | null;
@@ -282,6 +283,8 @@ export function NotificationsTab({ notify, setNotify, groups, refreshGroups }: N
       </GlassCard>
 
       <NotificationGroupManager groups={groups} refreshGroups={refreshGroups} setNotify={setNotify} />
+
+      <NotificationRulesSection />
     </div>
   );
 }

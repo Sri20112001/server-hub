@@ -27,6 +27,7 @@ import (
 	"serverhub/internal/middleware"
 	"serverhub/internal/monitoring"
 	"serverhub/internal/notify"
+	"serverhub/internal/rules"
 	"serverhub/internal/telemetry"
 )
 
@@ -82,12 +83,20 @@ func main() {
 	alerting.StartLoop(db, broker, alerting.Thresholds{
 		CPU: cfg.AlertCPU, RAM: cfg.AlertRAM, Disk: cfg.AlertDisk,
 		OfflineAfter: time.Duration(cfg.OfflineTimeoutSec) * time.Second,
-	})
+	}, rulesEngine(db, cfg))
 	log.Printf("server offline timeout: %ds", cfg.OfflineTimeoutSec)
 	healthcheck.StartLoop(db, broker)
 
-	promClient := monitoring.NewPrometheusClient(cfg.PrometheusURL, cfg.PrometheusTimeoutSec)
-	amClient := monitoring.NewAlertmanagerClient(cfg.AlertmanagerURL, cfg.AlertmanagerTimeoutSec)
+	promURL := cfg.PrometheusURL
+	if !cfg.PrometheusEnabled {
+		promURL = "" // optional integration explicitly disabled
+	}
+	amURL := cfg.AlertmanagerURL
+	if !cfg.AlertmanagerEnabled {
+		amURL = "" // optional integration explicitly disabled
+	}
+	promClient := monitoring.NewPrometheusClient(promURL, cfg.PrometheusTimeoutSec)
+	amClient := monitoring.NewAlertmanagerClient(amURL, cfg.AlertmanagerTimeoutSec)
 	if promClient.Available() {
 		log.Printf("Prometheus configured at %s", cfg.PrometheusURL)
 		applog.Info(gdb, "system", "prometheus configured at "+cfg.PrometheusURL)
@@ -98,11 +107,11 @@ func main() {
 	}
 
 	r := gin.Default()
-	// FRONTEND_URL may hold a comma-separated list of allowed origins
-	// (e.g. "http://localhost:6540,http://localhost:5173").
+	// CORS origins are origin-only (scheme+host, never a path): FRONTEND_ORIGIN,
+	// else normalized FRONTEND_URL, plus localhost dev defaults.
 	origins := []string{"http://localhost:5173", "http://localhost:3000"}
-	for _, o := range strings.Split(cfg.FrontendURL, ",") {
-		if o = strings.TrimSpace(o); o != "" && !slices.Contains(origins, o) {
+	for _, o := range cfg.FrontendOrigins {
+		if !slices.Contains(origins, o) {
 			origins = append(origins, o)
 		}
 	}
@@ -285,6 +294,14 @@ func main() {
 		operator.DELETE("/notification-groups/:id/members/:memberId", ngH.RemoveMember)
 		admin.DELETE("/notification-groups/:id", ngH.Delete)
 
+		// Notification rules (Phase 2 engine; inert unless enabled + rules exist)
+		nrH := &handlers.NotificationRulesHandler{DB: db}
+		viewer.GET("/notification-rules", nrH.List)
+		viewer.GET("/notification-rules/:id", nrH.Get)
+		operator.POST("/notification-rules", nrH.Create)
+		operator.PATCH("/notification-rules/:id", nrH.Update)
+		admin.DELETE("/notification-rules/:id", nrH.Delete)
+
 		// Alerts
 		altH := &handlers.AlertsHandler{DB: db}
 		viewer.GET("/alerts", altH.List)
@@ -308,6 +325,7 @@ func main() {
 		monH := &handlers.MonitoringHandler{
 			DB: db, Cfg: cfg, Broker: broker,
 			Prometheus: promClient, Alertmgr: amClient,
+			Rules: rulesEngine(db, cfg),
 		}
 		// Prometheus proxy (viewer+)
 		viewer.GET("/monitoring/prometheus/status", monH.PrometheusStatus)
@@ -347,6 +365,7 @@ func main() {
 	monWebhookH := &handlers.MonitoringHandler{
 		DB: db, Cfg: cfg, Broker: broker,
 		Prometheus: promClient, Alertmgr: amClient,
+		Rules: rulesEngine(db, cfg),
 	}
 	r.POST("/server-hub/api/webhooks/alertmanager", monWebhookH.AlertmanagerWebhook)
 
@@ -394,6 +413,21 @@ func bootWarningsToDB(gdb *gorm.DB) {
 	if v := os.Getenv("JWT_SECRET"); v != "" && len(v) < 32 {
 		applog.Warn(gdb, "auth", "startup warning: JWT_SECRET is short — use at least 32 characters in production")
 	}
+}
+
+// rulesEngine builds the Phase 2 notification rules engine. It is inert
+// unless NOTIFICATION_RULES_ENABLED=true: with zero rules (or the flag off)
+// the legacy alert/notification pipeline runs exactly as before.
+func rulesEngine(db *database.DB, cfg *config.Config) *rules.Engine {
+	eng := &rules.Engine{
+		DB:      db,
+		Enabled: cfg.NotificationRulesEnabled,
+		Sender:  &rules.NotifySender{DB: db},
+	}
+	if eng.Enabled {
+		log.Println("notification rules engine: enabled")
+	}
+	return eng
 }
 
 func boolStr(b bool) string {

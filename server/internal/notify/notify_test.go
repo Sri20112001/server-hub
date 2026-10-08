@@ -102,3 +102,59 @@ func TestNormalizeMemberEmail(t *testing.T) {
 		}
 	}
 }
+
+func TestEnsureDefaultGroupSkipsWhenGroupsExist(t *testing.T) {
+	db := testdb.Open(t)
+	if _, err := db.Exec(`INSERT INTO notification_groups (name,created_at,updated_at)
+		VALUES ('Personal',NOW(),NOW())`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO app_settings (key, value) VALUES (?,?)
+		ON CONFLICT(key) DO UPDATE SET value=excluded.value`, KeySmtpTo, "keep@x.y"); err != nil {
+		t.Fatal(err)
+	}
+	EnsureDefaultGroup(db)
+	var groups int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM notification_groups`).Scan(&groups); err != nil || groups != 1 {
+		t.Fatalf("user group must be preserved untouched, got %d (%v)", groups, err)
+	}
+	var members int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM notification_group_members`).Scan(&members); err != nil || members != 0 {
+		t.Fatalf("no members must be added, got %d (%v)", members, err)
+	}
+	var gid string
+	if err := db.QueryRow(`SELECT value FROM app_settings WHERE key=$1`, KeyEmailGroupID).Scan(&gid); err == nil && gid != "" {
+		t.Fatalf("group selector must stay unset, got %q", gid)
+	}
+}
+
+func TestEmailRecipientsDedupeAndValidate(t *testing.T) {
+	db := testdb.Open(t)
+	if _, err := db.Exec(`INSERT INTO notification_groups (name,created_at,updated_at)
+		VALUES ('G',NOW(),NOW())`); err != nil {
+		t.Fatal(err)
+	}
+	var gid int64
+	if err := db.QueryRow(`SELECT id FROM notification_groups WHERE name='G'`).Scan(&gid); err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range []string{"A@x.y", "a@x.y ", "bad-address", "b@x.y"} {
+		_, _ = db.Exec(`INSERT INTO notification_group_members (group_id,email,created_at)
+			VALUES ($1,$2,NOW()) ON CONFLICT DO NOTHING`, gid, e)
+	}
+	m := map[string]string{KeyEmailGroupID: itoa(gid), KeySmtpTo: "fallback@x.y"}
+	got := emailRecipients(db, m)
+	if len(got) != 2 {
+		t.Fatalf("expected 2 clean recipients (case-dup merged, invalid dropped), got %v", got)
+	}
+	seen := map[string]bool{}
+	for _, e := range got {
+		if seen[e] {
+			t.Fatalf("duplicate recipient %q", e)
+		}
+		seen[e] = true
+	}
+	if !seen["a@x.y"] || !seen["b@x.y"] {
+		t.Fatalf("unexpected set: %v", got)
+	}
+}

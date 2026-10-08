@@ -226,6 +226,14 @@ export function notificationGroupMember(id: number, memberId: number): string {
   return `${API}/notification-groups/${id}/members/${memberId}`;
 }
 
+// ─── Notification rules (Phase 2 engine) ────────────────────────────────────
+export function notificationRules(): string {
+  return `${API}/notification-rules`;
+}
+export function notificationRule(id: number): string {
+  return `${API}/notification-rules/${id}`;
+}
+
 // ─── Managed servers ─────────────────────────────────────────────────────────
 export function servers(): string {
   return `${API}/servers`;

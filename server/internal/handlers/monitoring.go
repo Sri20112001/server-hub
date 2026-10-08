@@ -20,6 +20,7 @@ import (
 	"serverhub/internal/events"
 	"serverhub/internal/middleware"
 	"serverhub/internal/monitoring"
+	"serverhub/internal/rules"
 )
 
 // MonitoringHandler handles all Prometheus + Alertmanager proxy endpoints.
@@ -29,6 +30,7 @@ type MonitoringHandler struct {
 	Broker     *events.Broker
 	Prometheus *monitoring.PrometheusClient
 	Alertmgr   *monitoring.AlertmanagerClient
+	Rules      *rules.Engine
 }
 
 func promCtx(cfg *config.Config) (context.Context, context.CancelFunc) {
@@ -525,6 +527,15 @@ func (h *MonitoringHandler) persistWebhookAlert(a WebhookAlert, serverID *uint) 
 		if n, _ := res.RowsAffected(); n > 0 {
 			applog.Info(h.DB.GDB, "webhook",
 				fmt.Sprintf("alertmanager resolved %s (%s)", condition, fp))
+			// Rules hook (additive): legacy SSE path below is untouched.
+			if h.Rules != nil {
+				h.Rules.Evaluate(rules.Event{
+					Type: rules.EventServerAlertResolved, ServerID: serverID,
+					Severity: severity, Condition: condition,
+					Message:     fmt.Sprintf("%s resolved", condition),
+					Fingerprint: fp,
+				})
+			}
 		}
 		return
 	}
@@ -556,6 +567,14 @@ func (h *MonitoringHandler) persistWebhookAlert(a WebhookAlert, serverID *uint) 
 	applog.Info(h.DB.GDB, "webhook",
 		fmt.Sprintf("alertmanager firing %s (%s)", condition, fp))
 	notifyWebhookUsers(h.DB, serverID, severity+": "+message, message, "alert", alertID)
+	// Rules hook (additive): legacy in-app + SSE path is untouched.
+	if h.Rules != nil {
+		h.Rules.Evaluate(rules.Event{
+			Type: rules.EventServerAlert, ServerID: serverID,
+			Severity: severity, Condition: condition,
+			Message: message, Fingerprint: fp, AlertID: &alertID,
+		})
+	}
 	if h.Broker != nil {
 		h.Broker.Publish("alert.triggered", map[string]interface{}{
 			"serverId": serverID, "condition": condition,

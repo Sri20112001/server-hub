@@ -1,5 +1,13 @@
 // Package alerting runs background loops that detect offline servers and
 // metric threshold crossings, maintaining TRIGGERED/RESOLVED state.
+//
+// Notification-flood semantics (Phase 1, no rules engine): each helper only
+// notifies on a TRIGGERED transition — fireAlert/notifyAllUsers run only
+// when no TRIGGERED row exists for (server_id, condition), and the
+// Alertmanager webhook path dedupes on fingerprint the same way. A flapping
+// signal (TRIGGERED→RESOLVED→TRIGGERED) notifies once per cycle, which is
+// the correct per-incident behavior. True cooldown/grouping/throttling
+// semantics belong to the Phase 2 notification rules engine.
 package alerting
 
 import (
@@ -9,6 +17,7 @@ import (
 
 	"serverhub/internal/database"
 	"serverhub/internal/events"
+	"serverhub/internal/rules"
 )
 
 const checkInterval = 60 * time.Second
@@ -32,29 +41,29 @@ func offlineThreshold(th Thresholds) time.Duration {
 	return defaultOfflineThreshold
 }
 
-func StartLoop(db *database.DB, broker *events.Broker, th Thresholds) {
+func StartLoop(db *database.DB, broker *events.Broker, th Thresholds, eng *rules.Engine) {
 	go func() {
 		// Sweep immediately so a restart converges without waiting a tick.
-		if err := runChecks(db, broker, th); err != nil {
+		if err := runChecks(db, broker, th, eng); err != nil {
 			log.Printf("alerting: %v", err)
 		}
 		t := time.NewTicker(checkInterval)
 		defer t.Stop()
 		for range t.C {
-			if err := runChecks(db, broker, th); err != nil {
+			if err := runChecks(db, broker, th, eng); err != nil {
 				log.Printf("alerting: %v", err)
 			}
 		}
 	}()
 }
 
-func runChecks(db *database.DB, broker *events.Broker, th Thresholds) error {
-	checkOffline(db, broker, th)
-	checkMetricThresholds(db, broker, th)
+func runChecks(db *database.DB, broker *events.Broker, th Thresholds, eng *rules.Engine) error {
+	checkOffline(db, broker, th, eng)
+	checkMetricThresholds(db, broker, th, eng)
 	return nil
 }
 
-func checkOffline(db *database.DB, broker *events.Broker, th Thresholds) {
+func checkOffline(db *database.DB, broker *events.Broker, th Thresholds, eng *rules.Engine) {
 	cutoff := time.Now().UTC().Add(-offlineThreshold(th))
 	rows, err := db.Query(`
 		SELECT id, name FROM managed_servers
@@ -70,7 +79,7 @@ func checkOffline(db *database.DB, broker *events.Broker, th Thresholds) {
 			continue
 		}
 		_, _ = db.Exec(`UPDATE managed_servers SET status='OFFLINE', agent_status='DISCONNECTED', updated_at=NOW() WHERE id=$1`, id)
-		fireAlert(db, broker, id, "offline", 0, "CRITICAL",
+		fireAlert(db, broker, eng, id, "offline", 0, 0, "CRITICAL",
 			fmt.Sprintf("Server %s is offline (no heartbeat)", name))
 	}
 
@@ -84,11 +93,19 @@ func checkOffline(db *database.DB, broker *events.Broker, th Thresholds) {
 		if err := onlineRows.Scan(&id); err != nil {
 			continue
 		}
-		resolveAlert(db, broker, id, "offline")
+		if resolveAlert(db, broker, id, "offline") && eng != nil {
+			sid := id
+			eng.Evaluate(rules.Event{
+				Type: rules.EventAgentOnline, ServerID: &sid,
+				Severity: "INFO", Condition: "offline",
+				Message:    fmt.Sprintf("Server %d is back online", id),
+				Fingerprint: rules.Fingerprint(id, "offline"),
+			})
+		}
 	}
 }
 
-func checkMetricThresholds(db *database.DB, broker *events.Broker, th Thresholds) {
+func checkMetricThresholds(db *database.DB, broker *events.Broker, th Thresholds, eng *rules.Engine) {
 	// Only evaluate fresh snapshots: a dead server's last high reading must
 	// not keep firing threshold alerts (offline detection owns that case).
 	freshSince := time.Now().UTC().Add(-offlineThreshold(th))
@@ -124,9 +141,16 @@ func checkMetricThresholds(db *database.DB, broker *events.Broker, th Thresholds
 			}
 			if ch.value > ch.threshold {
 				msg := fmt.Sprintf("%s reached %.1f%% (threshold %.0f%%)", ch.condition, ch.value, ch.threshold)
-				fireAlert(db, broker, sid, ch.condition, ch.threshold, ch.severity, msg)
-			} else {
-				resolveAlert(db, broker, sid, ch.condition)
+				fireAlert(db, broker, eng, sid, ch.condition, ch.value, ch.threshold, ch.severity, msg)
+			} else if resolveAlert(db, broker, sid, ch.condition) && eng != nil {
+				id := sid
+				eng.Evaluate(rules.Event{
+					Type: rules.EventServerAlertResolved, ServerID: &id,
+					Severity: ch.severity, Condition: ch.condition,
+					Value: ch.value, Threshold: ch.threshold,
+					Message:    fmt.Sprintf("%s recovered to %.1f%% (threshold %.0f%%)", ch.condition, ch.value, ch.threshold),
+					Fingerprint: rules.Fingerprint(sid, ch.condition),
+				})
 			}
 		}
 	}
@@ -152,7 +176,7 @@ func checkMetricThresholds(db *database.DB, broker *events.Broker, th Thresholds
 	}
 }
 
-func fireAlert(db *database.DB, broker *events.Broker, serverID uint, condition string, threshold float64, severity, message string) {
+func fireAlert(db *database.DB, broker *events.Broker, eng *rules.Engine, serverID uint, condition string, value, threshold float64, severity, message string) {
 	var count int
 	_ = db.QueryRow(`
 		SELECT COUNT(*) FROM alerts WHERE server_id=$1 AND condition=$2 AND status='TRIGGERED'`,
@@ -173,21 +197,40 @@ func fireAlert(db *database.DB, broker *events.Broker, serverID uint, condition 
 			"serverId": serverID, "condition": condition, "severity": severity, "message": message,
 		})
 	}
+	// Rules engine hook (additive): the legacy in-app + SSE path above is
+	// untouched; rules decide on extra EMAIL/IN_APP delivery.
+	if eng != nil {
+		evType := rules.EventServerAlert
+		if condition == "offline" {
+			evType = rules.EventAgentOffline
+		}
+		eng.Evaluate(rules.Event{
+			Type: evType, ServerID: &serverID,
+			Severity: severity, Condition: condition,
+			Value: value, Threshold: threshold,
+			Message:     message,
+			Fingerprint: rules.Fingerprint(serverID, condition),
+		})
+	}
 }
 
-func resolveAlert(db *database.DB, broker *events.Broker, serverID uint, condition string) {
+// resolveAlert closes the TRIGGERED row, reporting whether a live alert was
+// actually resolved (transition-only, like the SSE publish below).
+func resolveAlert(db *database.DB, broker *events.Broker, serverID uint, condition string) bool {
 	res, err := db.Exec(`
 		UPDATE alerts SET status='RESOLVED', resolved_at=NOW()
 		WHERE server_id=$1 AND condition=$2 AND status='TRIGGERED'`,
 		serverID, condition)
 	if err != nil {
-		return
+		return false
 	}
-	if n, _ := res.RowsAffected(); n > 0 && broker != nil {
+	n, _ := res.RowsAffected()
+	if n > 0 && broker != nil {
 		broker.Publish("alert.resolved", map[string]interface{}{
 			"serverId": serverID, "condition": condition,
 		})
 	}
+	return n > 0
 }
 
 func notifyAllUsers(db *database.DB, serverID uint, title, body, category string) {

@@ -36,22 +36,22 @@ const (
 
 // Setting keys.
 const (
-	KeyEnabled      = "notify_enabled"
-	KeyOnDeploy     = "notify_on_deploy_failed"
-	KeyOnThreshold  = "notify_on_threshold"
-	KeyOnBackup     = "notify_on_backup_failed"
-	KeyOnProject    = "notify_on_project_failed"
-	KeyTgEnabled    = "notify_tg_enabled"
-	KeyTgToken      = "notify_tg_token" // encrypted, "enc:" prefixed
-	KeyTgChat       = "notify_tg_chat_id"
-	KeySmtpEnabled  = "notify_smtp_enabled"
-	KeySmtpHost     = "notify_smtp_host"
-	KeySmtpPort     = "notify_smtp_port"
-	KeySmtpUser     = "notify_smtp_user"
-	KeySmtpPass     = "notify_smtp_pass" // encrypted, "enc:" prefixed
-	KeySmtpFrom     = "notify_smtp_from"
-	KeySmtpTo       = "notify_smtp_to"
-	KeySmtpTLS      = "notify_smtp_tls" // "true" (default) | "false"
+	KeyEnabled     = "notify_enabled"
+	KeyOnDeploy    = "notify_on_deploy_failed"
+	KeyOnThreshold = "notify_on_threshold"
+	KeyOnBackup    = "notify_on_backup_failed"
+	KeyOnProject   = "notify_on_project_failed"
+	KeyTgEnabled   = "notify_tg_enabled"
+	KeyTgToken     = "notify_tg_token" // encrypted, "enc:" prefixed
+	KeyTgChat      = "notify_tg_chat_id"
+	KeySmtpEnabled = "notify_smtp_enabled"
+	KeySmtpHost    = "notify_smtp_host"
+	KeySmtpPort    = "notify_smtp_port"
+	KeySmtpUser    = "notify_smtp_user"
+	KeySmtpPass    = "notify_smtp_pass" // encrypted, "enc:" prefixed
+	KeySmtpFrom    = "notify_smtp_from"
+	KeySmtpTo      = "notify_smtp_to"
+	KeySmtpTLS     = "notify_smtp_tls" // "true" (default) | "false"
 	// KeyEmailGroupID optionally points email delivery at a notification
 	// group (row id in notification_groups). When unset/empty/invalid, the
 	// legacy notify_smtp_to address is used (backward compatible).
@@ -191,24 +191,26 @@ func itoa(n int64) string {
 
 // emailRecipients resolves who gets mail: members of the configured default
 // group (up to MaxGroupMembers, in join order) when it exists and is
-// non-empty, else the legacy single To address. Never returns blanks.
+// non-empty, else the legacy single To address. Every address is
+// re-normalized, re-validated, and deduplicated at send time — group rows
+// predate validation rules and the legacy field is free-form — so a bad row
+// can never poison or duplicate a delivery. Returns nil when nothing valid
+// remains (the send then fails cleanly instead of sending nowhere).
 func emailRecipients(db *database.DB, m map[string]string) []string {
 	if db != nil {
 		if gid, err := strconv.ParseInt(strings.TrimSpace(m[KeyEmailGroupID]), 10, 64); err == nil && gid > 0 {
 			rows, err := db.Query(`SELECT email FROM notification_group_members
 				WHERE group_id=$1 ORDER BY id ASC LIMIT $2`, gid, MaxGroupMembers)
 			if err == nil {
-				var out []string
+				var raw []string
 				for rows.Next() {
 					var e string
 					if err := rows.Scan(&e); err == nil {
-						if e = strings.TrimSpace(e); e != "" {
-							out = append(out, e)
-						}
+						raw = append(raw, e)
 					}
 				}
 				rows.Close()
-				if len(out) > 0 {
+				if out := cleanEmails(raw); len(out) > 0 {
 					return out
 				}
 			} else if rows != nil {
@@ -216,11 +218,25 @@ func emailRecipients(db *database.DB, m map[string]string) []string {
 			}
 		}
 	}
-	if to := strings.TrimSpace(m[KeySmtpTo]); to != "" {
-		return []string{to}
-	}
-	return nil
+	return cleanEmails([]string{strings.TrimSpace(m[KeySmtpTo])})
 }
+
+// cleanEmails normalizes, validates, and dedupes addresses, preserving
+// first-seen order. Invalid/blank entries are dropped.
+func cleanEmails(in []string) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, raw := range in {
+		e := NormalizeMemberEmail(raw)
+		if e == "" || seen[e] {
+			continue
+		}
+		seen[e] = true
+		out = append(out, e)
+	}
+	return out
+}
+
 // Never blocks the caller; never returns delivery errors (they go to app_logs).
 func Send(db *database.DB, event, title, body string) {
 	if db == nil || eventKey(event) == "" {
@@ -243,6 +259,12 @@ func Send(db *database.DB, event, title, body string) {
 		if on(m, KeySmtpEnabled) {
 			if err := sendEmail(db, m, title, text); err != nil {
 				applog.Warn(db.GDB, "system", "notify: email failed: "+err.Error())
+			} else {
+				// Success marker (recipient count only — never addresses):
+				// lets operators answer "did the alert go out?" from app_logs.
+				// Failures are logged above; per-recipient receipts are out of
+				// scope (see docs/api-notes.md).
+				applog.Info(db.GDB, "system", fmt.Sprintf("notify: email sent (%s, %d recipient(s))", event, len(emailRecipients(db, m))))
 			}
 		}
 	}()
@@ -312,6 +334,77 @@ func netJoinHostPort(host, port string) string { return host + ":" + port }
 
 func sendEmail(db *database.DB, m map[string]string, subject, text string) error {
 	to := emailRecipients(db, m)
+	return deliverEmail(m, to, subject, text)
+}
+
+// SendEmailTo delivers to an explicit recipient list (rules engine path).
+// The global master + SMTP switches still apply; the list itself is assumed
+// pre-resolved (group members) and is cleaned again defensively.
+func SendEmailTo(db *database.DB, to []string, subject, text string) error {
+	m := settings(db)
+	if !on(m, KeyEnabled) {
+		return fmt.Errorf("notifications disabled")
+	}
+	if !on(m, KeySmtpEnabled) {
+		return fmt.Errorf("email channel disabled")
+	}
+	return deliverEmail(m, cleanEmails(to), subject, text)
+}
+
+// GroupMemberEmails returns up to MaxGroupMembers addresses for a group,
+// cleaned and deduplicated. Empty when the group is missing/empty.
+func GroupMemberEmails(db *database.DB, groupID uint) []string {
+	if db == nil || groupID == 0 {
+		return nil
+	}
+	rows, err := db.Query(`SELECT email FROM notification_group_members
+		WHERE group_id=$1 ORDER BY id ASC LIMIT $2`, groupID, MaxGroupMembers)
+	if err != nil {
+		return nil
+	}
+	var raw []string
+	for rows.Next() {
+		var e string
+		if err := rows.Scan(&e); err == nil {
+			raw = append(raw, e)
+		}
+	}
+	rows.Close()
+	return cleanEmails(raw)
+}
+
+// NotifyUsers inserts an in-app notification for every user, optionally
+// linked to a server and an alert row. Used by the rules engine (IN_APP)
+// and mirrored by the legacy per-alert helpers.
+func NotifyUsers(db *database.DB, serverID *uint, alertID *int64, title, body, category string) {
+	if db == nil {
+		return
+	}
+	rows, err := db.Query(`SELECT username FROM users`)
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+	var sid, aid any
+	if serverID != nil {
+		sid = *serverID
+	}
+	if alertID != nil {
+		aid = *alertID
+	}
+	for rows.Next() {
+		var u string
+		if err := rows.Scan(&u); err != nil {
+			continue
+		}
+		_, _ = db.Exec(`
+			INSERT INTO in_app_notifications (username,title,body,category,read,server_id,alert_id,created_at)
+			VALUES ($1,$2,$3,$4,false,$5,$6,NOW())`,
+			u, title, body, category, sid, aid)
+	}
+}
+
+func deliverEmail(m map[string]string, to []string, subject, text string) error {
 	addr, msg, err := buildEmail(m, to, subject, text)
 	if err != nil {
 		return err
