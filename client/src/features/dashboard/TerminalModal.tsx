@@ -35,6 +35,15 @@ export function TerminalModal({
   const termRef = useRef<Terminal | null>(null);
 
   useEffect(() => {
+    if (!confirmed) return;
+    const fn = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", fn);
+    return () => window.removeEventListener("keydown", fn);
+  }, [confirmed, onClose]);
+
+  useEffect(() => {
     if (!confirmed || !container) return;
     const box = boxRef.current;
     if (!box) return;
@@ -156,6 +165,9 @@ export function TerminalModal({
       onClick={onClose}
     >
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Terminal: ${projectName}`}
         className="bg-white dark:bg-panel border border-line dark:border-edge rounded-t-2xl sm:rounded-card w-full sm:max-w-[860px] p-4 sm:p-5 shadow-chrome max-h-[92dvh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >

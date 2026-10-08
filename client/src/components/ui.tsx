@@ -138,6 +138,8 @@ export function Modal({ onClose, children }: { onClose: () => void; children: Re
       onClick={onClose}
     >
       <div
+        role="dialog"
+        aria-modal="true"
         className="bg-white dark:bg-panel border border-line dark:border-edge rounded-card w-full max-w-[480px] p-4 sm:p-6 shadow-chrome max-h-[88dvh] overflow-y-auto my-auto"
         onClick={(e) => e.stopPropagation()}
       >
@@ -196,7 +198,7 @@ export function ConfirmModal({
         </button>
         <button
           id="confirm-go"
-          className="inline-flex items-center gap-2 rounded-input text-[13px] font-medium px-4 py-2 cursor-pointer border border-transparent whitespace-nowrap transition-colors duration-150 disabled:opacity-55 disabled:cursor-not-allowed bg-transparent border-brick text-brick hover:bg-red-50 dark:hover:bg-red-950"
+          className="inline-flex items-center gap-2 rounded-input text-[13px] font-medium px-4 py-2 cursor-pointer whitespace-nowrap transition-colors duration-150 disabled:opacity-55 disabled:cursor-not-allowed bg-transparent border border-brick/40 hover:border-brick text-brick hover:bg-brick/10"
           disabled={busy || !!requireText}
           onClick={onConfirm}
         >

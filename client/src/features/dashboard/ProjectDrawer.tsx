@@ -49,6 +49,9 @@ export function ProjectDrawer({
       onClick={onClose}
     >
       <aside
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Ship manifest: ${project.name}`}
         className="bg-paper dark:bg-abyss border-l border-line dark:border-edge w-full sm:max-w-[440px] h-[100dvh] overflow-y-auto px-4 sm:px-6 pt-6 pb-[calc(3rem+env(safe-area-inset-bottom,0px))] shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >

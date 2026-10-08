@@ -156,6 +156,9 @@ function CommandPalette({ onClose }: { onClose: () => void }) {
       onClick={onClose}
     >
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Command palette"
         className="w-full max-w-[560px] bg-white dark:bg-panel border border-line dark:border-edge rounded-card overflow-hidden shadow-chrome my-auto max-h-[88dvh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
@@ -405,7 +408,7 @@ export function AppShell({ online }: { online: boolean }) {
             key={t.id}
             className={`rounded-xl px-4 py-2.5 text-[13px] flex gap-2.5 items-center shadow-chrome ${
               t.bad
-                ? "bg-red-900 dark:bg-red-900 text-white dark:text-red-100"
+                ? "bg-brick text-white"
                 : "bg-ink dark:bg-bone text-paper dark:text-ink"
             }`}
           >
