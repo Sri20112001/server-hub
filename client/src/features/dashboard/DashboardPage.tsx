@@ -11,6 +11,7 @@ import {
   Radio,
   RefreshCw,
   Rocket,
+  Server,
   Ship,
 } from "lucide-react";
 import { api, ApiError } from "../../lib/api";
@@ -21,6 +22,7 @@ import {
   type Deployment,
   type DiscoveryResult,
   type FleetStatus,
+  type ManagedServer,
   type Project,
   type Service,
 } from "../../lib/types";
@@ -181,6 +183,7 @@ export function DashboardPage({ setOnline }: { setOnline: (v: boolean) => void }
   const [params, setParams] = useSearchParams();
   const nav = useNavigate();
   const [data, setData] = useState<DashboardData | null>(null);
+  const [servers, setServers] = useState<ManagedServer[]>([]);
   const [servicesByProject, setServicesByProject] = useState<Record<number, Service[]>>({});
   const [feed, setFeed] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
@@ -244,8 +247,13 @@ export function DashboardPage({ setOnline }: { setOnline: (v: boolean) => void }
 
   const load = useCallback(async () => {
     try {
-      const [dash, audit] = await Promise.all([api.dashboard(), api.audit(9)]);
+      const [dash, audit, srvs] = await Promise.all([
+        api.dashboard(),
+        api.audit(9),
+        api.servers().catch(() => []),
+      ]);
       setData(dash);
+      setServers(srvs);
       setOnline(true);
       setFeed(
         audit.map(
@@ -492,7 +500,7 @@ export function DashboardPage({ setOnline }: { setOnline: (v: boolean) => void }
       </div>
 
       {/* stat tiles */}
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4 mt-5">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5 mt-5">
         <StatShell
           kicker="Server load"
           icon={<Activity size={15} />}
@@ -508,6 +516,7 @@ export function DashboardPage({ setOnline }: { setOnline: (v: boolean) => void }
           kicker="Fleet"
           icon={<Ship size={15} />}
           foot={<span>{data.counts.services} stations crewed</span>}
+          onClick={() => nav("/fleet")}
         >
           <div className="flex items-center gap-2 flex-wrap items-baseline mt-2">
             <span className="font-head text-[34px] font-bold text-ink dark:text-bone">{data.counts.projects}</span>
@@ -515,6 +524,30 @@ export function DashboardPage({ setOnline }: { setOnline: (v: boolean) => void }
           </div>
           <div className="text-muted dark:text-fog text-xs mt-1.5">
             <span className="font-mono text-ink dark:text-bone font-medium">{docked}</span> idle in shipyard
+          </div>
+        </StatShell>
+
+        <StatShell
+          kicker="Infrastructure"
+          icon={<Server size={15} />}
+          foot={<span>Remote agents</span>}
+          onClick={() => nav("/servers")}
+        >
+          <div className="flex items-center gap-2 flex-wrap items-baseline mt-2">
+            <span className="font-head text-[34px] font-bold text-ink dark:text-bone">{servers.length}</span>
+            <span className="text-muted dark:text-fog">servers enrolled</span>
+          </div>
+          <div className="text-muted dark:text-fog text-xs mt-1.5 flex items-center gap-2">
+            <span className="inline-flex items-center gap-1 font-mono text-moss font-medium">
+              <span className="w-1.5 h-1.5 rounded-full bg-moss" />
+              {servers.filter((s) => s.status === "ONLINE").length} online
+            </span>
+            {servers.some((s) => s.status === "OFFLINE" || s.status === "WARNING") && (
+              <span className="inline-flex items-center gap-1 font-mono text-brick font-medium">
+                <span className="w-1.5 h-1.5 rounded-full bg-brick" />
+                {servers.filter((s) => s.status === "OFFLINE").length} offline
+              </span>
+            )}
           </div>
         </StatShell>
 
