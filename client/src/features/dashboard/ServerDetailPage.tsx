@@ -1,16 +1,134 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueries, useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { ArrowLeft, Copy, Key, RefreshCw, Trash2, Activity, ClipboardList, Server } from "lucide-react";
-import { api } from "../../lib/api";
+import { api, ApiError } from "../../lib/api";
 import { useEvents } from "../../lib/useEvents";
 import { useUi } from "../../stores/store";
-import { fmtUptime } from "../../lib/format";
+import { fmtRate, fmtUptime } from "../../lib/format";
 import { Kicker } from "../../components/ui";
 import type { AgentToken, ServerMetricPoint } from "../../lib/types";
+import type { ServerPromSeries } from "../../lib/api";
 
 const RANGES = ["1h", "6h", "24h", "7d", "30d"] as const;
 type Tab = "overview" | "monitoring" | "audit" | "tokens";
+
+// ─── Prometheus history config (Phase 3C; backend builds the PromQL) ─────────
+// Step per range stays well inside the backend bounds (15s ≤ step ≤ window).
+const PROM_RANGES = ["1h", "6h", "24h", "7d"] as const;
+const PROM_STEP: Record<string, string> = { "1h": "1m", "6h": "5m", "24h": "15m", "7d": "1h" };
+
+interface PromMetricDef {
+  key: string;
+  label: string;
+  unit: string;
+  fixedMax: number | null;
+  stroke: string;
+  fill: string;
+  format: (v: number) => string;
+}
+
+const PROM_METRICS: PromMetricDef[] = [
+  { key: "cpu_usage", label: "CPU Usage", unit: "%", fixedMax: 100, stroke: "#EA580C", fill: "#EA580C", format: (v) => `${v.toFixed(1)}%` },
+  { key: "memory_usage", label: "Memory Usage", unit: "%", fixedMax: 100, stroke: "#16A34A", fill: "#16A34A", format: (v) => `${v.toFixed(1)}%` },
+  { key: "disk_usage", label: "Disk Usage", unit: "%", fixedMax: 100, stroke: "#D97706", fill: "#D97706", format: (v) => `${v.toFixed(1)}%` },
+  { key: "load_1m", label: "Load Average", unit: "", fixedMax: null, stroke: "#7C3AED", fill: "#7C3AED", format: (v) => v.toFixed(2) },
+  { key: "network_receive", label: "Network Receive", unit: "B/s", fixedMax: null, stroke: "#38BDF8", fill: "#38BDF8", format: (v) => fmtRate(v / 1024) },
+  { key: "network_transmit", label: "Network Transmit", unit: "B/s", fixedMax: null, stroke: "#F472B6", fill: "#F472B6", format: (v) => fmtRate(v / 1024) },
+];
+
+// ─── Gap-aware SVG chart for Prometheus series (null = gap, never 0) ─────────
+function PromChart({
+  title, series, range, fixedMax, stroke, fill, unit, formatValue,
+}: {
+  title: string;
+  series: ServerPromSeries[];
+  range: string;
+  fixedMax: number | null;
+  stroke: string;
+  fill: string;
+  unit: string;
+  formatValue: (v: number) => string;
+}) {
+  const W = 560; const H = 120;
+  // Merge all series by timestamp; null values split the line into segments.
+  const byTime = new Map<number, number | null>();
+  for (const s of series) {
+    for (const p of s.values) {
+      if (!byTime.has(p.timestamp) || p.value != null) byTime.set(p.timestamp, p.value);
+    }
+  }
+  const times = [...byTime.keys()].sort((a, b) => a - b);
+  const valid = times.map((t) => byTime.get(t)).filter((v): v is number => v != null);
+  if (valid.length === 0) {
+    return (
+      <div>
+        <div className="flex items-center justify-between mb-1.5">
+          <Kicker>{title}</Kicker>
+          <span className="font-mono text-[13px] text-fog">—</span>
+        </div>
+        <div className="w-full h-28 bg-abyss border border-edge rounded-xl flex items-center justify-center text-fog text-xs">
+          No monitoring data available for this range.
+        </div>
+      </div>
+    );
+  }
+  const hi = fixedMax ?? Math.max(...valid, 1);
+  const t0 = times[0]; const t1 = times[times.length - 1];
+  const x = (t: number) => (t1 > t0 ? Math.round(((t - t0) / (t1 - t0)) * W) : 0);
+  const y = (v: number) => Math.round(H - 10 - (Math.min(v, hi) / hi) * (H - 20));
+  // Contiguous non-null runs become separate polylines (gaps stay gaps).
+  const segments: string[] = [];
+  let current: string[] = [];
+  const flush = () => { if (current.length > 1) segments.push(current.join(" ")); else if (current.length === 1) segments.push(`${current[0]} ${current[0]}`); current = []; };
+  for (const t of times) {
+    const v = byTime.get(t);
+    if (v == null) { flush(); continue; }
+    current.push(`${x(t)},${y(v)}`);
+  }
+  flush();
+  const area = segments.map((pts) => {
+    const first = pts.split(" ")[0].split(",")[0];
+    const last = pts.split(" ").at(-1)!.split(",")[0];
+    return `${first},${H} ${pts} ${last},${H}`;
+  });
+  const last = valid[valid.length - 1];
+  const fmtAxis = (t: number) => {
+    const d = new Date(t * 1000);
+    return range === "7d" ? `${d.toLocaleDateString()} ${d.toLocaleTimeString()}` : d.toLocaleTimeString();
+  };
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-1.5">
+        <Kicker>{title}</Kicker>
+        <span className="font-mono text-[13px]">{formatValue(last)}<span className="text-fog text-[11px] ml-1">{unit}</span></span>
+      </div>
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-28 bg-abyss border border-edge rounded-xl" role="img" aria-label={`${title} chart`}>
+        {[0.25, 0.5, 0.75].map((f) => (
+          <line key={f} x1="0" x2={W} y1={H * f} y2={H * f} stroke="#27272a" strokeWidth="1" />
+        ))}
+        {segments.map((_pts, i) => (
+          <polygon key={`a${i}`} points={area[i]} fill={fill} opacity="0.2" />
+        ))}
+        {segments.map((pts, i) => (
+          <polyline key={`l${i}`} points={pts} fill="none" stroke={stroke} strokeWidth="2" strokeLinejoin="round" />
+        ))}
+      </svg>
+      <div className="flex justify-between mt-1 font-mono text-[10px] text-fog">
+        <span>{fmtAxis(t0)}</span>
+        <span>{fmtAxis(t1)}</span>
+      </div>
+    </div>
+  );
+}
+
+function promErrorMessage(e: unknown): string {
+  if (e instanceof ApiError) {
+    if (e.status === 503) return "Prometheus monitoring is disabled.";
+    if (e.status === 502 || e.status >= 500) return "Monitoring data is currently unavailable.";
+  }
+  return e instanceof Error ? e.message : "Failed to load monitoring data.";
+}
 
 // ─── Reusable SVG sparkline chart (same pattern as TelemetryPage) ─────────────
 function MetricChart({
@@ -136,6 +254,21 @@ export function ServerDetailPage({ setOnline }: { setOnline: (v: boolean) => voi
     enabled: tab === "monitoring",
   });
 
+  // Prometheus history (Phase 3C): parallel per-metric range queries sharing
+  // the page range selector. Enabled only on the monitoring tab, for ranges
+  // Prometheus supports (30d stays agent-history only). Moderate stale time,
+  // previous data kept across range switches, no aggressive polling.
+  const promSupported = (PROM_RANGES as readonly string[]).includes(range);
+  const promQueries = useQueries({
+    queries: PROM_METRICS.map((m) => ({
+      queryKey: ["server-prometheus", serverId, m.key, range, PROM_STEP[range]],
+      queryFn: () => api.serverPrometheusMetrics(serverId, m.key, range, PROM_STEP[range]),
+      enabled: tab === "monitoring" && promSupported && !!server && Number.isFinite(serverId),
+      staleTime: 60_000,
+      placeholderData: keepPreviousData,
+    })),
+  });
+
   const { data: tokens = [], refetch: refetchTokens } = useQuery({
     queryKey: ["agent-tokens", serverId],
     queryFn: () => api.agentTokens(serverId),
@@ -233,7 +366,10 @@ export function ServerDetailPage({ setOnline }: { setOnline: (v: boolean) => voi
             {server.os && <span>· {server.os} {server.osVersion}</span>}
           </div>
         </div>
-        <button onClick={() => void qc.invalidateQueries({ queryKey: ["server", serverId] })}
+        <button onClick={() => {
+          void qc.invalidateQueries({ queryKey: ["server", serverId] });
+          void qc.invalidateQueries({ queryKey: ["server-prometheus", serverId] });
+        }}
           className="w-9 h-9 rounded-full bg-emboss flex items-center justify-center text-fog hover:text-bone">
           <RefreshCw size={15} />
         </button>
@@ -358,6 +494,60 @@ export function ServerDetailPage({ setOnline }: { setOnline: (v: boolean) => voi
               <MetricChart title="Load Average" points={points} value={(p) => p.loadAvg1} stroke="#7C3AED" fill="#7C3AED" unit="" />
             </>
           )}
+
+          {/* ── Prometheus history (Phase 3C; additive, agent charts above untouched) ── */}
+          <div className="pt-2">
+            <div className="flex items-center justify-between mb-3">
+              <Kicker>Prometheus History</Kicker>
+              <span className="font-mono text-[11px] text-fog">via Prometheus</span>
+            </div>
+            {!promSupported ? (
+              <div className="bg-panel border border-edge rounded-xl p-6 text-center text-fog text-sm">
+                Prometheus history supports ranges up to 7d — switch range for Prometheus charts.
+              </div>
+            ) : (
+              <div className="space-y-5">
+                {PROM_METRICS.map((m, i) => {
+                  const q = promQueries[i];
+                  if (q.isError) {
+                    return (
+                      <div key={m.key}>
+                        <div className="flex items-center justify-between mb-1.5">
+                          <Kicker>{m.label}</Kicker>
+                        </div>
+                        <div className="w-full bg-panel border border-edge rounded-xl px-4 py-6 text-center text-fog text-xs">
+                          {promErrorMessage(q.error)}
+                        </div>
+                      </div>
+                    );
+                  }
+                  if (q.isPending) {
+                    return (
+                      <div key={m.key}>
+                        <div className="flex items-center justify-between mb-1.5">
+                          <Kicker>{m.label}</Kicker>
+                        </div>
+                        <div className="w-full h-28 bg-panel border border-edge rounded-xl animate-pulse" role="status" aria-label={`${m.label} loading`} />
+                      </div>
+                    );
+                  }
+                  return (
+                    <PromChart
+                      key={m.key}
+                      title={m.label}
+                      series={q.data?.series ?? []}
+                      range={range}
+                      fixedMax={m.fixedMax}
+                      stroke={m.stroke}
+                      fill={m.fill}
+                      unit={m.unit}
+                      formatValue={m.format}
+                    />
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
       )}
 

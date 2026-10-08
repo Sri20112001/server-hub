@@ -54,6 +54,26 @@ export class ApiError extends Error {
   }
 }
 
+// Phase 3C per-server Prometheus response shapes (web-only; backend builds
+// the PromQL, the browser only supplies metric/range/step).
+export interface ServerPromPoint {
+  timestamp: number;
+  value: number | null;
+}
+
+export interface ServerPromSeries {
+  name: string;
+  values: ServerPromPoint[];
+}
+
+export interface ServerPromMetrics {
+  serverId: string;
+  metric: string;
+  range: string;
+  step: string;
+  series: ServerPromSeries[];
+}
+
 // Single-flight session refresh: concurrent 401s share one rotation call.
 let refreshPromise: Promise<boolean> | null = null;
 
@@ -346,6 +366,12 @@ export const api = {
     req<{ range: string; points: ServerMetricPoint[] }>(ep.serverMetrics(id, range)),
   serverMetricsLatest: (id: number) =>
     req<ServerMetricPoint>(ep.serverMetricsLatest(id)),
+
+  // per-server Prometheus history (Phase 3C; web-only types, see below)
+  serverPrometheusMetrics: (id: number, metric: string, range: string, step: string) =>
+    req<ServerPromMetrics>(
+      `/server-hub/api/servers/${id}/prometheus/metrics?metric=${encodeURIComponent(metric)}&range=${encodeURIComponent(range)}&step=${encodeURIComponent(step)}`,
+    ),
 
   // agent tokens
   agentTokens: (serverId: number) =>
