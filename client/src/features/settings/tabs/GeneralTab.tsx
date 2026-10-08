@@ -1,9 +1,8 @@
 import type { ServerInfo } from '../../../lib/types';
 import { fmtUptime } from '../../../lib/format';
-import { Kicker } from '../../../components/ui';
+import { Kicker, Toggle } from '../../../components/ui';
 import { GlassCard } from '../components/GlassCard';
 import { useAlerts } from '../hooks/useAlerts';
-import { NeonToggle } from '../components/NeonToggle';
 
 interface GeneralTabProps {
   info: ServerInfo | null;
@@ -22,7 +21,9 @@ export function GeneralTab({ info, apiUrl }: GeneralTabProps) {
             <h2 className="text-xl font-semibold text-ink dark:text-bone">Host Configuration</h2>
             <p className="text-muted dark:text-fog text-sm mt-1">Core runtime parameters and daemon routing points.</p>
           </div>
-          <span className="inline-flex items-center gap-1.5 font-mono text-[11px] bg-paper dark:bg-emboss border border-line dark:border-edge text-ink dark:text-bone rounded-input px-2 py-1 whitespace-nowrap shadow-sm">SERVERHUB · MVP</span>
+          <span className="inline-flex items-center gap-1.5 font-mono text-[11px] bg-paper dark:bg-emboss border border-line dark:border-edge text-ink dark:text-bone rounded-input px-2.5 py-1 whitespace-nowrap shadow-sm">
+            SERVERHUB · MVP
+          </span>
         </div>
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -34,12 +35,15 @@ export function GeneralTab({ info, apiUrl }: GeneralTabProps) {
             <div className="flex items-center justify-between gap-4">
               <Kicker>Docker socket</Kicker>
               <span
-                className={
+                className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-mono font-medium ${
                   info?.dockerAvailable
-                    ? "w-2.5 h-2.5 rounded-full bg-moss"
-                    : "w-2.5 h-2.5 rounded-full bg-stone"
-                }
-              />
+                    ? "bg-moss/10 text-moss border border-moss/30"
+                    : "bg-stone/10 text-stone border border-stone/30"
+                }`}
+              >
+                <span className={`w-1.5 h-1.5 rounded-full ${info?.dockerAvailable ? "bg-moss" : "bg-stone"}`} />
+                {info?.dockerAvailable ? "Ready" : "Unavailable"}
+              </span>
             </div>
             <div className="font-mono text-sm mt-2 truncate text-ink dark:text-bone">
               {info ? (info.dockerAvailable ? "/var/run/docker.sock · live" : "unreachable") : "probing…"}
@@ -109,7 +113,7 @@ function AlertRow({ title, hint, on, onFlip }: { title: string; hint: string; on
         <div className="font-medium text-sm text-ink dark:text-bone">{title}</div>
         <div className="text-muted dark:text-fog text-[13px] mt-0.5">{hint}</div>
       </div>
-      <NeonToggle checked={on} onChange={onFlip} label={title} />
+      <Toggle checked={on} onChange={onFlip} label={title} />
     </div>
   );
 }

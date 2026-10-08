@@ -50,12 +50,12 @@ export function SecurityTab() {
       </GlassCard>
 
       {/* Danger Zone */}
-      <GlassCard className="!border-brick/30 !bg-red-50/50 dark:!bg-red-950/20">
+      <GlassCard className="!border-brick/30 !bg-brick/5 dark:!bg-brick/10">
         <div className="flex items-center gap-2.5 flex-wrap text-brick mb-2">
           <TriangleAlert size={20} />
           <h2 className="text-xl font-bold text-ink dark:text-bone">Danger Zone</h2>
         </div>
-        <p className="text-muted dark:text-red-200/70 text-sm mb-6">
+        <p className="text-muted dark:text-fog text-sm mb-6">
           Irreversible operations. Proceed with operational clearance.
         </p>
         <div className="flex items-center gap-4 flex-wrap">

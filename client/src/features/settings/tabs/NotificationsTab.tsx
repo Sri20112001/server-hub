@@ -469,7 +469,7 @@ function NotificationGroupManager({
             </div>
             {isAdmin && (
               <button
-                className="inline-flex items-center gap-1.5 text-xs text-brick hover:text-red-700 font-medium px-3 py-1.5 rounded-input hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
+                className="inline-flex items-center gap-1.5 text-xs text-brick font-medium px-3 py-1.5 rounded-input hover:bg-brick/10 transition-colors"
                 onClick={() => setConfirmDeleteGroup(groupDetail.id)}
               >
                 <Trash2 size={14} /> Delete group

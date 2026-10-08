@@ -9,7 +9,7 @@ import type {
   NotificationRuleCondition,
 } from "../../lib/types";
 import { useAuth, useUi } from "../../stores/store";
-import { Field, Toggle } from "../../components/ui";
+import { ConfirmModal, Field, Toggle } from "../../components/ui";
 import { GlassCard } from "./components/GlassCard";
 import { CyberButton } from "./components/CyberButton";
 
@@ -26,6 +26,34 @@ const EVENT_LABELS: Record<NotificationEventType, string> = {
   SERVER_ALERT: "Server Alert",
   SERVER_ALERT_RESOLVED: "Alert Resolved (recovery)",
 };
+
+function getEventBadge(eventType: NotificationEventType) {
+  switch (eventType) {
+    case "AGENT_OFFLINE":
+      return "bg-brick/10 text-brick border-brick/30";
+    case "AGENT_ONLINE":
+      return "bg-moss/10 text-moss border-moss/30";
+    case "SERVER_ALERT":
+      return "bg-status-amber/10 text-status-amber border-status-amber/30";
+    case "SERVER_ALERT_RESOLVED":
+      return "bg-moss/10 text-moss border-moss/30";
+    default:
+      return "bg-paper dark:bg-emboss text-ink dark:text-bone border-line dark:border-edge";
+  }
+}
+
+function getSeverityBadge(severity: string) {
+  switch (severity.toUpperCase()) {
+    case "CRITICAL":
+      return "bg-brick/10 text-brick border-brick/30";
+    case "WARNING":
+      return "bg-status-amber/10 text-status-amber border-status-amber/30";
+    case "INFO":
+      return "bg-stone/10 text-stone border-stone/30";
+    default:
+      return "bg-paper dark:bg-emboss text-muted dark:text-fog border-line dark:border-edge";
+  }
+}
 
 const CONDITION_FIELDS = ["severity", "condition", "value", "serverId"] as const;
 type ConditionField = (typeof CONDITION_FIELDS)[number];
@@ -112,6 +140,7 @@ export function NotificationRulesSection() {
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [deletingRule, setDeletingRule] = useState<NotificationRule | null>(null);
 
   const isAdmin = user?.role === "admin";
   const canEdit = user?.role === "operator" || isAdmin;
@@ -241,10 +270,9 @@ export function NotificationRulesSection() {
     }
   };
 
-  const remove = async (r: NotificationRule) => {
-    if (!confirm(`Delete rule "${r.name}"?`)) return;
+  const remove = async (rule: NotificationRule) => {
     try {
-      await api.deleteNotificationRule(r.id);
+      await api.deleteNotificationRule(rule.id);
       pushToast("Rule deleted.");
       await refresh();
     } catch (err) {
@@ -269,24 +297,59 @@ export function NotificationRulesSection() {
         </span>
       </div>
 
+      {rules.length === 0 && !editing && (
+        <div className="p-6 text-center border border-dashed border-line dark:border-edge rounded-card mb-6 bg-paper/40 dark:bg-emboss/20">
+          <p className="text-sm font-medium text-ink dark:text-bone">No custom routing rules</p>
+          <p className="text-xs text-muted dark:text-fog mt-1 max-w-md mx-auto">
+            Events currently use default system notification routing. Create a rule to filter by event type, severity, or recipient group.
+          </p>
+        </div>
+      )}
+
       {rules.length > 0 && (
-        <div className="flex flex-col gap-2 mb-6">
+        <div className="flex flex-col gap-2.5 mb-6">
           {rules.map((r) => (
             <div
               key={r.id}
-              className="flex items-center justify-between gap-3 py-3 px-3 bg-white dark:bg-panel border border-line dark:border-edge rounded-card"
+              className={`flex items-center justify-between gap-3 p-3.5 bg-white dark:bg-panel border rounded-card transition-all ${
+                r.enabled ? "border-line dark:border-edge shadow-sm" : "border-line/60 dark:border-edge/60 opacity-75"
+              }`}
             >
-              <div className="min-w-0">
+              <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="font-semibold text-sm text-ink dark:text-bone">{r.name}</span>
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-mono font-medium border ${getEventBadge(r.eventType)}`}>
+                    {EVENT_LABELS[r.eventType] ?? r.eventType}
+                  </span>
+                  {r.severity && (
+                    <span className={`inline-flex items-center px-1.5 py-0.5 text-[10px] font-mono font-medium rounded-input border ${getSeverityBadge(r.severity)}`}>
+                      {r.severity}
+                    </span>
+                  )}
                   {!r.enabled && (
-                    <span className="font-mono text-[11px] text-muted dark:text-fog">disabled</span>
+                    <span className="font-mono text-[10px] text-muted dark:text-fog px-1.5 py-0.5 rounded bg-paper dark:bg-emboss border border-line dark:border-edge">
+                      disabled
+                    </span>
                   )}
                 </div>
-                <div className="text-muted dark:text-fog text-xs font-mono mt-0.5">
-                  {r.eventType}
-                  {r.severity ? ` · ${r.severity}` : ""} → {r.groupName || `#${r.notificationGroupId}`} ·{" "}
-                  {r.channels} · cooldown {r.cooldownSeconds}s{r.notifyOnRecovery ? " · recovery" : ""}
+                <div className="flex items-center gap-2 flex-wrap text-xs text-muted dark:text-fog mt-2 font-mono">
+                  <span>→ Group: <strong className="text-ink dark:text-bone font-medium">{r.groupName || `#${r.notificationGroupId}`}</strong></span>
+                  <span className="text-line dark:border-edge">·</span>
+                  <div className="inline-flex items-center gap-1">
+                    {r.channels.split(",").map((c) => (
+                      <span key={c} className="px-1.5 py-0.2 rounded text-[10px] bg-paper dark:bg-emboss border border-line dark:border-edge text-ink dark:text-bone">
+                        {c.trim()}
+                      </span>
+                    ))}
+                  </div>
+                  <span className="text-line dark:border-edge">·</span>
+                  <span>cooldown {r.cooldownSeconds}s</span>
+                  {r.notifyOnRecovery && (
+                    <>
+                      <span className="text-line dark:border-edge">·</span>
+                      <span className="text-moss font-medium">recovery alert</span>
+                    </>
+                  )}
                 </div>
               </div>
               <div className="flex items-center gap-2 shrink-0">
@@ -305,7 +368,7 @@ export function NotificationRulesSection() {
                 {isAdmin && (
                   <button
                     className="text-muted dark:text-fog hover:text-brick bg-transparent border-0 cursor-pointer p-1.5 transition-colors"
-                    onClick={() => void remove(r)}
+                    onClick={() => setDeletingRule(r)}
                     aria-label={`Delete ${r.name}`}
                   >
                     <Trash2 size={15} />
@@ -427,6 +490,20 @@ export function NotificationRulesSection() {
             </button>
           </div>
         </div>
+      )}
+
+      {deletingRule && (
+        <ConfirmModal
+          title={`Delete rule "${deletingRule.name}"?`}
+          body="Notifications matching this rule will no longer be custom-routed. This action cannot be undone."
+          confirmLabel="Delete rule"
+          onClose={() => setDeletingRule(null)}
+          onConfirm={() => {
+            const r = deletingRule;
+            setDeletingRule(null);
+            void remove(r);
+          }}
+        />
       )}
     </GlassCard>
   );
