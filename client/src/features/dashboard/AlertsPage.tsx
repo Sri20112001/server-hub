@@ -7,9 +7,15 @@ import { useEvents } from "../../lib/useEvents";
 import { useUi } from "../../stores/store";
 
 const SEVERITY_STYLE: Record<string, string> = {
-  CRITICAL: "border-brick/30 bg-red-50 dark:bg-red-950/30 text-brick dark:text-red-200",
-  WARNING: "border-status-amber/30 bg-amber-50 dark:bg-amber-950/30 text-status-amber dark:text-amber-200",
+  CRITICAL: "border-brick/30 bg-brick/10 text-brick",
+  WARNING: "border-status-amber/30 bg-status-amber/10 text-status-amber",
   INFO: "border-line dark:border-edge bg-paper dark:bg-abyss text-muted dark:text-fog",
+};
+
+const SEVERITY_BADGE: Record<string, string> = {
+  CRITICAL: "border-brick/30 bg-brick/15 text-brick",
+  WARNING: "border-status-amber/30 bg-status-amber/15 text-status-amber",
+  INFO: "border-line dark:border-edge bg-paper dark:bg-abyss text-stone",
 };
 
 function AlertRow({ alert, serverName, onResolve }: { alert: Alert; serverName?: string; onResolve: () => void }) {
@@ -30,26 +36,32 @@ function AlertRow({ alert, serverName, onResolve }: { alert: Alert; serverName?:
   };
 
   return (
-    <div className={`flex items-start justify-between p-4 rounded-card border mb-2 shadow-sm ${SEVERITY_STYLE[alert.severity] ?? SEVERITY_STYLE.WARNING}`}>
+    <div className={`flex items-start justify-between p-5 rounded-card border mb-3 shadow-sm transition-all ${SEVERITY_STYLE[alert.severity] ?? SEVERITY_STYLE.WARNING}`}>
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 mb-1">
-          <span className="text-xs font-mono font-bold uppercase">{alert.severity}</span>
-          <span className="text-xs font-mono opacity-60">{alert.condition}</span>
-          {serverName && <span className="text-xs font-mono opacity-60">· {serverName}</span>}
+        <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+          <span className={`text-[10px] font-mono font-bold uppercase tracking-wider px-2 py-0.5 rounded border ${SEVERITY_BADGE[alert.severity] ?? SEVERITY_BADGE.WARNING}`}>
+            {alert.severity}
+          </span>
+          <span className="text-xs font-mono opacity-75 font-medium">{alert.condition}</span>
+          {serverName && (
+            <span className="text-xs font-mono bg-white/50 dark:bg-black/30 px-2 py-0.5 rounded border border-line dark:border-edge">
+              {serverName}
+            </span>
+          )}
         </div>
-        <p className="text-sm text-ink dark:text-bone">{alert.message}</p>
-        <p className="text-xs text-muted dark:text-fog mt-1 font-mono">
-          {new Date(alert.triggeredAt).toLocaleString()}
-          {alert.resolvedAt && ` → resolved ${new Date(alert.resolvedAt).toLocaleString()}`}
+        <p className="text-sm font-medium text-ink dark:text-bone">{alert.message}</p>
+        <p className="text-xs text-muted dark:text-fog mt-1.5 font-mono">
+          Triggered {new Date(alert.triggeredAt).toLocaleString()}
+          {alert.resolvedAt && ` · Resolved ${new Date(alert.resolvedAt).toLocaleString()}`}
         </p>
       </div>
       {alert.status === "TRIGGERED" && (
         <button
           onClick={resolve}
           disabled={busy}
-          className="ml-4 shrink-0 flex items-center gap-1 text-xs underline text-ink dark:text-bone opacity-70 hover:opacity-100 disabled:opacity-40 cursor-pointer"
+          className="ml-4 shrink-0 flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border border-line dark:border-edge bg-white dark:bg-panel text-ink dark:text-bone hover:border-accent dark:hover:border-ember cursor-pointer shadow-sm disabled:opacity-40 transition-colors"
         >
-          <CheckCircle size={13} /> Resolve
+          <CheckCircle size={14} className="text-moss" /> Resolve
         </button>
       )}
     </div>
@@ -90,51 +102,61 @@ export function AlertsPage() {
 
   return (
     <main className="w-full max-w-4xl mx-auto px-4 sm:px-6 pt-24 pb-36">
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-3">
-          <AlertTriangle size={22} className="text-accent dark:text-ember" />
-          <h1 className="font-head text-[22px] font-bold text-ink dark:text-bone tracking-[-0.02em]">Alerts</h1>
-          {triggered.length > 0 && (
-            <span className="bg-brick text-white text-xs font-bold px-2 py-0.5 rounded-full font-mono">
-              {triggered.length}
-            </span>
-          )}
+      <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
+        <div>
+          <div className="flex items-center gap-3">
+            <AlertTriangle size={22} className="text-accent dark:text-ember" />
+            <h1 className="font-head text-[24px] font-bold text-ink dark:text-bone tracking-[-0.02em]">Alerts</h1>
+            {triggered.length > 0 && (
+              <span className="bg-brick text-white text-xs font-bold px-2.5 py-0.5 rounded-full font-mono shadow-sm">
+                {triggered.length} firing
+              </span>
+            )}
+          </div>
+          <p className="text-muted dark:text-fog text-xs mt-1 font-mono">
+            System thresholds & event notifications
+          </p>
         </div>
         <button
           onClick={() => void refetch()}
-          className="w-9 h-9 rounded-full bg-white dark:bg-panel border border-line dark:border-edge flex items-center justify-center text-muted dark:text-fog hover:text-ink dark:hover:text-bone shadow-chrome cursor-pointer"
+          className="w-9 h-9 rounded-full bg-white dark:bg-panel border border-line dark:border-edge flex items-center justify-center text-muted dark:text-fog hover:text-ink dark:hover:text-bone shadow-sm cursor-pointer"
           aria-label="Refresh"
         >
           <RefreshCw size={15} />
         </button>
       </div>
 
-      <div className="flex gap-2 mb-4">
-        {(["TRIGGERED", "RESOLVED", ""] as const).map((t) => (
+      <div className="grid grid-cols-3 gap-1 p-1 rounded-card bg-paper dark:bg-abyss border border-line dark:border-edge mb-6 w-full sm:max-w-xs">
+        {([
+          { key: "TRIGGERED", label: "Firing" },
+          { key: "RESOLVED", label: "Resolved" },
+          { key: "", label: "All" },
+        ] as const).map((t) => (
           <button
-            key={t || "all"}
-            onClick={() => setTab(t)}
-            className={`px-3 py-1 rounded-full text-xs font-mono border transition-colors cursor-pointer ${
-              tab === t
-                ? "border-accent dark:border-ember text-accent dark:text-ember bg-tint/50 dark:bg-emboss"
-                : "border-line dark:border-edge text-muted dark:text-fog hover:text-ink dark:hover:text-bone bg-white dark:bg-panel"
+            key={t.key || "all"}
+            onClick={() => setTab(t.key)}
+            className={`px-3 py-1.5 rounded-lg text-xs font-mono transition-colors cursor-pointer border ${
+              tab === t.key
+                ? "bg-white dark:bg-panel border-line dark:border-edge text-ink dark:text-bone font-semibold shadow-sm"
+                : "bg-transparent border-transparent text-muted dark:text-fog hover:text-ink dark:hover:text-bone"
             }`}
           >
-            {t || "All"}
+            {t.label}
           </button>
         ))}
       </div>
 
       {isLoading && (
-        <div className="space-y-2">
-          {[1, 2, 3].map((i) => <div key={i} className="h-16 bg-white dark:bg-panel border border-line dark:border-edge rounded-card animate-pulse" />)}
+        <div className="space-y-3">
+          {[1, 2, 3].map((i) => <div key={i} className="h-24 bg-white dark:bg-panel border border-line dark:border-edge rounded-card animate-pulse shadow-sm" />)}
         </div>
       )}
 
       {!isLoading && shown.length === 0 && (
-        <div className="text-center py-16 text-muted dark:text-fog">
-          <CheckCircle size={40} className="mx-auto mb-3 opacity-30" />
-          <p className="text-sm">No alerts{tab ? ` with status ${tab}` : ""}.</p>
+        <div className="text-center py-16 bg-paper dark:bg-abyss border border-line dark:border-edge rounded-card px-4">
+          <CheckCircle size={40} className="mx-auto mb-3 opacity-30 text-moss" />
+          <p className="text-sm font-medium text-ink dark:text-bone">No alerts{tab ? ` with status ${tab.toLowerCase()}` : ""}.</p>
+          <p className="text-xs text-muted dark:text-fog mt-1">All monitored metrics and infrastructure thresholds are nominal.</p>
         </div>
       )}
 
