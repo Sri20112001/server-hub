@@ -100,22 +100,22 @@ function Chart({
   const last2 = vals2 && vals2.length ? vals2[vals2.length - 1] : 0;
   return (
     <div>
-      <div className="flex items-center justify-between gap-4 mb-1.5">
+      <div className="flex items-center justify-between gap-4 mb-2">
         <Kicker>{title}</Kicker>
-        <span className="font-mono text-[13px]">
+        <span className="font-mono text-[13px] font-semibold">
           {format(last)}{" "}
           {label2 && vals2 ? (
-            <span className="text-muted dark:text-fog text-[11px]">
+            <span className="text-muted dark:text-fog text-[11px] font-normal">
               / {format(last2)} {label2}
             </span>
           ) : (
-            <span className="text-muted dark:text-fog text-[11px]">{unit}</span>
+            <span className="text-muted dark:text-fog text-[11px] font-normal">{unit}</span>
           )}
         </span>
       </div>
       <svg
         viewBox={`0 0 ${W} ${H}`}
-        className="w-full h-36 bg-paper dark:bg-abyss border border-line dark:border-edge rounded-xl"
+        className="w-full h-36 bg-paper dark:bg-abyss border border-line dark:border-edge rounded-card"
         role="img"
         aria-label={`${title} history chart`}
       >
@@ -139,7 +139,7 @@ function Chart({
           <polyline points={line2} fill="none" stroke={stroke2} strokeWidth="2" strokeLinejoin="round" />
         )}
       </svg>
-      <div className="flex items-center justify-between gap-4 mt-1">
+      <div className="flex items-center justify-between gap-4 mt-1.5">
         <span className="font-mono text-[11px] text-muted dark:text-fog">
           {points.length ? fmtTime(points[0].ts) : "—"}
         </span>
@@ -162,9 +162,9 @@ function rates(points: TelemetryPoint[], key: "netRx" | "netTx" | "diskRead" | "
 
 function Fact({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
   return (
-    <div className="bg-paper dark:bg-abyss border border-line dark:border-edge rounded-xl px-4 py-3.5">
+    <div className="bg-paper dark:bg-abyss border border-line dark:border-edge rounded-card px-4 py-3.5">
       <Kicker>{label}</Kicker>
-      <div className={`text-[13px] mt-1.5 truncate ${mono === false ? "" : "font-mono"}`}>
+      <div className={`text-[13px] font-medium mt-1.5 truncate ${mono === false ? "" : "font-mono"}`}>
         {value}
       </div>
     </div>
@@ -173,8 +173,8 @@ function Fact({ label, value, mono }: { label: string; value: string; mono?: boo
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="mt-6">
-      <div className="mb-2.5">
+    <div className="mt-8">
+      <div className="mb-3">
         <Kicker>{title}</Kicker>
       </div>
       {children}
@@ -276,7 +276,7 @@ export function TelemetryPage() {
           One sample per minute, kept for 7 days. Ranges switch the charts.
         </p>
       </div>
-      <div className="grid grid-cols-4 gap-1 p-1 rounded-xl bg-paper dark:bg-abyss border border-line dark:border-edge mb-8 w-full sm:max-w-sm">
+      <div className="grid grid-cols-4 gap-1 p-1 rounded-card bg-paper dark:bg-abyss border border-line dark:border-edge mb-8 w-full sm:max-w-sm">
         {RANGES.map((r) => (
           <button
             key={r}
@@ -294,18 +294,18 @@ export function TelemetryPage() {
         ))}
       </div>
 
-      <div className="flex flex-col gap-5">
+      <div className="flex flex-col gap-6">
         {loading ? (
           <div className="text-muted dark:text-fog text-[13px]">Tuning the dials…</div>
         ) : points.length === 0 ? (
-          <div className="bg-paper dark:bg-abyss border border-line dark:border-edge rounded-xl px-4 py-8 text-center">
+          <div className="bg-paper dark:bg-abyss border border-line dark:border-edge rounded-card px-4 py-8 text-center">
             <div className="font-head font-semibold mb-1">No readings yet</div>
             <div className="text-muted dark:text-fog text-[13px]">
               The sampler records every minute — check back shortly.
             </div>
           </div>
         ) : (
-          <>
+          <div className="bg-white dark:bg-panel border border-line dark:border-edge rounded-card p-5 shadow-sm flex flex-col gap-6">
             <Chart
               title="CPU"
               unit="load"
@@ -364,7 +364,7 @@ export function TelemetryPage() {
               label2="write"
               format={fmtRate}
             />
-          </>
+          </div>
         )}
 
         {detail && (
@@ -378,12 +378,12 @@ export function TelemetryPage() {
                 ].map(([label, level]) => (
                   <div
                     key={label}
-                    className="bg-paper dark:bg-abyss border border-line dark:border-edge rounded-xl px-4 py-3.5 flex items-center gap-2.5"
+                    className="bg-white dark:bg-panel border border-line dark:border-edge rounded-card p-4 flex items-center gap-3 shadow-sm"
                   >
-                    <span className={`w-2 h-2 rounded-full ${pressureDot(level)}`} />
+                    <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${pressureDot(level)}`} />
                     <div>
                       <Kicker>{label}</Kicker>
-                      <div className="text-[13px] font-medium">{level}</div>
+                      <div className="text-[13px] font-semibold mt-0.5">{level}</div>
                     </div>
                   </div>
                 ))}
@@ -438,26 +438,26 @@ export function TelemetryPage() {
             </Section>
 
             <Section title="Processes">
-              <div className="flex items-center gap-2 flex-wrap mb-2.5 font-mono text-[12px]">
-                <span className="inline-flex items-center gap-1.5 font-mono text-[11px] bg-tint dark:bg-emboss border border-line dark:border-edge text-ink dark:text-bone rounded-md px-2 py-[3px] whitespace-nowrap">
+              <div className="flex items-center gap-2 flex-wrap mb-3 font-mono text-[12px]">
+                <span className="inline-flex items-center gap-1.5 font-mono text-[11px] bg-tint dark:bg-emboss border border-line dark:border-edge text-ink dark:text-bone rounded-md px-2.5 py-1 whitespace-nowrap">
                   {detail.processes.total} total
                 </span>
-                <span className="inline-flex items-center gap-1.5 font-mono text-[11px] bg-tint dark:bg-emboss border border-line dark:border-edge text-ink dark:text-bone rounded-md px-2 py-[3px] whitespace-nowrap">
+                <span className="inline-flex items-center gap-1.5 font-mono text-[11px] bg-tint dark:bg-emboss border border-line dark:border-edge text-ink dark:text-bone rounded-md px-2.5 py-1 whitespace-nowrap">
                   {detail.processes.running} running
                 </span>
-                <span className="inline-flex items-center gap-1.5 font-mono text-[11px] bg-tint dark:bg-emboss border border-line dark:border-edge text-ink dark:text-bone rounded-md px-2 py-[3px] whitespace-nowrap">
+                <span className="inline-flex items-center gap-1.5 font-mono text-[11px] bg-tint dark:bg-emboss border border-line dark:border-edge text-ink dark:text-bone rounded-md px-2.5 py-1 whitespace-nowrap">
                   {detail.processes.sleeping} sleeping
                 </span>
                 {detail.processes.zombie > 0 && (
-                  <span className="inline-flex items-center gap-1.5 font-mono text-[11px] bg-tint dark:bg-emboss border border-line dark:border-edge text-ink dark:text-bone rounded-md px-2 py-[3px] whitespace-nowrap">
+                  <span className="inline-flex items-center gap-1.5 font-mono text-[11px] bg-tint dark:bg-emboss border border-line dark:border-edge text-ink dark:text-bone rounded-md px-2.5 py-1 whitespace-nowrap">
                     {detail.processes.zombie} zombie
                   </span>
                 )}
               </div>
-              <div className="overflow-x-auto bg-white dark:bg-panel border border-line dark:border-edge rounded-xl">
+              <div className="overflow-x-auto bg-white dark:bg-panel border border-line dark:border-edge rounded-card shadow-sm">
                 <table className="w-full min-w-[520px] sm:min-w-0 border-collapse text-[13px]">
                   <thead>
-                    <tr>
+                    <tr className="border-b border-line dark:border-edge">
                       <th className="text-left text-[11px] font-semibold tracking-[0.08em] uppercase text-muted dark:text-fog px-4 py-2.5 bg-paper dark:bg-abyss">Process</th>
                       <th className="hidden sm:table-cell text-left text-[11px] font-semibold tracking-[0.08em] uppercase text-muted dark:text-fog px-4 py-2.5 bg-paper dark:bg-abyss">PID</th>
                       <th className="hidden md:table-cell text-left text-[11px] font-semibold tracking-[0.08em] uppercase text-muted dark:text-fog px-4 py-2.5 bg-paper dark:bg-abyss">State</th>
@@ -466,8 +466,8 @@ export function TelemetryPage() {
                   </thead>
                   <tbody>
                     {detail.processes.top.map((p) => (
-                      <tr key={p.pid} className="group">
-                        <td className="px-4 py-2.5 border-t border-line dark:border-edge align-middle font-mono max-w-[160px] sm:max-w-[220px] truncate">
+                      <tr key={p.pid} className="group hover:bg-paper/50 dark:hover:bg-abyss/50 transition-colors">
+                        <td className="px-4 py-2.5 border-t border-line dark:border-edge align-middle font-mono font-medium max-w-[160px] sm:max-w-[220px] truncate">
                           {p.name}
                         </td>
                         <td className="hidden sm:table-cell px-4 py-2.5 border-t border-line dark:border-edge align-middle font-mono text-muted dark:text-fog">
@@ -476,7 +476,7 @@ export function TelemetryPage() {
                         <td className="hidden md:table-cell px-4 py-2.5 border-t border-line dark:border-edge align-middle font-mono text-muted dark:text-fog">
                           {p.status}
                         </td>
-                        <td className="px-4 py-2.5 border-t border-line dark:border-edge align-middle last:text-right group-hover:bg-paper dark:group-hover:bg-emboss font-mono">
+                        <td className="px-4 py-2.5 border-t border-line dark:border-edge align-middle last:text-right font-mono font-medium">
                           {fmtSize(p.memMB)}
                         </td>
                       </tr>
@@ -490,10 +490,10 @@ export function TelemetryPage() {
 
         {storage && (
           <Section title="Storage">
-            <div className="overflow-x-auto bg-white dark:bg-panel border border-line dark:border-edge rounded-xl mb-4">
+            <div className="overflow-x-auto bg-white dark:bg-panel border border-line dark:border-edge rounded-card shadow-sm mb-4">
               <table className="w-full min-w-[440px] sm:min-w-0 border-collapse text-[13px]">
                 <thead>
-                  <tr>
+                  <tr className="border-b border-line dark:border-edge">
                     <th className="text-left text-[11px] font-semibold tracking-[0.08em] uppercase text-muted dark:text-fog px-4 py-2.5 bg-paper dark:bg-abyss">Filesystem</th>
                     <th className="text-left text-[11px] font-semibold tracking-[0.08em] uppercase text-muted dark:text-fog px-4 py-2.5 bg-paper dark:bg-abyss">Used</th>
                     <th className="text-left text-[11px] font-semibold tracking-[0.08em] uppercase text-muted dark:text-fog px-4 py-2.5 bg-paper dark:bg-abyss last:text-right">Total</th>
@@ -501,17 +501,17 @@ export function TelemetryPage() {
                 </thead>
                 <tbody>
                   {storage.filesystems.map((f) => (
-                    <tr key={f.mount} className="group">
+                    <tr key={f.mount} className="group hover:bg-paper/50 dark:hover:bg-abyss/50 transition-colors">
                       <td className="px-4 py-2.5 border-t border-line dark:border-edge align-middle">
-                        <div className="font-mono">{f.mount}</div>
-                        <div className="font-mono text-muted dark:text-fog text-[11px]">
+                        <div className="font-mono font-medium">{f.mount}</div>
+                        <div className="font-mono text-muted dark:text-fog text-[11px] mt-0.5">
                           {f.device} · {f.fstype}
                         </div>
                       </td>
                       <td className="px-4 py-2.5 border-t border-line dark:border-edge align-middle font-mono">
                         {fmtGB(f.usedGB)} · {f.usedPct.toFixed(0)}%
                       </td>
-                      <td className="px-4 py-2.5 border-t border-line dark:border-edge align-middle last:text-right group-hover:bg-paper dark:group-hover:bg-emboss font-mono">
+                      <td className="px-4 py-2.5 border-t border-line dark:border-edge align-middle last:text-right font-mono font-medium">
                         {fmtGB(f.totalGB)}
                       </td>
                     </tr>
@@ -521,12 +521,12 @@ export function TelemetryPage() {
             </div>
 
             {storage.apps.length > 0 && (
-              <div className="mb-4">
-                <div className="font-mono text-[11px] text-muted dark:text-fog mb-1.5">
+              <div className="bg-white dark:bg-panel border border-line dark:border-edge rounded-card p-5 shadow-sm mb-4">
+                <div className="font-mono text-[11px] text-muted dark:text-fog mb-2.5">
                   {storage.appsRoot || "applications"}
                   {storage.appsPartial ? " · partial scan" : ""}
                 </div>
-                <div className="flex flex-col gap-1.5">
+                <div className="flex flex-col gap-2">
                   {(() => {
                     const top = Math.max(...storage.apps.map((a) => a.bytesMB), 1);
                     return storage.apps.slice(0, 10).map((a) => {
@@ -535,8 +535,8 @@ export function TelemetryPage() {
                         Math.round((a.bytesMB / top) * 10),
                       );
                       return (
-                        <div key={a.path} className="flex items-center gap-2.5">
-                          <span className="font-mono text-[12px] w-32 truncate shrink-0">{a.name}</span>
+                        <div key={a.path} className="flex items-center gap-3">
+                          <span className="font-mono text-[12px] w-36 truncate shrink-0">{a.name}</span>
                           <span className="flex gap-[3px] flex-1" aria-hidden="true">
                             {Array.from({ length: 10 }, (_, i) => (
                               <span
@@ -562,16 +562,16 @@ export function TelemetryPage() {
 
             {storage.docker && (
               <div>
-                <div className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-2 lg:grid-cols-4 sm:gap-4 mb-2.5">
+                <div className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-2 lg:grid-cols-4 sm:gap-4 mb-3">
                   <Fact label="Images" value={fmtSize(storage.docker.imagesMB)} />
                   <Fact label="Containers" value={fmtSize(storage.docker.containersMB)} />
                   <Fact label="Volumes" value={fmtSize(storage.docker.volumesMB)} />
                   <Fact label="Build cache" value={fmtSize(storage.docker.buildCacheMB)} />
                 </div>
                 {storage.docker.imagesTop.length > 0 && (
-                  <div className="flex flex-col gap-1.5">
+                  <div className="bg-white dark:bg-panel border border-line dark:border-edge rounded-card p-4 shadow-sm flex flex-col gap-2">
                     {storage.docker.imagesTop.slice(0, 6).map((im) => (
-                      <div key={im.name} className="flex items-center gap-2.5">
+                      <div key={im.name} className="flex items-center gap-3">
                         <span className="font-mono text-[12px] flex-1 truncate">{im.name}</span>
                         <span className="font-mono text-[11px] text-muted dark:text-fog shrink-0">
                           {fmtSize(im.sizeMB)}
@@ -587,10 +587,10 @@ export function TelemetryPage() {
 
         {detail && detail.network.length > 0 && (
           <Section title="Network interfaces">
-            <div className="overflow-x-auto bg-white dark:bg-panel border border-line dark:border-edge rounded-xl">
+            <div className="overflow-x-auto bg-white dark:bg-panel border border-line dark:border-edge rounded-card shadow-sm">
               <table className="w-full min-w-[440px] sm:min-w-0 border-collapse text-[13px]">
                 <thead>
-                  <tr>
+                  <tr className="border-b border-line dark:border-edge">
                     <th className="text-left text-[11px] font-semibold tracking-[0.08em] uppercase text-muted dark:text-fog px-4 py-2.5 bg-paper dark:bg-abyss">Interface</th>
                     <th className="text-left text-[11px] font-semibold tracking-[0.08em] uppercase text-muted dark:text-fog px-4 py-2.5 bg-paper dark:bg-abyss">Received</th>
                     <th className="text-left text-[11px] font-semibold tracking-[0.08em] uppercase text-muted dark:text-fog px-4 py-2.5 bg-paper dark:bg-abyss last:text-right">Transmitted</th>
@@ -598,14 +598,14 @@ export function TelemetryPage() {
                 </thead>
                 <tbody>
                   {detail.network.map((n) => (
-                    <tr key={n.name} className="group">
-                      <td className="px-4 py-2.5 border-t border-line dark:border-edge align-middle font-mono">
+                    <tr key={n.name} className="group hover:bg-paper/50 dark:hover:bg-abyss/50 transition-colors">
+                      <td className="px-4 py-2.5 border-t border-line dark:border-edge align-middle font-mono font-medium">
                         {n.name}
                       </td>
                       <td className="px-4 py-2.5 border-t border-line dark:border-edge align-middle font-mono">
                         {fmtBytesTotal(n.rxBytes)}
                       </td>
-                      <td className="px-4 py-2.5 border-t border-line dark:border-edge align-middle last:text-right group-hover:bg-paper dark:group-hover:bg-emboss font-mono">
+                      <td className="px-4 py-2.5 border-t border-line dark:border-edge align-middle last:text-right font-mono font-medium">
                         {fmtBytesTotal(n.txBytes)}
                       </td>
                     </tr>
@@ -618,10 +618,10 @@ export function TelemetryPage() {
 
         {detail && detail.diskIO.length > 0 && (
           <Section title="Disk I/O totals">
-            <div className="overflow-x-auto bg-white dark:bg-panel border border-line dark:border-edge rounded-xl">
+            <div className="overflow-x-auto bg-white dark:bg-panel border border-line dark:border-edge rounded-card shadow-sm">
               <table className="w-full min-w-[440px] sm:min-w-0 border-collapse text-[13px]">
                 <thead>
-                  <tr>
+                  <tr className="border-b border-line dark:border-edge">
                     <th className="text-left text-[11px] font-semibold tracking-[0.08em] uppercase text-muted dark:text-fog px-4 py-2.5 bg-paper dark:bg-abyss">Device</th>
                     <th className="text-left text-[11px] font-semibold tracking-[0.08em] uppercase text-muted dark:text-fog px-4 py-2.5 bg-paper dark:bg-abyss">Read</th>
                     <th className="text-left text-[11px] font-semibold tracking-[0.08em] uppercase text-muted dark:text-fog px-4 py-2.5 bg-paper dark:bg-abyss last:text-right">Written</th>
@@ -629,14 +629,14 @@ export function TelemetryPage() {
                 </thead>
                 <tbody>
                   {detail.diskIO.map((d) => (
-                    <tr key={d.device} className="group">
-                      <td className="px-4 py-2.5 border-t border-line dark:border-edge align-middle font-mono">
+                    <tr key={d.device} className="group hover:bg-paper/50 dark:hover:bg-abyss/50 transition-colors">
+                      <td className="px-4 py-2.5 border-t border-line dark:border-edge align-middle font-mono font-medium">
                         {d.device}
                       </td>
                       <td className="px-4 py-2.5 border-t border-line dark:border-edge align-middle font-mono">
                         {fmtSize(d.readMB)}
                       </td>
-                      <td className="px-4 py-2.5 border-t border-line dark:border-edge align-middle last:text-right group-hover:bg-paper dark:group-hover:bg-emboss font-mono">
+                      <td className="px-4 py-2.5 border-t border-line dark:border-edge align-middle last:text-right font-mono font-medium">
                         {fmtSize(d.writeMB)}
                       </td>
                     </tr>
@@ -649,10 +649,10 @@ export function TelemetryPage() {
 
         {cstats !== null && cstats.length > 0 && (
           <Section title="Container resources">
-            <div className="overflow-x-auto bg-white dark:bg-panel border border-line dark:border-edge rounded-xl">
+            <div className="overflow-x-auto bg-white dark:bg-panel border border-line dark:border-edge rounded-card shadow-sm">
               <table className="w-full min-w-[560px] md:min-w-0 border-collapse text-[13px]">
                 <thead>
-                  <tr>
+                  <tr className="border-b border-line dark:border-edge">
                     <th className="text-left text-[11px] font-semibold tracking-[0.08em] uppercase text-muted dark:text-fog px-4 py-2.5 bg-paper dark:bg-abyss">Container</th>
                     <th className="text-left text-[11px] font-semibold tracking-[0.08em] uppercase text-muted dark:text-fog px-4 py-2.5 bg-paper dark:bg-abyss">CPU</th>
                     <th className="hidden sm:table-cell text-left text-[11px] font-semibold tracking-[0.08em] uppercase text-muted dark:text-fog px-4 py-2.5 bg-paper dark:bg-abyss">Memory</th>
@@ -661,10 +661,10 @@ export function TelemetryPage() {
                 </thead>
                 <tbody>
                   {cstats.map((c) => (
-                    <tr key={c.id} className="group">
+                    <tr key={c.id} className="group hover:bg-paper/50 dark:hover:bg-abyss/50 transition-colors">
                       <td className="px-4 py-2.5 border-t border-line dark:border-edge align-middle">
-                        <div className="font-mono">{c.name}</div>
-                        <div className="font-mono text-muted dark:text-fog text-[11px] truncate max-w-[220px]">
+                        <div className="font-mono font-medium">{c.name}</div>
+                        <div className="font-mono text-muted dark:text-fog text-[11px] truncate max-w-[220px] mt-0.5">
                           {c.image}
                         </div>
                       </td>
@@ -675,7 +675,7 @@ export function TelemetryPage() {
                         {fmtSize(c.memMB)}
                         {c.memLimitMB > 0 ? ` / ${fmtSize(c.memLimitMB)}` : ""}
                       </td>
-                      <td className="px-4 py-2.5 border-t border-line dark:border-edge align-middle last:text-right group-hover:bg-paper dark:group-hover:bg-emboss font-mono">
+                      <td className="px-4 py-2.5 border-t border-line dark:border-edge align-middle last:text-right font-mono font-medium">
                         {fmtSize(c.netRxMB)} / {fmtSize(c.netTxMB)}
                       </td>
                     </tr>
