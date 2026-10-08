@@ -119,3 +119,26 @@ func TestMonitoringEnabledFlags(t *testing.T) {
 		}
 	}
 }
+
+func TestMetricsRetentionBounds(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-that-is-long-enough-32")
+	t.Setenv("ADMIN_PASSWORD", "test-password")
+	for _, tc := range []struct {
+		in   string
+		want int
+	}{
+		{"", 30},       // unset = default
+		{"30", 30},     // explicit
+		{"1", 1},       // minimum
+		{"365", 365},   // maximum
+		{"0", 30},      // zero can never wipe everything
+		{"-5", 30},     // negative falls back
+		{"abc", 30},    // garbage falls back
+		{"366", 30},    // over maximum falls back
+	} {
+		t.Setenv("SERVER_METRICS_RETENTION_DAYS", tc.in)
+		if got := Load().MetricsRetentionDays; got != tc.want {
+			t.Fatalf("retention %q = %d, want %d", tc.in, got, tc.want)
+		}
+	}
+}

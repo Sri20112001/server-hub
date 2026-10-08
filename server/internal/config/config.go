@@ -49,6 +49,10 @@ type Config struct {
 	// false: with no (or disabled) rules the legacy notification pipeline
 	// runs exactly as before.
 	NotificationRulesEnabled bool
+	// MetricsRetentionDays bounds server_metrics history. Default 30 (the
+	// largest UI/API range); clamped to 1..365, invalid values fall back
+	// to the default so a bad value can never wipe everything.
+	MetricsRetentionDays int
 }
 
 func getenv(key, def string) string {
@@ -205,6 +209,10 @@ func Load() *Config {
 	promEnabled := getenv("PROMETHEUS_ENABLED", "true")
 	amEnabled := getenv("ALERTMANAGER_ENABLED", "true")
 	rulesEnabled := getenv("NOTIFICATION_RULES_ENABLED", "false")
+	retentionDays, _ := strconv.Atoi(getenv("SERVER_METRICS_RETENTION_DAYS", "30"))
+	if retentionDays < 1 || retentionDays > 365 {
+		retentionDays = 30
+	}
 	offlineTimeout, _ := strconv.Atoi(getenv("SERVER_OFFLINE_TIMEOUT_SEC", "180"))
 	if offlineTimeout < 30 {
 		offlineTimeout = 180
@@ -235,6 +243,7 @@ func Load() *Config {
 		AlertmanagerTimeoutSec:    amTimeout,
 		AlertmanagerEnabled:       amEnabled != "false" && amEnabled != "0",
 		NotificationRulesEnabled: rulesEnabled == "true" || rulesEnabled == "1",
+		MetricsRetentionDays:    retentionDays,
 		AlertmanagerWebhookSecret: os.Getenv("ALERTMANAGER_WEBHOOK_SECRET"),
 	}
 }

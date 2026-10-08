@@ -288,3 +288,123 @@ func TestCreateSilence_InvalidJSON(t *testing.T) {
 		t.Errorf("expected 400, got %d", w.Code)
 	}
 }
+
+// ── Metrics range/step validation ───────────────────────────────────────────
+
+func promRangeStub(t *testing.T) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"status":"success","data":{"resultType":"matrix","result":[]}}`))
+	}))
+}
+
+func TestMetrics_Valid(t *testing.T) {
+	srv := promRangeStub(t)
+	defer srv.Close()
+
+	h := newMonitoringHandler(srv.URL, "", "")
+	r := gin.New()
+	r.GET("/metrics", h.Metrics)
+
+	req := httptest.NewRequest(http.MethodGet, "/metrics?metric=cpu&range=1h&step=60", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestMetrics_Validation(t *testing.T) {
+	srv := promRangeStub(t)
+	defer srv.Close()
+
+	h := newMonitoringHandler(srv.URL, "", "")
+	r := gin.New()
+	r.GET("/metrics", h.Metrics)
+
+	cases := []struct {
+		name  string
+		query string
+	}{
+		{"unknown range", "metric=cpu&range=30d&step=60"},
+		{"unknown metric", "metric=bogus&range=1h&step=60"},
+		{"zero step", "metric=cpu&range=1h&step=0"},
+		{"negative step", "metric=cpu&range=1h&step=-5"},
+		{"too-small step", "metric=cpu&range=1h&step=5"},
+		{"malformed step", "metric=cpu&range=1h&step=abc"},
+		{"step exceeds window", "metric=cpu&range=1h&step=2h"},
+	}
+	for _, tc := range cases {
+		req := httptest.NewRequest(http.MethodGet, "/metrics?"+tc.query, nil)
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("%s: expected 400, got %d (%s)", tc.name, w.Code, w.Body.String())
+		}
+	}
+}
+
+func TestMetrics_NotConfigured(t *testing.T) {
+	h := newMonitoringHandler("", "", "")
+	r := gin.New()
+	r.GET("/metrics", h.Metrics)
+
+	req := httptest.NewRequest(http.MethodGet, "/metrics?metric=cpu&range=1h&step=60", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusServiceUnavailable {
+		t.Errorf("expected 503, got %d", w.Code)
+	}
+}
+
+func TestMetrics_UpstreamError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	h := newMonitoringHandler(srv.URL, "", "")
+	r := gin.New()
+	r.GET("/metrics", h.Metrics)
+
+	req := httptest.NewRequest(http.MethodGet, "/metrics?metric=cpu&range=1h&step=60", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadGateway {
+		t.Errorf("expected 502, got %d", w.Code)
+	}
+}
+
+func TestQueryRange_Validation(t *testing.T) {
+	srv := promRangeStub(t)
+	defer srv.Close()
+
+	h := newMonitoringHandler(srv.URL, "", "")
+	r := gin.New()
+	r.GET("/query-range", h.PrometheusQueryRange)
+
+	valid := httptest.NewRequest(http.MethodGet, "/query-range?query=up&start=1000&end=4600&step=60", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, valid)
+	if w.Code != http.StatusOK {
+		t.Fatalf("valid range query: expected 200, got %d (%s)", w.Code, w.Body.String())
+	}
+
+	for _, q := range []string{
+		"/query-range?query=up&start=4600&end=1000&step=60",
+		"/query-range?query=up&start=0&end=99999999&step=60",
+		"/query-range?query=up&start=1000&end=4600&step=5",
+		"/query-range?query=up&start=abc&end=4600&step=60",
+	} {
+		req := httptest.NewRequest(http.MethodGet, q, nil)
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("%s: expected 400, got %d", q, w.Code)
+		}
+	}
+}

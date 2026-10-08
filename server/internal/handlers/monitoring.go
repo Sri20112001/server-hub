@@ -98,6 +98,15 @@ func (h *MonitoringHandler) PrometheusQueryRange(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "query, start, end required"})
 		return
 	}
+	window, err := monitoring.ValidateWindow(start, end)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if err := monitoring.ValidateStep(step, window); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
 	ctx, cancel := promCtx(h.Cfg)
 	defer cancel()
 	data, err := h.Prometheus.QueryRange(ctx, query, start, end, step)
@@ -192,13 +201,14 @@ func (h *MonitoringHandler) Metrics(c *gin.Context) {
 	rangeStr := c.DefaultQuery("range", "1h")
 	step := c.DefaultQuery("step", "60")
 
-	rangeSeconds := map[string]int64{
-		"1h": 3600, "6h": 21600, "24h": 86400, "7d": 604800,
-	}
-	dur, ok := rangeSeconds[rangeStr]
+	dur, ok := monitoring.RangeSeconds(rangeStr)
 	if !ok {
-		dur = 3600
-		rangeStr = "1h"
+		c.JSON(http.StatusBadRequest, gin.H{"error": "unknown range; use 1h|6h|24h|7d"})
+		return
+	}
+	if err := monitoring.ValidateStep(step, dur); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
 	}
 
 	queries := map[string]string{

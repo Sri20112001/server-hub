@@ -1,12 +1,15 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"slices"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/gin-contrib/cors"
@@ -27,6 +30,7 @@ import (
 	"serverhub/internal/middleware"
 	"serverhub/internal/monitoring"
 	"serverhub/internal/notify"
+	"serverhub/internal/retention"
 	"serverhub/internal/rules"
 	"serverhub/internal/telemetry"
 )
@@ -395,8 +399,25 @@ func main() {
 
 	log.Printf("ServerHub API listening on :%s (db=postgres docker=%v)", cfg.Port, dockerClient.Available())
 	log.Printf("CORS allowed origins: %v", origins)
+	log.Printf("server_metrics retention: %dd", cfg.MetricsRetentionDays)
 	applog.Info(gdb, "system", "API listening (db=postgres docker="+boolStr(dockerClient.Available())+")")
-	if err := r.Run(":" + cfg.Port); err != nil {
+
+	// Lifecycle: background workers stop on SIGINT/SIGTERM; the HTTP server
+	// drains with a grace period. Nothing else in main blocks shutdown.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	retention.StartLoop(ctx, db, cfg.MetricsRetentionDays, retention.DefaultInterval)
+
+	srv := &http.Server{Addr: ":" + cfg.Port, Handler: r}
+	go func() {
+		<-ctx.Done()
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		if err := srv.Shutdown(shutdownCtx); err != nil {
+			log.Printf("server shutdown: %v", err)
+		}
+	}()
+	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		applog.Error(gdb, "system", "server exited: "+err.Error())
 		log.Fatal(err)
 	}
