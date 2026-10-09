@@ -498,9 +498,29 @@ stage('Prepare') {
               exit 1
             }
 
-            echo "Stopping previous ServerHub Compose deployment..."
+            force_cleanup_container() {
+              c="$1"
+              if docker inspect "$c" >/dev/null 2>&1; then
+                echo "Terminating container $c..."
+                docker stop -t 5 "$c" 2>/dev/null || docker kill "$c" 2>/dev/null || docker rm -f "$c" 2>/dev/null || true
+                if docker inspect -f '{{.State.Running}}' "$c" 2>/dev/null | grep -q true; then
+                  PID="$(docker inspect -f '{{.State.Pid}}' "$c" 2>/dev/null || true)"
+                  if [ -n "$PID" ] && [ "$PID" != "0" ]; then
+                    echo "Container $c still running (AppArmor signal denied). Force-killing PID $PID..."
+                    docker run --rm --privileged --pid=host alpine kill -9 "$PID" 2>/dev/null || true
+                  fi
+                  docker rm -f "$c" 2>/dev/null || true
+                fi
+              fi
+            }
 
+            echo "Stopping previous ServerHub Compose deployment..."
             $COMPOSE down --remove-orphans >/dev/null 2>&1 || true
+
+            # Clean up all containers in the stack to prevent recreation failures under host AppArmor issues:
+            for c in serverhub serverhub-postgres serverhub-prometheus serverhub-alertmanager serverhub-node-exporter serverhub-cadvisor; do
+              force_cleanup_container "$c"
+            done
 
             # ---------------------------------------------------------
             # Check host port 4000
@@ -525,24 +545,7 @@ stage('Prepare') {
               case "$IMG" in
                 serverhub*|server-hub-serverhub|docker.io/library/serverhub*)
                   NAME="$(echo "$HOLDER" | awk '{print $1}')"
-                  echo "Detected stale ServerHub container: $NAME"
-                  echo "Stopping and removing it..."
-                  if ! docker stop -t 5 "$NAME" 2>/dev/null; then
-                    echo "Standard docker stop failed; escalating to docker kill / rm -f..."
-                    docker kill "$NAME" 2>/dev/null || docker rm -f "$NAME" 2>/dev/null || true
-                  else
-                    docker rm "$NAME" 2>/dev/null || true
-                  fi
-
-                  # If still active (e.g. host AppArmor blocked containerd signal), kill host PID via unconfined helper:
-                  if docker inspect -f '{{.State.Running}}' "$NAME" 2>/dev/null | grep -q true; then
-                    PID="$(docker inspect -f '{{.State.Pid}}' "$NAME" 2>/dev/null || true)"
-                    if [ -n "$PID" ] && [ "$PID" != "0" ]; then
-                      echo "Container still running. Attempting unconfined kill on host PID $PID..."
-                      docker run --rm --privileged --pid=host alpine kill -9 "$PID" 2>/dev/null || true
-                    fi
-                    docker rm -f "$NAME" 2>/dev/null || true
-                  fi
+                  force_cleanup_container "$NAME"
 
                   if docker ps --format '{{.Names}} {{.Ports}}' 2>/dev/null | grep -q '4000->4000'; then
                     echo "ERROR: Could not stop stale container $NAME on port 4000."
