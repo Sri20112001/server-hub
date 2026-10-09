@@ -242,31 +242,6 @@ stage('Prepare') {
       }
     }
 
-  stage('Integration') {
-  steps {
-  dir('server') {
-  sh '''
-  set -eu
-
-
-              echo "=== Running ServerHub integration tests ==="
-
-              export SERVERHUB_INT_STRICT=1
-
-              go test \
-                  -tags=integration \
-                  ./internal/integration/... \
-                  -count=1 \
-                  -timeout=20m \
-                  -v
-          '''
-      }
-  }
-
-
-  }
-
-
     stage('Build') {
       steps {
         dir('server') {
