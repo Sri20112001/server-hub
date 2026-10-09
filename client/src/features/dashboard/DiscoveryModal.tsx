@@ -34,7 +34,7 @@ export function DiscoveryModal({
     setBusy(name);
     try {
       const p = await api.importDiscovered(name);
-      pushToast(`“${p.name}” joined the fleet with ${p.servicesAdded} station${p.servicesAdded === 1 ? "" : "s"}.`);
+      pushToast(`“${p.name}” added to projects with ${p.servicesAdded} service${p.servicesAdded === 1 ? "" : "s"}.`);
       onImported();
       onClose();
     } catch (e) {
@@ -53,8 +53,8 @@ export function DiscoveryModal({
       const r = await api.importAllDiscovered();
       pushToast(
         r.imported === 0
-          ? "Fleet already up to date."
-          : `${r.imported} ship${r.imported === 1 ? "" : "s"} joined the fleet with ${r.servicesAdded} station${r.servicesAdded === 1 ? "" : "s"}.`,
+          ? "Projects already up to date."
+          : `${r.imported} project${r.imported === 1 ? "" : "s"} imported with ${r.servicesAdded} service${r.servicesAdded === 1 ? "" : "s"}.`,
       );
       onImported();
       const fresh = await api.discovery();
@@ -72,10 +72,10 @@ export function DiscoveryModal({
     <Modal onClose={onClose}>
       <div className="flex items-center gap-2 flex-wrap">
         <Radar size={16} />
-        <h3 className="text-[18px]">Scan shipyard</h3>
+        <h3 className="text-[18px]">Discover Docker Applications</h3>
       </div>
       <p className="text-muted dark:text-fog text-[13px] mt-1 mb-4">
-        Detected from Docker compose labels and server directories. Importing registers the ship and its stations — no typing.
+        Detected from Docker Compose labels and server directories. Importing automatically registers the project and its services.
       </p>
 
       {!err && projects !== null && unregistered > 1 && (
@@ -84,7 +84,7 @@ export function DiscoveryModal({
           disabled={busy !== null}
           onClick={() => void importAll()}
         >
-          <Download size={13} /> {busy === "__all" ? "Importing…" : `Import all ${unregistered} ships`}
+          <Download size={13} /> {busy === "__all" ? "Importing…" : `Import all ${unregistered} projects`}
         </button>
       )}
 
@@ -95,19 +95,19 @@ export function DiscoveryModal({
       )}
 
       {!err && projects === null && (
-        <div className="text-muted dark:text-fog text-[13px]">Sweeping the shipyard…</div>
+        <div className="text-muted dark:text-fog text-[13px]">Scanning Docker containers…</div>
       )}
 
       {!err && projects !== null && !dockerAvailable && (
         <EmptyState
-          title="Shipyard unreachable"
-          hint="No Docker socket here — register ships by hand with New Dispatch."
+          title="Docker Daemon Unreachable"
+          hint="Docker socket is unavailable on this host."
         />
       )}
 
       {!err && projects !== null && dockerAvailable && projects.length === 0 && (filesystem === null || filesystem.length === 0) && (
         <EmptyState
-          title="Empty waters"
+          title="No Containers Found"
           hint="No compose projects, containers, or project directories detected."
         />
       )}

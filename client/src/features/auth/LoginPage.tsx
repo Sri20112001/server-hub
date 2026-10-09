@@ -15,7 +15,7 @@ export function LoginPage() {
     e.preventDefault();
     try {
       await login(username.trim(), password);
-      pushToast("Welcome aboard, Captain.");
+      pushToast("Signed in successfully.");
       nav("/", { replace: true });
     } catch {
       /* error shown inline via store */
@@ -32,12 +32,12 @@ export function LoginPage() {
           <div>
             <div className="font-head font-bold text-[20px]">ServerHub</div>
             <div className="text-[11px] font-semibold tracking-[0.08em] uppercase text-muted dark:text-fog">
-              Bridge console · sign in
+              Sign in to console
             </div>
           </div>
         </div>
         <p className="text-muted dark:text-fog text-[13px] my-3 mb-4">
-          One server. One captain. Identify yourself to take the helm.
+          Enter your operator or administrator credentials to access ServerHub.
         </p>
         <form onSubmit={submit} className="flex flex-col gap-4">
           <Field label="Username">

@@ -45,6 +45,11 @@ func Load() (Config, error) {
 	if cfg.Token == "" || cfg.BaseURL == "" {
 		return Config{}, fmt.Errorf("AGENT_TOKEN and SERVERHUB_URL are required (env or .env)")
 	}
+	env := strings.ToLower(strings.TrimSpace(os.Getenv("ENVIRONMENT")))
+	allowInsecure := strings.EqualFold(strings.TrimSpace(os.Getenv("ALLOW_INSECURE_HTTP")), "true")
+	if env == "production" && !allowInsecure && !strings.HasPrefix(cfg.BaseURL, "https://") {
+		return Config{}, fmt.Errorf("production environment requires HTTPS for SERVERHUB_URL (set ALLOW_INSECURE_HTTP=true to override for testing)")
+	}
 	if cfg.MetricsInterval <= 0 || cfg.HeartbeatInterval <= 0 {
 		return Config{}, fmt.Errorf("METRICS_INTERVAL and HEARTBEAT_INTERVAL must be positive seconds")
 	}

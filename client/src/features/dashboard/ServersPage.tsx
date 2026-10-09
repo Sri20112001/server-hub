@@ -67,50 +67,312 @@ function Stat({ label, value }: { label: string; value: string }) {
 
 function AddServerModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
   const { pushToast } = useUi();
+  const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
   const [name, setName] = useState("");
   const [hostname, setHostname] = useState("");
   const [ip, setIp] = useState("");
+  const [osType, setOsType] = useState<"linux" | "docker" | "windows">("linux");
+  const [createdServerId, setCreatedServerId] = useState<number | null>(null);
+  const [agentToken, setAgentToken] = useState("");
   const [busy, setBusy] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [pollStatus, setPollStatus] = useState<"connecting" | "connected" | "timeout">("connecting");
+  const [secondsWaiting, setSecondsWaiting] = useState(0);
 
-  const submit = async () => {
+  // Step 1 -> Step 2 -> Step 3: create server & token
+  const handleProceedToSetup = async () => {
     if (!name.trim()) return;
     setBusy(true);
     try {
-      await api.createServer({ name: name.trim(), hostname, ipAddress: ip });
-      pushToast(`Server "${name}" added`);
+      let serverId = createdServerId;
+      if (!serverId) {
+        const created = await api.createServer({ name: name.trim(), hostname: hostname.trim() || undefined, ipAddress: ip.trim() || undefined });
+        serverId = created.id;
+        setCreatedServerId(serverId);
+      }
+      if (!agentToken && serverId) {
+        const res = await api.createAgentToken(serverId, `${name.trim()}-initial-token`);
+        setAgentToken(res.token);
+      }
       onCreated();
-      onClose();
+      setStep(3);
     } catch (e) {
-      pushToast(e instanceof Error ? e.message : "Failed to add server", true);
+      pushToast(e instanceof Error ? e.message : "Failed to initialize server", true);
     } finally {
       setBusy(false);
     }
   };
 
+  // Step 4: Live connection polling
+  useEffect(() => {
+    if (step !== 4 || !createdServerId) return;
+    setPollStatus("connecting");
+    setSecondsWaiting(0);
+
+    const timer = setInterval(() => {
+      setSecondsWaiting((s) => s + 1);
+    }, 1000);
+
+    const poller = setInterval(async () => {
+      try {
+        const s = await api.managedServer(createdServerId);
+        if (s.agentStatus === "CONNECTED" || s.status === "ONLINE") {
+          setPollStatus("connected");
+          clearInterval(poller);
+          clearInterval(timer);
+          onCreated();
+        }
+      } catch {
+        /* ignore polling errors */
+      }
+    }, 2500);
+
+    const timeout = setTimeout(() => {
+      setPollStatus((prev) => (prev === "connected" ? "connected" : "timeout"));
+      clearInterval(poller);
+      clearInterval(timer);
+    }, 60000);
+
+    return () => {
+      clearInterval(poller);
+      clearInterval(timer);
+      clearTimeout(timeout);
+    };
+  }, [step, createdServerId, onCreated]);
+
+  const apiHost = window.location.origin;
+
+  const command =
+    osType === "linux"
+      ? `curl -fsSL ${apiHost}/agent/install.sh | sudo AGENT_TOKEN="${agentToken}" SERVERHUB_URL="${apiHost}" bash`
+      : osType === "docker"
+      ? `docker run -d --name serverhub-agent --restart always \\
+  -e AGENT_TOKEN="${agentToken}" \\
+  -e SERVERHUB_URL="${apiHost}" \\
+  -v /var/run/docker.sock:/var/run/docker.sock \\
+  serverhub/agent:latest`
+      : `$env:AGENT_TOKEN="${agentToken}"; $env:SERVERHUB_URL="${apiHost}"; .\\serverhub-agent.exe`;
+
+  const copyCommand = async () => {
+    try {
+      await navigator.clipboard.writeText(command);
+      setCopied(true);
+      pushToast("Setup command copied to clipboard!");
+      setTimeout(() => setCopied(false), 3000);
+    } catch {
+      pushToast("Failed to copy to clipboard", true);
+    }
+  };
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(28,25,23,0.28)] dark:bg-[rgba(0,0,0,0.55)] p-4" onClick={onClose}>
-      <div className="bg-white dark:bg-panel border border-line dark:border-edge rounded-card p-6 w-full max-w-md shadow-chrome" onClick={(e) => e.stopPropagation()}>
-        <h2 className="text-ink dark:text-bone font-head font-bold text-lg mb-4">Add Server</h2>
-        <div className="space-y-3">
-          <Field label="Name *" value={name} onChange={setName} placeholder="production-api" />
-          <Field label="Hostname" value={hostname} onChange={setHostname} placeholder="api.example.com" />
-          <Field label="IP Address" value={ip} onChange={setIp} placeholder="192.168.1.10" />
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(28,25,23,0.35)] dark:bg-[rgba(0,0,0,0.65)] p-4 backdrop-blur-xs" onClick={onClose}>
+      <div className="bg-white dark:bg-panel border border-line dark:border-edge rounded-card p-6 w-full max-w-xl shadow-chrome" onClick={(e) => e.stopPropagation()}>
+        {/* Wizard progress header */}
+        <div className="flex items-center justify-between border-b border-line dark:border-edge pb-4 mb-5">
+          <div>
+            <h2 className="text-ink dark:text-bone font-head font-bold text-lg">Connect a New Server</h2>
+            <p className="text-muted dark:text-fog text-xs mt-0.5">Quick 4-step guided setup for any host environment</p>
+          </div>
+          <div className="flex items-center gap-1.5 text-xs font-mono">
+            {[1, 2, 3, 4].map((s) => (
+              <span
+                key={s}
+                className={`w-6 h-6 rounded-full flex items-center justify-center font-bold text-[11px] transition-all ${
+                  step === s
+                    ? "bg-accent dark:bg-ember text-white dark:text-black shadow-sm"
+                    : step > s
+                    ? "bg-moss/20 text-moss border border-moss/30"
+                    : "bg-paper dark:bg-abyss text-stone border border-line dark:border-edge"
+                }`}
+              >
+                {step > s ? "✓" : s}
+              </span>
+            ))}
+          </div>
         </div>
-        <p className="text-muted dark:text-fog text-xs mt-3">
-          After adding, generate an agent token and install the agent on the server.
-        </p>
-        <div className="flex gap-2 mt-5 justify-end">
-          <button onClick={onClose} className="px-4 py-2 text-sm text-muted dark:text-fog hover:text-ink dark:hover:text-bone border border-line dark:border-edge rounded-lg cursor-pointer">
-            Cancel
-          </button>
-          <button
-            onClick={submit}
-            disabled={busy || !name.trim()}
-            className="px-4 py-2 text-sm bg-accent dark:bg-ember text-white dark:text-black font-semibold rounded-lg hover:bg-accent-hover dark:hover:bg-ember-hover disabled:opacity-50 cursor-pointer"
-          >
-            {busy ? "Adding…" : "Add Server"}
-          </button>
-        </div>
+
+        {/* Step 1: Details */}
+        {step === 1 && (
+          <div className="space-y-4">
+            <div>
+              <h3 className="text-sm font-semibold text-ink dark:text-bone mb-1">Step 1: Host Information</h3>
+              <p className="text-xs text-muted dark:text-fog mb-3">Provide a recognizable label for this server in your inventory.</p>
+            </div>
+            <div className="space-y-3">
+              <Field label="Server Name *" value={name} onChange={setName} placeholder="e.g. web-production-01, internal-db" />
+              <Field label="Hostname / Domain (Optional)" value={hostname} onChange={setHostname} placeholder="e.g. api.yourcompany.com" />
+              <Field label="IP Address (Optional)" value={ip} onChange={setIp} placeholder="e.g. 192.168.1.100 or 54.210.12.3" />
+            </div>
+            <div className="flex justify-end gap-2 pt-4 border-t border-line dark:border-edge">
+              <button onClick={onClose} className="px-4 py-2 text-sm text-muted dark:text-fog hover:text-ink dark:hover:text-bone border border-line dark:border-edge rounded-lg cursor-pointer">
+                Cancel
+              </button>
+              <button
+                onClick={() => setStep(2)}
+                disabled={!name.trim()}
+                className="px-4 py-2 text-sm bg-accent dark:bg-ember text-white dark:text-black font-semibold rounded-lg hover:bg-accent-hover dark:hover:bg-ember-hover disabled:opacity-50 cursor-pointer shadow-sm"
+              >
+                Next: Choose Environment →
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Step 2: Environment Selection */}
+        {step === 2 && (
+          <div className="space-y-4">
+            <div>
+              <h3 className="text-sm font-semibold text-ink dark:text-bone mb-1">Step 2: Server Operating System</h3>
+              <p className="text-xs text-muted dark:text-fog mb-3">Select the platform where the ServerHub monitoring agent will run.</p>
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              {[
+                { id: "linux", title: "Linux Host", desc: "Ubuntu, Debian, RHEL, CentOS", icon: "🐧" },
+                { id: "docker", title: "Docker Container", desc: "Any Docker daemon host", icon: "🐳" },
+                { id: "windows", title: "Windows Server", desc: "PowerShell binary execution", icon: "🪟" },
+              ].map((opt) => (
+                <button
+                  key={opt.id}
+                  onClick={() => setOsType(opt.id as any)}
+                  className={`p-4 rounded-xl border text-left transition-all cursor-pointer ${
+                    osType === opt.id
+                      ? "border-accent dark:border-ember bg-tint/40 dark:bg-emboss ring-1 ring-accent dark:ring-ember"
+                      : "border-line dark:border-edge hover:border-accent/40 dark:hover:border-ember/40 bg-paper/50 dark:bg-abyss/50"
+                  }`}
+                >
+                  <div className="text-2xl mb-2">{opt.icon}</div>
+                  <div className="text-xs font-semibold text-ink dark:text-bone">{opt.title}</div>
+                  <div className="text-[11px] text-muted dark:text-fog mt-0.5 leading-snug">{opt.desc}</div>
+                </button>
+              ))}
+            </div>
+            <div className="flex justify-between gap-2 pt-4 border-t border-line dark:border-edge">
+              <button onClick={() => setStep(1)} className="px-4 py-2 text-sm text-muted dark:text-fog hover:text-ink dark:hover:text-bone border border-line dark:border-edge rounded-lg cursor-pointer">
+                ← Back
+              </button>
+              <button
+                onClick={handleProceedToSetup}
+                disabled={busy}
+                className="px-4 py-2 text-sm bg-accent dark:bg-ember text-white dark:text-black font-semibold rounded-lg hover:bg-accent-hover dark:hover:bg-ember-hover disabled:opacity-50 cursor-pointer shadow-sm"
+              >
+                {busy ? "Registering…" : "Next: Setup Command →"}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Step 3: Copy Command */}
+        {step === 3 && (
+          <div className="space-y-4">
+            <div>
+              <h3 className="text-sm font-semibold text-ink dark:text-bone mb-1">Step 3: Run the Setup Command</h3>
+              <p className="text-xs text-muted dark:text-fog mb-3">Copy and execute this single command in your server's terminal with root privileges.</p>
+            </div>
+            <div className="relative bg-paper dark:bg-abyss border border-line dark:border-edge rounded-xl p-4">
+              <pre className="font-mono text-xs text-ink dark:text-bone overflow-x-auto whitespace-pre-wrap break-all pr-12 leading-relaxed">
+                {command}
+              </pre>
+              <button
+                onClick={copyCommand}
+                className="absolute top-3 right-3 px-2.5 py-1.5 text-xs bg-white dark:bg-panel border border-line dark:border-edge rounded-lg shadow-sm font-medium hover:border-accent dark:hover:border-ember text-ink dark:text-bone transition-all cursor-pointer flex items-center gap-1.5"
+              >
+                {copied ? "✓ Copied" : "Copy"}
+              </button>
+            </div>
+            <div className="p-3 bg-paper dark:bg-abyss/80 border border-line dark:border-edge rounded-lg text-xs text-muted dark:text-fog space-y-1">
+              <p className="font-semibold text-ink dark:text-bone">Security & Port Requirements:</p>
+              <p>• The agent only initiates outbound HTTP/HTTPS requests to <span className="font-mono text-ink dark:text-bone">{apiHost}</span>.</p>
+              <p>• No inbound server ports need to be opened in your firewall.</p>
+            </div>
+            <div className="flex justify-between gap-2 pt-4 border-t border-line dark:border-edge">
+              <button onClick={() => setStep(2)} className="px-4 py-2 text-sm text-muted dark:text-fog hover:text-ink dark:hover:text-bone border border-line dark:border-edge rounded-lg cursor-pointer">
+                ← Back
+              </button>
+              <button
+                onClick={() => setStep(4)}
+                className="px-4 py-2 text-sm bg-accent dark:bg-ember text-white dark:text-black font-semibold rounded-lg hover:bg-accent-hover dark:hover:bg-ember-hover cursor-pointer shadow-sm"
+              >
+                I've Run the Command → Verify Connection
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Step 4: Live Verification */}
+        {step === 4 && (
+          <div className="space-y-5 text-center py-4">
+            {pollStatus === "connecting" && (
+              <div className="space-y-4">
+                <div className="w-16 h-16 rounded-full border-3 border-accent dark:border-ember border-t-transparent animate-spin mx-auto" />
+                <div>
+                  <h3 className="text-base font-semibold text-ink dark:text-bone">Listening for Agent Connection…</h3>
+                  <p className="text-xs text-muted dark:text-fog mt-1">Waiting for initial heartbeat from "{name}" ({secondsWaiting}s elapsed)</p>
+                </div>
+                <p className="text-[11px] text-muted dark:text-fog max-w-sm mx-auto">
+                  Once your agent process launches, it will report CPU, RAM, and disk telemetry automatically.
+                </p>
+              </div>
+            )}
+
+            {pollStatus === "connected" && (
+              <div className="space-y-4">
+                <div className="w-16 h-16 rounded-full bg-moss/10 border-2 border-moss text-moss text-2xl flex items-center justify-center mx-auto shadow-sm">
+                  ✓
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-moss">Server Successfully Connected!</h3>
+                  <p className="text-xs text-muted dark:text-fog mt-1">Heartbeat received. "{name}" is now online and actively monitored.</p>
+                </div>
+                <div className="pt-2">
+                  <button
+                    onClick={onClose}
+                    className="px-5 py-2.5 text-sm bg-accent dark:bg-ember text-white dark:text-black font-semibold rounded-lg hover:bg-accent-hover dark:hover:bg-ember-hover cursor-pointer shadow-sm"
+                  >
+                    Done & View Server Inventory
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {pollStatus === "timeout" && (
+              <div className="space-y-4 text-left">
+                <div className="p-4 bg-status-amber/10 border border-status-amber/30 rounded-xl">
+                  <h4 className="text-status-amber font-semibold text-sm mb-1">Agent Has Not Connected Yet</h4>
+                  <p className="text-xs text-muted dark:text-fog">
+                    We didn't receive a heartbeat within 60 seconds. The server was saved in your inventory, but please check the following:
+                  </p>
+                  <ul className="text-xs text-ink dark:text-bone space-y-1.5 mt-2.5 list-disc pl-4">
+                    <li>Did the installation command finish without errors in your terminal?</li>
+                    <li>Can the server reach <span className="font-mono bg-paper dark:bg-abyss px-1 py-0.5 rounded border border-line dark:border-edge">{apiHost}</span> over port 4000/80/443?</li>
+                    <li>Verify the agent service status: <span className="font-mono bg-paper dark:bg-abyss px-1 py-0.5 rounded border border-line dark:border-edge">sudo systemctl status serverhub-agent</span></li>
+                  </ul>
+                </div>
+                <div className="flex justify-between items-center pt-2">
+                  <button
+                    onClick={() => setStep(3)}
+                    className="text-xs text-accent dark:text-ember underline cursor-pointer"
+                  >
+                    ← Review Setup Command
+                  </button>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setPollStatus("connecting")}
+                      className="px-3.5 py-2 text-xs border border-line dark:border-edge rounded-lg text-ink dark:text-bone hover:bg-paper dark:hover:bg-abyss cursor-pointer"
+                    >
+                      Retry Listening
+                    </button>
+                    <button
+                      onClick={onClose}
+                      className="px-4 py-2 text-xs bg-accent dark:bg-ember text-white dark:text-black font-semibold rounded-lg hover:bg-accent-hover dark:hover:bg-ember-hover cursor-pointer"
+                    >
+                      Close & Finish Later
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

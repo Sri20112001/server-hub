@@ -513,17 +513,17 @@ export function DashboardPage({ setOnline }: { setOnline: (v: boolean) => void }
         </StatShell>
 
         <StatShell
-          kicker="Fleet"
+          kicker="Projects"
           icon={<Ship size={15} />}
-          foot={<span>{data.counts.services} stations crewed</span>}
+          foot={<span>{data.counts.services} services active</span>}
           onClick={() => nav("/fleet")}
         >
           <div className="flex items-center gap-2 flex-wrap items-baseline mt-2">
             <span className="font-head text-[34px] font-bold text-ink dark:text-bone">{data.counts.projects}</span>
-            <span className="text-muted dark:text-fog">ships active</span>
+            <span className="text-muted dark:text-fog">projects active</span>
           </div>
           <div className="text-muted dark:text-fog text-xs mt-1.5">
-            <span className="font-mono text-ink dark:text-bone font-medium">{docked}</span> idle in shipyard
+            <span className="font-mono text-ink dark:text-bone font-medium">{docked}</span> stopped containers
           </div>
         </StatShell>
 
@@ -552,7 +552,7 @@ export function DashboardPage({ setOnline }: { setOnline: (v: boolean) => void }
         </StatShell>
 
         <StatShell
-          kicker="Deploys"
+          kicker="Deployments"
           icon={<Rocket size={15} />}
           foot={
             <>
@@ -563,7 +563,7 @@ export function DashboardPage({ setOnline }: { setOnline: (v: boolean) => void }
         >
           <div className="flex items-center gap-2 flex-wrap items-baseline mt-2">
             <span className="font-head text-[34px] font-bold text-ink dark:text-bone">{data.counts.deployments}</span>
-            <span className="text-muted dark:text-fog">launches logged</span>
+            <span className="text-muted dark:text-fog">deploys logged</span>
           </div>
           <div className="text-muted dark:text-fog text-xs mt-1.5">
             <span className="font-mono text-ink dark:text-bone font-medium">{deployStats.todayCount}</span> today ·{" "}
@@ -572,14 +572,14 @@ export function DashboardPage({ setOnline }: { setOnline: (v: boolean) => void }
         </StatShell>
 
         <StatShell
-          kicker="Fleet health"
+          kicker="Service Health"
           icon={<Radio size={15} />}
           foot={<span>Heartbeat: 30s</span>}
         >
           <div className="flex flex-col gap-2 mt-2">
-            <HealthRow label="Sailing" count={data.counts.healthy} tag="NOMINAL" pip="bg-moss" />
-            <HealthRow label="Choppy" count={data.counts.degraded} tag={data.counts.degraded ? "WATCH" : "CALM"} pip="bg-status-amber" />
-            <HealthRow label="Lost signal" count={data.counts.down} tag={data.counts.down ? "ALERT" : "NONE"} pip="bg-brick" />
+            <HealthRow label="Healthy" count={data.counts.healthy} tag="NOMINAL" pip="bg-moss" />
+            <HealthRow label="Degraded" count={data.counts.degraded} tag={data.counts.degraded ? "WATCH" : "CALM"} pip="bg-status-amber" />
+            <HealthRow label="Offline" count={data.counts.down} tag={data.counts.down ? "ALERT" : "NONE"} pip="bg-brick" />
           </div>
         </StatShell>
       </div>
@@ -587,9 +587,9 @@ export function DashboardPage({ setOnline }: { setOnline: (v: boolean) => void }
       {/* fleet */}
       <div className="flex items-center justify-between gap-4 mt-8 mb-4">
         <div className="flex items-center gap-2 flex-wrap">
-          <h2 className="font-head text-[22px] font-bold tracking-[-0.02em] text-ink dark:text-bone">Fleet</h2>
+          <h2 className="font-head text-[22px] font-bold tracking-[-0.02em] text-ink dark:text-bone">Projects</h2>
           <span className="inline-flex items-center gap-1.5 font-mono text-[11px] bg-paper dark:bg-emboss border border-line dark:border-edge text-ink dark:text-bone rounded-md px-2 py-[3px] whitespace-nowrap">
-            {data.projects.length} Active Units
+            {data.projects.length} Active Projects
           </span>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
@@ -714,9 +714,9 @@ export function DashboardPage({ setOnline }: { setOnline: (v: boolean) => void }
       <div className="mt-8">
         <div className="flex items-center justify-between gap-4 mb-3">
           <div className="flex items-center gap-2 flex-wrap">
-            <h2 className="font-head text-[18px] font-bold tracking-[-0.02em] text-ink dark:text-bone">Sub-orbital Feed</h2>
+            <h2 className="font-head text-[18px] font-bold tracking-[-0.02em] text-ink dark:text-bone">System Activity Feed</h2>
             <span className="inline-flex items-center gap-1.5 font-mono text-[11px] bg-paper dark:bg-emboss border border-line dark:border-edge text-ink dark:text-bone rounded-md px-2 py-[3px] whitespace-nowrap">
-              LIVE TTY
+              LIVE EVENTS
             </span>
           </div>
           <span className="inline-flex items-center gap-1.5 font-mono text-[11px] bg-paper dark:bg-emboss border border-line dark:border-edge text-muted dark:text-fog rounded-md px-2 py-[3px] whitespace-nowrap">

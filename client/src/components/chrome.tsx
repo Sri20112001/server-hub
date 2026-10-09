@@ -13,7 +13,6 @@ import {
   Rocket,
   Search,
   Server,
-  Ship,
   SlidersHorizontal,
   Sun,
   User,
@@ -69,8 +68,8 @@ function CommandPalette({ onClose }: { onClose: () => void }) {
         run: () => nav("/"),
       },
       {
-        icon: <Ship size={15} />,
-        title: "View all ships",
+        icon: <FolderGit2 size={15} />,
+        title: "View all projects",
         sub: "page",
         run: () => nav("/fleet"),
       },
@@ -124,18 +123,18 @@ function CommandPalette({ onClose }: { onClose: () => void }) {
       },
       {
         icon: <Radar size={15} />,
-        title: "Scan shipyard",
+        title: "Discover containers",
         sub: "action",
         run: () => nav("/?scan=1"),
       },
     ];
-    const ships = projects.map((p) => ({
+    const projectItems = projects.map((p) => ({
       icon: <FolderGit2 size={15} />,
       title: p.name,
-      sub: "open ship",
+      sub: "open project",
       run: () => nav(`/?project=${p.id}`),
     }));
-    const all = [...pages, ...ships];
+    const all = [...pages, ...projectItems];
     if (!needle) return all;
     return all.filter((i) => i.title.toLowerCase().includes(needle));
   }, [q, projects, nav]);
@@ -165,7 +164,7 @@ function CommandPalette({ onClose }: { onClose: () => void }) {
         <input
           autoFocus
           className="w-full outline-none text-[15px] px-5 py-4 border-x-0 border-t-0 border-b border-line dark:border-edge bg-white dark:bg-panel text-ink dark:text-bone"
-          placeholder="Search ships, pages, actions…"
+          placeholder="Search projects, pages, actions…"
           value={q}
           onChange={(e) => {
             setQ(e.target.value);
@@ -248,11 +247,11 @@ export function AppShell({ online }: { online: boolean }) {
       <button
         className="bg-white dark:bg-panel border border-line dark:border-edge rounded-full shadow-chrome fixed top-3 sm:top-5 left-1/2 -translate-x-1/2 z-40 flex items-center justify-between gap-2 h-[42px] pl-4 pr-2 w-[calc(100vw-9.5rem)] min-w-0 min-[420px]:w-[calc(100vw-12rem)] sm:w-auto sm:min-w-[480px] text-muted dark:text-fog text-[13px] cursor-pointer hover:border-accent dark:hover:border-ember"
         onClick={() => setPaletteOpen(true)}
-        aria-label="Search ships, pages, and actions"
+        aria-label="Search projects, pages, and actions"
       >
         <div className="flex items-center justify-center gap-2.5 min-w-0">
           <Search size={15} className="shrink-0" />
-          <span className="truncate hidden min-[420px]:inline">Search ships, actions, or press</span>
+          <span className="truncate hidden min-[420px]:inline">Search projects, servers, or press</span>
           <span className="truncate min-[420px]:hidden">Search…</span>
         </div>
 
@@ -332,11 +331,11 @@ export function AppShell({ online }: { online: boolean }) {
         </button>
         <button
           className={dockBtn(loc.pathname === "/fleet")}
-          title="Fleet"
-          aria-label="Fleet"
+          title="Projects"
+          aria-label="Projects"
           onClick={() => onDock("/fleet")}
         >
-          <Ship size={19} />
+          <FolderGit2 size={19} />
           {loc.pathname === "/fleet" && (
             <span className="absolute bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-accent dark:bg-ember" />
           )}

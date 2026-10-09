@@ -374,8 +374,12 @@ func main() {
 	}
 
 	// Agent endpoints — authenticated by agent token, not user JWT.
+	limitAgentBody := func(c *gin.Context) {
+		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 1<<20)
+		c.Next()
+	}
 	agentMw := middleware.AgentAuth(db)
-	agentGrp := r.Group("/server-hub/api/agent", agentMw)
+	agentGrp := r.Group("/server-hub/api/agent", limitAgentBody, agentMw)
 	{
 		agentSrvH := &handlers.ServersHandler{DB: db, Broker: broker, Cfg: cfg}
 		agentGrp.POST("/heartbeat", agentSrvH.Heartbeat)

@@ -4,17 +4,18 @@ import type { NotificationGroup, NotifySettings, ServerInfo } from "../../lib/ty
 import { SettingsSkeleton } from "../../components/ui";
 import { Kicker } from "../../components/ui";
 import { SegmentedTabs } from "./components/SegmentedTabs";
-import { GeneralTab } from "./tabs/GeneralTab";
-import { SecurityTab } from "./tabs/SecurityTab";
+import { MonitoringTab } from "./tabs/MonitoringTab";
 import { NotificationsTab } from "./tabs/NotificationsTab";
-import { Settings, Shield, Bell } from "lucide-react";
+import { TeamTab } from "./tabs/TeamTab";
+import { DiagnosticsTab } from "./tabs/DiagnosticsTab";
+import { Activity, Bell, Users, Wrench } from "lucide-react";
 
 export function SettingsPage({ setOnline }: { setOnline: (v: boolean) => void }) {
   const [info, setInfo] = useState<ServerInfo | null>(null);
   const [notify, setNotify] = useState<NotifySettings | null>(null);
   const [groups, setGroups] = useState<NotificationGroup[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState("general");
+  const [activeTab, setActiveTab] = useState("monitoring");
 
   const refreshGroups = async () => {
     try {
@@ -62,19 +63,20 @@ export function SettingsPage({ setOnline }: { setOnline: (v: boolean) => void })
   }
 
   const tabs = [
-    { id: "general", label: "General", icon: <Settings size={16} /> },
-    { id: "security", label: "Security", icon: <Shield size={16} /> },
+    { id: "monitoring", label: "Monitoring", icon: <Activity size={16} /> },
     { id: "notifications", label: "Notifications", icon: <Bell size={16} /> },
+    { id: "team", label: "Team & Access", icon: <Users size={16} /> },
+    { id: "diagnostics", label: "Advanced Diagnostics", icon: <Wrench size={16} /> },
   ];
 
   return (
-    <main className="w-full max-w-[800px] mx-auto px-6 max-md:px-4 pt-24 pb-36">
-      <Kicker>Server preferences & access</Kicker>
+    <main className="w-full max-w-[840px] mx-auto px-6 max-md:px-4 pt-24 pb-36">
+      <Kicker>Appliance & System Preferences</Kicker>
       <h1 className="font-head text-[36px] font-bold tracking-[-0.03em] leading-[1.2] max-md:text-[28px] mt-2 mb-2 text-ink dark:text-bone">
         Settings
       </h1>
       <p className="text-muted dark:text-fog mb-8 text-base">
-        Configure host environment, telemetry notification channels, and operational daemon privileges.
+        Manage health check thresholds, alert dispatch channels, team access levels, and host diagnostics.
       </p>
 
       <div className="mb-8 relative z-20">
@@ -82,9 +84,12 @@ export function SettingsPage({ setOnline }: { setOnline: (v: boolean) => void })
       </div>
 
       <div className="transition-all duration-500 relative z-10">
-        {activeTab === "general" && <GeneralTab info={info} apiUrl={apiUrl} />}
-        {activeTab === "security" && <SecurityTab />}
-        {activeTab === "notifications" && <NotificationsTab notify={notify} setNotify={setNotify} groups={groups} refreshGroups={refreshGroups} />}
+        {activeTab === "monitoring" && <MonitoringTab />}
+        {activeTab === "notifications" && (
+          <NotificationsTab notify={notify} setNotify={setNotify} groups={groups} refreshGroups={refreshGroups} />
+        )}
+        {activeTab === "team" && <TeamTab />}
+        {activeTab === "diagnostics" && <DiagnosticsTab info={info} apiUrl={apiUrl} />}
       </div>
     </main>
   );

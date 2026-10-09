@@ -171,11 +171,31 @@ func (h *ServersHandler) Delete(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
 		return
 	}
-	_, _ = h.DB.Exec(`DELETE FROM agent_tokens WHERE server_id=$1`, id)
-	_, _ = h.DB.Exec(`DELETE FROM server_metrics WHERE server_id=$1`, id)
-	_, _ = h.DB.Exec(`DELETE FROM alerts WHERE server_id=$1`, id)
-	_, _ = h.DB.Exec(`DELETE FROM in_app_notifications WHERE server_id=$1`, id)
-	_, _ = h.DB.Exec(`DELETE FROM managed_servers WHERE id=$1`, id)
+	tx, err := h.DB.SQL.Begin()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "transaction start failed: " + err.Error()})
+		return
+	}
+	defer tx.Rollback()
+
+	cascadeStmts := []string{
+		`DELETE FROM agent_tokens WHERE server_id=$1`,
+		`DELETE FROM server_metrics WHERE server_id=$1`,
+		`DELETE FROM alerts WHERE server_id=$1`,
+		`DELETE FROM in_app_notifications WHERE server_id=$1`,
+		`DELETE FROM managed_servers WHERE id=$1`,
+	}
+	for _, stmt := range cascadeStmts {
+		if _, err := tx.Exec(stmt, id); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "cascade delete failed: " + err.Error()})
+			return
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "transaction commit failed: " + err.Error()})
+		return
+	}
+
 	u, _ := middleware.CurrentUser(c)
 	audit.Write(h.DB, u, "delete", "managed_server", strconv.FormatInt(id, 10), "ok", "")
 	c.JSON(http.StatusOK, gin.H{"ok": true})

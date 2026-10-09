@@ -135,11 +135,11 @@ export function FleetPage({ setOnline }: { setOnline: (v: boolean) => void }) {
             <ArrowLeft size={14} /> Dashboard
           </button>
           <h1 className="font-head text-[32px] font-bold tracking-[-0.03em] leading-[1.2] max-md:text-[26px] text-ink dark:text-bone">
-            Fleet registry
+            Projects & Applications
           </h1>
           <p className="text-muted dark:text-fog mt-1.5">
             <Kicker>
-              {filtered.length} of {data.projects.length} ships
+              {filtered.length} of {data.projects.length} projects
             </Kicker>
           </p>
         </div>
@@ -148,7 +148,7 @@ export function FleetPage({ setOnline }: { setOnline: (v: boolean) => void }) {
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Filter ships…"
+            placeholder="Filter projects…"
             className="bg-transparent outline-none text-ink dark:text-bone placeholder:text-muted dark:placeholder:text-fog w-full sm:w-48 font-body"
           />
           {q && (
@@ -165,7 +165,7 @@ export function FleetPage({ setOnline }: { setOnline: (v: boolean) => void }) {
       {picked.size > 0 && (
         <div className="sticky top-16 z-30 bg-white dark:bg-panel border border-line dark:border-edge rounded-card px-4 py-3 mt-6 flex items-center gap-2 flex-wrap shadow-chrome">
           <span className="font-mono text-[13px] text-ink dark:text-bone font-medium">
-            {picked.size} ship{picked.size === 1 ? "" : "s"} picked
+            {picked.size} project{picked.size === 1 ? "" : "s"} selected
           </span>
           <span className="flex-1" />
           <button
@@ -173,14 +173,14 @@ export function FleetPage({ setOnline }: { setOnline: (v: boolean) => void }) {
             disabled={bulkBusy}
             onClick={() => void runBulk("start", false)}
           >
-            <Play size={12} className="text-moss" /> Wake all
+            <Play size={12} className="text-moss" /> Start all
           </button>
           <button
             className="inline-flex items-center gap-2 rounded-input font-medium cursor-pointer whitespace-nowrap transition-colors duration-150 disabled:opacity-55 disabled:cursor-not-allowed bg-paper dark:bg-emboss/40 border border-line dark:border-edge text-ink dark:text-bone hover:bg-paper/80 dark:hover:bg-emboss px-3 py-1.5 text-xs"
             disabled={bulkBusy}
             onClick={() => setPendingBulk("stop")}
           >
-            <Power size={12} className="text-brick" /> Nap all
+            <Power size={12} className="text-brick" /> Stop all
           </button>
           <button
             className="inline-flex items-center gap-2 rounded-input font-medium cursor-pointer whitespace-nowrap transition-colors duration-150 disabled:opacity-55 disabled:cursor-not-allowed bg-paper dark:bg-emboss/40 border border-line dark:border-edge text-ink dark:text-bone hover:bg-paper/80 dark:hover:bg-emboss px-3 py-1.5 text-xs"
@@ -202,11 +202,11 @@ export function FleetPage({ setOnline }: { setOnline: (v: boolean) => void }) {
       <div className="mt-6">
         {filtered.length === 0 ? (
           <EmptyState
-            title={data.projects.length === 0 ? "No ships in the fleet yet" : "No ships match"}
+            title={data.projects.length === 0 ? "No projects registered yet" : "No projects match"}
             hint={
               data.projects.length === 0
-                ? "New Docker finds auto-register on dashboard load."
-                : "Try a different filter."
+                ? "Discovered Docker containers will automatically register here."
+                : "Try a different search filter."
             }
           />
         ) : (
