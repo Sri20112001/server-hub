@@ -293,12 +293,27 @@ stage('Prepare') {
             esac
           }
 
+          # When running inside a Docker container (e.g. Jenkins in Docker with
+          # DooD /var/run/docker.sock mounted), mounting -v "$WORKSPACE:/src"
+          # fails because the daemon evaluates $WORKSPACE on the host where
+          # /var/jenkins_home does not exist. We reuse the container's existing
+          # volume mount via --volumes-from $(hostname). If running on bare
+          # metal, we mount -v "$WORKSPACE:/src".
+          CID="$(hostname)"
+          if docker inspect "$CID" >/dev/null 2>&1; then
+            MOUNT_OPTS="--volumes-from $CID"
+            SCAN_DIR="$WORKSPACE"
+          else
+            MOUNT_OPTS="-v $WORKSPACE:/src"
+            SCAN_DIR="/src"
+          fi
+
           echo "Gitleaks secret scan (report-only; triage before enforcing)..."
           run_report_only "Gitleaks" docker run --rm \
-            -v "$WORKSPACE:/src" \
+            $MOUNT_OPTS \
             "zricethezav/gitleaks:${GITLEAKS_VERSION}" \
-            detect --source=/src --no-git \
-            --report-format sarif --report-path /src/gitleaks.sarif \
+            detect --source="$SCAN_DIR" --no-git \
+            --report-format sarif --report-path "$SCAN_DIR/gitleaks.sarif" \
             --exit-code 1
 
           # Scan the exact candidate built by the Build stage (same tag,
@@ -311,28 +326,27 @@ stage('Prepare') {
 
           echo "Trivy filesystem scan (report-only)..."
           run_report_only "Trivy-fs" docker run --rm \
-            -v "$WORKSPACE:/src" \
-            -v /var/run/docker.sock:/var/run/docker.sock \
+            $MOUNT_OPTS \
             "aquasec/trivy:${TRIVY_VERSION}" fs \
             --severity HIGH,CRITICAL --exit-code 1 \
-            --format json --output /src/trivy-fs.json \
-            /src
+            --format json --output "$SCAN_DIR/trivy-fs.json" \
+            "$SCAN_DIR"
 
           echo "Trivy image scan of the release candidate (report-only)..."
           run_report_only "Trivy-image" docker run --rm \
+            $MOUNT_OPTS \
             -v /var/run/docker.sock:/var/run/docker.sock \
             "aquasec/trivy:${TRIVY_VERSION}" image \
             --severity HIGH,CRITICAL --exit-code 1 \
-            --format json --output /src/trivy-image.json \
-            -v "$WORKSPACE:/src" \
+            --format json --output "$SCAN_DIR/trivy-image.json" \
             "$RC_TAG"
 
           echo "Syft SBOM for the release candidate..."
           docker run --rm \
-            -v "$WORKSPACE:/src" \
+            $MOUNT_OPTS \
             -v /var/run/docker.sock:/var/run/docker.sock \
             "anchore/syft:${SYFT_VERSION}" \
-            "$RC_TAG" -o spdx-json=/src/sbom.spdx.json
+            "$RC_TAG" -o "spdx-json=$SCAN_DIR/sbom.spdx.json"
           if [ ! -s "$WORKSPACE/sbom.spdx.json" ]; then
             echo "ERROR: SBOM was not produced (absent report is not a clean scan)."
             exit 1
