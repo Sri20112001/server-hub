@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/containerd/errdefs"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/api/types/volume"
@@ -26,6 +27,14 @@ var ErrUnavailable = dockerErr("docker unavailable: /var/run/docker.sock not rea
 type dockerErr string
 
 func (e dockerErr) Error() string { return string(e) }
+
+// IsNotFound reports whether err is a Docker "no such object" error.
+// The engine client surfaces typed daemon errors, so a 404 from any
+// container operation (start/stop/restart/inspect/…) matches here.
+// Handlers use it to return 404 instead of 502 for missing containers.
+func IsNotFound(err error) bool {
+	return errdefs.IsNotFound(err)
+}
 
 func New() *Client {
 	c := &Client{}

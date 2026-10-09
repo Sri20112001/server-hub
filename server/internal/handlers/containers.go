@@ -323,6 +323,13 @@ func (h *ContainerHandler) lifecycle(c *gin.Context, action string, needConfirm 
 		_ = ops.Finish(h.DB, op.ID, "FAILED", err.Error())
 		audit.Write(h.DB, u, action, "container", id, "failed", err.Error())
 		emit("container."+action, false, err.Error())
+		// A reachable daemon reporting "no such container" is a missing
+		// resource (404), consistent with Inspect/Logs/Stats/exec — not a
+		// gateway failure. Anything else stays 502.
+		if dockerx.IsNotFound(err) {
+			c.JSON(http.StatusNotFound, gin.H{"error": err.Error(), "operationId": op.ID})
+			return
+		}
 		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error(), "operationId": op.ID})
 		return
 	}

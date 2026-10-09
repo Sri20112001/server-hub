@@ -159,11 +159,13 @@ func TestRBACMatrix(t *testing.T) {
 }
 
 // TestPrivilegedMatrix exercises every destructive/privileged route as
-// anon, viewer, operator and admin. Docker-dependent handlers run without
-// a daemon here: viewer/operator must be stopped by middleware (403)
-// before any handler logic, while admin must reach the handler (4xx/5xx
-// from the handler itself proves authorization passed).
+// anon, viewer, operator and admin. The daemon is forced down via
+// DOCKER_HOST so Docker-dependent expectations are deterministic on any
+// machine: viewer/operator must be stopped by middleware (403) before any
+// handler logic, while admin must reach the handler (4xx/5xx from the
+// handler itself proves authorization passed).
 func TestPrivilegedMatrix(t *testing.T) {
+	t.Setenv("DOCKER_HOST", "tcp://127.0.0.1:12345") // force docker down
 	_, _, r := testSetupSecure(t)
 	adminC := loginAs(t, r, "admin", "testpass123")
 	opC := loginAs(t, r, "op", "testpass123")
@@ -180,8 +182,9 @@ func TestPrivilegedMatrix(t *testing.T) {
 		// exec mint (admin-only; no confirm → 400 proves admin got through)
 		{"POST", "/api/containers/abc/exec", nil,
 			http.StatusUnauthorized, http.StatusForbidden, http.StatusForbidden, http.StatusBadRequest},
-		// container stop (admin-only, confirm-gated; no daemon → 503
-		// from the handler proves admin passed authorization)
+		// container stop (admin-only, confirm-gated; daemon forced down
+		// above so 503 from the handler proves admin passed authorization;
+		// the reachable-daemon 404 case is covered by TestContainerStopNotFound)
 		{"POST", "/api/containers/abc/stop?confirm=true", nil,
 			http.StatusUnauthorized, http.StatusForbidden, http.StatusForbidden, http.StatusServiceUnavailable},
 		// restore (admin-only since hardening; missing row → 404 for admin)
