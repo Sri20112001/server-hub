@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -295,7 +297,41 @@ func parseGroupSelector(raw []byte) (set, clear bool, id uint, errMsg string) {
 	}
 	return true, false, gid, ""
 }
+// testSendLimiter throttles test notifications per user (60s) so the
+// endpoint cannot be abused to spam providers. In-memory like the login
+// limiter: a restart resets it, which fails open only briefly.
+var testSendLimiter = newTestSendLimiter()
+
+type testSendLimiterT struct {
+	mu   sync.Mutex
+	last map[string]time.Time
+}
+
+func newTestSendLimiter() *testSendLimiterT {
+	return &testSendLimiterT{last: map[string]time.Time{}}
+}
+
+// allow reports whether user may send a test now.
+func (l *testSendLimiterT) allow(user string) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if time.Since(l.last[user]) < time.Minute {
+		return false
+	}
+	l.last[user] = time.Now()
+	// Bound map growth.
+	if len(l.last) > 1000 {
+		l.last = map[string]time.Time{user: l.last[user]}
+	}
+	return true
+}
+
 func (h *NotificationsHandler) Test(c *gin.Context) {
+	u, _ := middleware.CurrentUser(c)
+	if !testSendLimiter.allow(u) {
+		c.JSON(http.StatusTooManyRequests, gin.H{"error": "test notifications are limited to one per minute"})
+		return
+	}
 	tg, mail := notify.Test(h.DB)
 	c.JSON(http.StatusOK, gin.H{"telegram": tg, "email": mail})
 }

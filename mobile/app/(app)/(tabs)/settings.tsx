@@ -195,6 +195,23 @@ export default function SettingsScreen() {
           )}
         </View>
 
+        <SectionHeader title="Notifications" />
+        <View className="bg-panel border-t border-b border-edge">
+          <TouchableOpacity
+            onPress={() => router.push("/(app)/notification-settings")}
+            className="flex-row items-center justify-between px-4 py-3.5 border-b border-edge"
+            accessibilityRole="button"
+          >
+            <View className="flex-1 mr-4">
+              <Text className="text-bone text-[14px]">Notification settings</Text>
+              <Text className="text-fog text-[12px] mt-0.5">
+                Channels, delivery policy, emergency pause, failures
+              </Text>
+            </View>
+            <ArrowRight size={14} color={colors.ember} />
+          </TouchableOpacity>
+        </View>
+
         <SectionHeader title="Server" />
         <View className="bg-panel border-t border-b border-edge">
           <View className="px-4 py-3.5 border-b border-edge">

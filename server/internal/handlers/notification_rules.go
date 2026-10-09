@@ -26,6 +26,8 @@ func (h *NotificationRulesHandler) List(c *gin.Context) {
 		SELECT r.id, r.name, r.description, r.enabled, r.event_type, r.severity,
 		       r.condition_json, r.notification_group_id, r.channels,
 		       r.cooldown_seconds, r.notify_on_recovery,
+		       r.repeat_interval_sec, r.max_repeats, r.digest_mode,
+		       r.digest_interval_min, r.group_by,
 		       r.created_by, r.updated_by, r.created_at, r.updated_at,
 		       COALESCE(g.name, '') AS group_name
 		FROM notification_rules r
@@ -38,26 +40,40 @@ func (h *NotificationRulesHandler) List(c *gin.Context) {
 	defer rows.Close()
 	out := []gin.H{}
 	for rows.Next() {
-		var id, gid uint
-		var name, desc, eventType, sev, cond, ch, gname string
-		var enabled, rec bool
-		var cd int
-		var by, uby string
-		var createdAt, updatedAt time.Time
-		if err := rows.Scan(&id, &name, &desc, &enabled, &eventType, &sev, &cond,
-			&gid, &ch, &cd, &rec, &by, &uby, &createdAt, &updatedAt, &gname); err != nil {
-			continue
+		if o := scanRuleFull(rows); o != nil {
+			out = append(out, o)
 		}
-		out = append(out, gin.H{
-			"id": id, "name": name, "description": desc, "enabled": enabled,
-			"eventType": eventType, "severity": sev, "conditionJson": cond,
-			"notificationGroupId": gid, "groupName": gname,
-			"channels": ch, "cooldownSeconds": cd, "notifyOnRecovery": rec,
-			"createdBy": by, "updatedBy": uby,
-			"createdAt": createdAt, "updatedAt": updatedAt,
-		})
 	}
 	c.JSON(http.StatusOK, out)
+}
+
+// scanRuleFull scans the extended rule row (List + Get share the shape).
+func scanRuleFull(rows interface {
+	Scan(dest ...any) error
+}) gin.H {
+	var id, gid uint
+	var name, desc, eventType, sev, cond, ch, gname string
+	var enabled, rec bool
+	var cd, ri, mr, dim int
+	var dm, gb string
+	var by, uby string
+	var createdAt, updatedAt time.Time
+	// List passes rows with group_name; Get reuses the same shape.
+	if err := rows.Scan(&id, &name, &desc, &enabled, &eventType, &sev, &cond,
+		&gid, &ch, &cd, &rec, &ri, &mr, &dm, &dim, &gb,
+		&by, &uby, &createdAt, &updatedAt, &gname); err != nil {
+		return nil
+	}
+	return gin.H{
+		"id": id, "name": name, "description": desc, "enabled": enabled,
+		"eventType": eventType, "severity": sev, "conditionJson": cond,
+		"notificationGroupId": gid, "groupName": gname,
+		"channels": ch, "cooldownSeconds": cd, "notifyOnRecovery": rec,
+		"repeatIntervalSec": ri, "maxRepeats": mr,
+		"digestMode": dm, "digestIntervalMin": dim, "groupBy": gb,
+		"createdBy": by, "updatedBy": uby,
+		"createdAt": createdAt, "updatedAt": updatedAt,
+	}
 }
 
 func (h *NotificationRulesHandler) Get(c *gin.Context) {
@@ -70,6 +86,8 @@ func (h *NotificationRulesHandler) Get(c *gin.Context) {
 		SELECT r.id, r.name, r.description, r.enabled, r.event_type, r.severity,
 		       r.condition_json, r.notification_group_id, r.channels,
 		       r.cooldown_seconds, r.notify_on_recovery,
+		       r.repeat_interval_sec, r.max_repeats, r.digest_mode,
+		       r.digest_interval_min, r.group_by,
 		       r.created_by, r.updated_by, r.created_at, r.updated_at,
 		       COALESCE(g.name, '') AS group_name
 		FROM notification_rules r
@@ -84,25 +102,12 @@ func (h *NotificationRulesHandler) Get(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "rule not found"})
 		return
 	}
-	var rid, gid uint
-	var name, desc, eventType, sev, cond, ch, gname string
-	var enabled, rec bool
-	var cd int
-	var by, uby string
-	var createdAt, updatedAt time.Time
-	if err := rows.Scan(&rid, &name, &desc, &enabled, &eventType, &sev, &cond,
-		&gid, &ch, &cd, &rec, &by, &uby, &createdAt, &updatedAt, &gname); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+	if o := scanRuleFull(rows); o == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "rule not found"})
 		return
+	} else {
+		c.JSON(http.StatusOK, o)
 	}
-	c.JSON(http.StatusOK, gin.H{
-		"id": rid, "name": name, "description": desc, "enabled": enabled,
-		"eventType": eventType, "severity": sev, "conditionJson": cond,
-		"notificationGroupId": gid, "groupName": gname,
-		"channels": ch, "cooldownSeconds": cd, "notifyOnRecovery": rec,
-		"createdBy": by, "updatedBy": uby,
-		"createdAt": createdAt, "updatedAt": updatedAt,
-	})
 }
 
 type ruleBody struct {
@@ -116,6 +121,11 @@ type ruleBody struct {
 	Channels            []string `json:"channels"`
 	CooldownSeconds     *int     `json:"cooldownSeconds"`
 	NotifyOnRecovery    *bool    `json:"notifyOnRecovery"`
+	RepeatIntervalSec   *int     `json:"repeatIntervalSec"`
+	MaxRepeats          *int     `json:"maxRepeats"`
+	DigestMode          *string  `json:"digestMode"`
+	DigestIntervalMin   *int     `json:"digestIntervalMin"`
+	GroupBy             []string `json:"groupBy"`
 }
 
 func (h *NotificationRulesHandler) Create(c *gin.Context) {
@@ -152,7 +162,30 @@ func (h *NotificationRulesHandler) Create(c *gin.Context) {
 	if body.NotifyOnRecovery != nil {
 		rec = *body.NotifyOnRecovery
 	}
-	if err := rules.ValidateRule(name, desc, eventType, sev, cond, channels, cd); err != nil {
+	ri := 0
+	if body.RepeatIntervalSec != nil {
+		ri = *body.RepeatIntervalSec
+	}
+	mr := 0
+	if body.MaxRepeats != nil {
+		mr = *body.MaxRepeats
+	}
+	dm := "immediate"
+	if body.DigestMode != nil && strings.TrimSpace(*body.DigestMode) != "" {
+		dm = strings.ToLower(strings.TrimSpace(*body.DigestMode))
+	}
+	dim := 60
+	if body.DigestIntervalMin != nil {
+		dim = *body.DigestIntervalMin
+	}
+	gb := rules.NormalizeGroupBy(body.GroupBy)
+	params := rules.RuleParams{
+		Name: name, Description: desc, EventType: eventType, Severity: sev,
+		ConditionJSON: cond, Channels: channels, CooldownSeconds: cd,
+		RepeatIntervalSec: ri, MaxRepeats: mr,
+		DigestMode: dm, DigestIntervalMin: dim, GroupBy: rules.SplitGroupBy(gb),
+	}
+	if err := rules.ValidateRuleFull(params); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -165,10 +198,11 @@ func (h *NotificationRulesHandler) Create(c *gin.Context) {
 		INSERT INTO notification_rules
 		  (name,description,enabled,event_type,severity,condition_json,
 		   notification_group_id,channels,cooldown_seconds,notify_on_recovery,
+		   repeat_interval_sec,max_repeats,digest_mode,digest_interval_min,group_by,
 		   created_by,updated_by,created_at,updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,NOW(),NOW())`,
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,NOW(),NOW())`,
 		name, desc, enabled, eventType, sev, cond, *body.NotificationGroupID,
-		rules.NormalizeChannels(channels), cd, rec, u, u)
+		rules.NormalizeChannels(channels), cd, rec, ri, mr, dm, dim, gb, u, u)
 	if err != nil {
 		if strings.Contains(err.Error(), "duplicate") || strings.Contains(err.Error(), "unique") {
 			c.JSON(http.StatusConflict, gin.H{"error": "rule name already exists"})
@@ -231,7 +265,33 @@ func (h *NotificationRulesHandler) Update(c *gin.Context) {
 	if body.NotifyOnRecovery != nil {
 		rec = *body.NotifyOnRecovery
 	}
-	if err := rules.ValidateRule(name, desc, eventType, sev, cond, channels, cd); err != nil {
+	ri := cur["repeatIntervalSec"].(int)
+	if body.RepeatIntervalSec != nil {
+		ri = *body.RepeatIntervalSec
+	}
+	mr := cur["maxRepeats"].(int)
+	if body.MaxRepeats != nil {
+		mr = *body.MaxRepeats
+	}
+	dm := cur["digestMode"].(string)
+	if body.DigestMode != nil && strings.TrimSpace(*body.DigestMode) != "" {
+		dm = strings.ToLower(strings.TrimSpace(*body.DigestMode))
+	}
+	dim := cur["digestIntervalMin"].(int)
+	if body.DigestIntervalMin != nil {
+		dim = *body.DigestIntervalMin
+	}
+	gb := cur["groupBy"].(string)
+	if body.GroupBy != nil {
+		gb = rules.NormalizeGroupBy(body.GroupBy)
+	}
+	params := rules.RuleParams{
+		Name: name, Description: desc, EventType: eventType, Severity: sev,
+		ConditionJSON: cond, Channels: channels, CooldownSeconds: cd,
+		RepeatIntervalSec: ri, MaxRepeats: mr,
+		DigestMode: dm, DigestIntervalMin: dim, GroupBy: rules.SplitGroupBy(gb),
+	}
+	if err := rules.ValidateRuleFull(params); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -245,10 +305,13 @@ func (h *NotificationRulesHandler) Update(c *gin.Context) {
 		  name=$1, description=$2, enabled=$3, event_type=$4, severity=$5,
 		  condition_json=$6, notification_group_id=$7, channels=$8,
 		  cooldown_seconds=$9, notify_on_recovery=$10,
-		  updated_by=$11, updated_at=NOW()
-		WHERE id=$12`,
+		  repeat_interval_sec=$11, max_repeats=$12, digest_mode=$13,
+		  digest_interval_min=$14, group_by=$15,
+		  updated_by=$16, updated_at=NOW()
+		WHERE id=$17`,
 		name, desc, enabled, eventType, sev, cond, gid,
-		rules.NormalizeChannels(channels), cd, rec, u, id)
+		rules.NormalizeChannels(channels), cd, rec,
+		ri, mr, dm, dim, gb, u, id)
 	if err != nil {
 		if strings.Contains(err.Error(), "duplicate") || strings.Contains(err.Error(), "unique") {
 			c.JSON(http.StatusConflict, gin.H{"error": "rule name already exists"})
@@ -266,12 +329,15 @@ func (h *NotificationRulesHandler) loadRule(id int64) (map[string]any, bool) {
 	var name, desc, eventType, sev, cond, ch string
 	var enabled, rec bool
 	var gid uint
-	var cd int
+	var cd, ri, mr, dim int
+	var dm, gb string
 	err := h.DB.QueryRow(`
 		SELECT name, description, enabled, event_type, severity, condition_json,
-		       notification_group_id, channels, cooldown_seconds, notify_on_recovery
+		       notification_group_id, channels, cooldown_seconds, notify_on_recovery,
+		       repeat_interval_sec, max_repeats, digest_mode, digest_interval_min, group_by
 		FROM notification_rules WHERE id=$1`, id).Scan(
-		&name, &desc, &enabled, &eventType, &sev, &cond, &gid, &ch, &cd, &rec)
+		&name, &desc, &enabled, &eventType, &sev, &cond, &gid, &ch, &cd, &rec,
+		&ri, &mr, &dm, &dim, &gb)
 	if err != nil {
 		return nil, false
 	}
@@ -279,7 +345,8 @@ func (h *NotificationRulesHandler) loadRule(id int64) (map[string]any, bool) {
 		"name": name, "description": desc, "enabled": enabled,
 		"eventType": eventType, "severity": sev, "conditionJson": cond,
 		"notificationGroupId": gid, "channels": ch, "cooldownSeconds": cd,
-		"notifyOnRecovery": rec,
+		"notifyOnRecovery": rec, "repeatIntervalSec": ri, "maxRepeats": mr,
+		"digestMode": dm, "digestIntervalMin": dim, "groupBy": gb,
 	}, true
 }
 

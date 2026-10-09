@@ -32,9 +32,11 @@ var SupportedEventTypes = []string{
 	EventServerAlertResolved,
 }
 
-// SupportedChannels lists deliverable channels. EMAIL and IN_APP reuse the
-// existing notify package — no new channel implementations here.
-var SupportedChannels = []string{"EMAIL", "IN_APP"}
+// SupportedChannels lists deliverable channels. EMAIL, TELEGRAM and IN_APP
+// reuse the existing notify package — no new channel implementations here.
+// External channels (EMAIL, TELEGRAM) flow through the centralized delivery
+// pipeline; IN_APP stays direct.
+var SupportedChannels = []string{"EMAIL", "TELEGRAM", "IN_APP"}
 
 // Event is the stable contract the rule engine consumes. Producers (alert
 // loop, Alertmanager webhook) translate internal state into this shape;

@@ -1,8 +1,10 @@
 package handlers
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -10,6 +12,7 @@ import (
 	"serverhub/internal/audit"
 	"serverhub/internal/database"
 	"serverhub/internal/middleware"
+	"serverhub/internal/safehttp"
 )
 
 type HealthChecksHandler struct {
@@ -53,6 +56,10 @@ func (h *HealthChecksHandler) Create(c *gin.Context) {
 	if body.Type == "" {
 		body.Type = "http"
 	}
+	if err := validateHealthCheckTarget(body.Type, body.Target); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
 	if body.Interval <= 0 {
 		body.Interval = 60
 	}
@@ -92,6 +99,18 @@ func (h *HealthChecksHandler) Update(c *gin.Context) {
 	if err := c.ShouldBindJSON(&body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
+	}
+	if body.Target != nil {
+		// Type is immutable after create; fetch it for target validation.
+		var typ string
+		if err := h.DB.QueryRow(`SELECT type FROM health_checks WHERE id=$1`, id).Scan(&typ); err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "health check not found"})
+			return
+		}
+		if err := validateHealthCheckTarget(typ, *body.Target); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
 	}
 	_, err = h.DB.Exec(`
 		UPDATE health_checks SET
@@ -153,6 +172,29 @@ func (h *HealthChecksHandler) Results(c *gin.Context) {
 		}
 	}
 	c.JSON(http.StatusOK, out)
+}
+
+// validateHealthCheckTarget rejects targets that can never probe safely:
+// http targets must be well-formed http(s) URLs; tcp/ping targets must be
+// non-empty and must not look like CLI flags (ping/tcp args are passed as
+// argv, but a leading dash would reinterpret them).
+func validateHealthCheckTarget(typ, target string) error {
+	if strings.TrimSpace(target) == "" {
+		return fmt.Errorf("target is required")
+	}
+	switch strings.ToLower(strings.TrimSpace(typ)) {
+	case "http":
+		if err := safehttp.ValidateURL(target); err != nil {
+			return fmt.Errorf("target: %v", err)
+		}
+	case "tcp", "ping":
+		if strings.HasPrefix(strings.TrimSpace(target), "-") {
+			return fmt.Errorf("target must not start with '-'")
+		}
+	default:
+		return fmt.Errorf("unknown check type (want http, tcp or ping)")
+	}
+	return nil
 }
 
 type hcRow interface {

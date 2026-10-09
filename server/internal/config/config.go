@@ -14,6 +14,10 @@ import (
 type Config struct {
 	Port        string
 	DatabaseURL string // Required Postgres DSN, e.g. postgres://serverhub:changeme@localhost:5432/serverhub?sslmode=disable.
+	// Env is "development" by default; set SERVERHUB_ENV=production (or
+	// APP_ENV / GO_ENV) to enable production fail-fast checks.
+	Env           string
+	IsProduction  bool
 	JWTSecret     string
 	EncryptionKey string // hex-encoded 32 bytes
 	CookieSecure  bool
@@ -27,6 +31,16 @@ type Config struct {
 	AdminPass     string
 	WebhookSecret string
 	ScanRoots     []string
+	// DeployRoots bounds operator-controlled deployment_path values:
+	// deploy, rollback, lifecycle and restore resolve the configured path
+	// (symlinks included) and refuse anything outside these roots.
+	// DEPLOY_ROOTS defaults to SCAN_ROOTS so production always has roots.
+	DeployRoots []string
+	// EgressStrict applies strict SSRF policy (deny loopback/private/
+	// link-local destinations) to health polling. Default false: metadata-IP
+	// + no-redirect guardrails are always on, but private targets stay
+	// allowed because monitoring internal services is the feature's job.
+	EgressStrict bool
 	AlertCPU      float64
 	AlertRAM      float64
 	AlertDisk     float64
@@ -53,6 +67,18 @@ type Config struct {
 	// largest UI/API range); clamped to 1..365, invalid values fall back
 	// to the default so a bad value can never wipe everything.
 	MetricsRetentionDays int
+	// AppLogRetentionDays bounds operational app_logs history (default 90).
+	// Must be >= database.AppLogsPruneFloorDays: the DB trigger rejects
+	// deletes of newer rows regardless of this setting. audit_logs is
+	// never pruned (fully immutable, no exception).
+	AppLogRetentionDays int
+	// HealthResultRetentionDays bounds health_check_results history.
+	// Default 30; raw probe data, not audit evidence.
+	HealthResultRetentionDays int
+	// DeliveryRetentionDays bounds terminal delivery outbox rows, attempts
+	// and flushed digests (default 90). Firing incident states are never
+	// pruned; audit_logs are never touched.
+	DeliveryRetentionDays int
 }
 
 func getenv(key, def string) string {
@@ -164,20 +190,53 @@ func mustOrigins(raw string) []string {
 	return valid
 }
 
+// resolveEnv returns the runtime environment name (lower-cased) and whether
+// production hardening applies. SERVERHUB_ENV wins, then APP_ENV, then GO_ENV.
+func resolveEnv() (string, bool) {
+	env := getenv("SERVERHUB_ENV", getenv("APP_ENV", getenv("GO_ENV", "development")))
+	env = strings.TrimSpace(strings.ToLower(env))
+	if env == "" {
+		env = "development"
+	}
+	return env, env == "production" || env == "prod"
+}
+
+// validEncryptionKey reports whether s is 64 hex chars (32 bytes for AES-256-GCM).
+func validEncryptionKey(s string) bool {
+	if len(s) != 64 {
+		return false
+	}
+	b, err := hex.DecodeString(s)
+	return err == nil && len(b) == 32
+}
+
 func Load() *Config {
-	encKey := os.Getenv("SERVERHUB_ENCRYPTION_KEY")
+	env, isProd := resolveEnv()
+
+	encKey := strings.TrimSpace(os.Getenv("SERVERHUB_ENCRYPTION_KEY"))
 	if encKey == "" {
-		// Generate ephemeral key (secrets won't survive restart unless env is set).
-		// Operator is warned via log in main.
+		if isProd {
+			fmt.Fprintln(os.Stderr, "FATAL: SERVERHUB_ENCRYPTION_KEY is required in production (stable 64-char hex); refusing to start with an ephemeral key")
+			os.Exit(1)
+		}
+		// Development convenience only: ephemeral key (secrets won't
+		// survive restart). Operator is warned via log in main.
 		b := make([]byte, 32)
 		_, _ = rand.Read(b)
 		encKey = hex.EncodeToString(b)
+	} else if !validEncryptionKey(encKey) {
+		fmt.Fprintln(os.Stderr, "FATAL: SERVERHUB_ENCRYPTION_KEY must be 64 hex characters (32 bytes)")
+		os.Exit(1)
 	}
 	interval, _ := strconv.Atoi(getenv("HEALTH_CHECK_INTERVAL_SEC", "60"))
 	if interval <= 0 {
 		interval = 60
 	}
 	secure := getenv("COOKIE_SECURE", "false") == "true"
+	if isProd && !secure {
+		fmt.Fprintln(os.Stderr, "FATAL: COOKIE_SECURE must be true in production (API is served over HTTPS via reverse proxy)")
+		os.Exit(1)
+	}
 	retention, _ := strconv.Atoi(getenv("LOG_RETENTION_DAYS", "30"))
 
 	jwtSecret := os.Getenv("JWT_SECRET")
@@ -213,13 +272,30 @@ func Load() *Config {
 	if retentionDays < 1 || retentionDays > 365 {
 		retentionDays = 30
 	}
+	appLogDays, _ := strconv.Atoi(getenv("APPLOG_RETENTION_DAYS", "90"))
+	if appLogDays < 30 || appLogDays > 3650 {
+		appLogDays = 90
+	}
+	healthResDays, _ := strconv.Atoi(getenv("HEALTHCHECK_RESULTS_RETENTION_DAYS", "30"))
+	if healthResDays < 1 || healthResDays > 3650 {
+		healthResDays = 30
+	}
+	deliveryDays, _ := strconv.Atoi(getenv("DELIVERY_RETENTION_DAYS", "90"))
+	if deliveryDays < 1 || deliveryDays > 3650 {
+		deliveryDays = 90
+	}
 	offlineTimeout, _ := strconv.Atoi(getenv("SERVER_OFFLINE_TIMEOUT_SEC", "180"))
 	if offlineTimeout < 30 {
 		offlineTimeout = 180
 	}
+	scanRoots := splitRoots(getenv("SCAN_ROOTS", "/srv/apps"))
+	deployRoots := splitRoots(getenv("DEPLOY_ROOTS", getenv("SCAN_ROOTS", "/srv/apps")))
+	strictEgress := getenv("HEALTHCHECK_EGRESS_STRICT", "false")
 	return &Config{
 		Port:        getenv("PORT", "4000"),
 		DatabaseURL: os.Getenv("DATABASE_URL"),
+		Env:           env,
+		IsProduction:  isProd,
 		JWTSecret:       jwtSecret,
 		EncryptionKey:   encKey,
 		CookieSecure:    secure,
@@ -229,7 +305,9 @@ func Load() *Config {
 		AdminUser:       getenv("ADMIN_USERNAME", "admin"),
 		AdminPass:       adminPass,
 		WebhookSecret:   os.Getenv("GITHUB_WEBHOOK_SECRET"),
-		ScanRoots:       splitRoots(getenv("SCAN_ROOTS", "/srv/apps")),
+		ScanRoots:       scanRoots,
+		DeployRoots:     deployRoots,
+		EgressStrict:    strictEgress == "true" || strictEgress == "1",
 		AlertCPU:        getenvFloat("ALERT_CPU_PCT", 85),
 		AlertRAM:        getenvFloat("ALERT_RAM_PCT", 90),
 		AlertDisk:       getenvFloat("ALERT_DISK_PCT", 80),
@@ -244,6 +322,9 @@ func Load() *Config {
 		AlertmanagerEnabled:       amEnabled != "false" && amEnabled != "0",
 		NotificationRulesEnabled: rulesEnabled == "true" || rulesEnabled == "1",
 		MetricsRetentionDays:    retentionDays,
+		AppLogRetentionDays:     appLogDays,
+		HealthResultRetentionDays: healthResDays,
+		DeliveryRetentionDays:   deliveryDays,
 		AlertmanagerWebhookSecret: os.Getenv("ALERTMANAGER_WEBHOOK_SECRET"),
 	}
 }

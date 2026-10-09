@@ -22,11 +22,13 @@ import (
 	"serverhub/internal/applog"
 	"serverhub/internal/config"
 	"serverhub/internal/database"
+	"serverhub/internal/delivery"
 	"serverhub/internal/dockerx"
 	"serverhub/internal/events"
 	"serverhub/internal/handlers"
 	"serverhub/internal/health"
 	"serverhub/internal/healthcheck"
+	"serverhub/internal/healthhttp"
 	"serverhub/internal/middleware"
 	"serverhub/internal/monitoring"
 	"serverhub/internal/notify"
@@ -45,12 +47,10 @@ func main() {
 
 	// Startup warnings go to stdout now; DB mirrors are written after the
 	// database opens below (see bootWarningsToDB) so every warning is also
-	// stored in app_logs.
-	if os.Getenv("SERVERHUB_ENCRYPTION_KEY") == "" {
+	// stored in app_logs. Production refuses insecure config in
+	// config.Load(), so warnings here are development-only.
+	if os.Getenv("SERVERHUB_ENCRYPTION_KEY") == "" && !cfg.IsProduction {
 		log.Println("WARNING: SERVERHUB_ENCRYPTION_KEY not set — using ephemeral key. Secrets will NOT survive restarts. Set a stable 64-char hex key in production.")
-	}
-	if len(cfg.JWTSecret) < 32 {
-		log.Println("WARNING: JWT_SECRET is short — use at least 32 characters in production.")
 	}
 
 	// Postgres is the only store. DATABASE_URL is required; the server
@@ -80,6 +80,12 @@ func main() {
 
 	dockerClient := dockerx.New()
 	broker := events.NewBroker()
+	// Centralized delivery pipeline: all EMAIL/TELEGRAM sends flow through
+	// the outbox worker (dedupe, policy, retries). Crash-safe: stale
+	// 'sending' rows requeue on every boot.
+	if _, err := delivery.RequeueStale(db); err != nil {
+		log.Printf("delivery requeue: %v", err)
+	}
 	health.StartLoop(db, broker, cfg.HealthIntervalSec)
 	telemetry.StartLoop(db, broker, telemetry.Thresholds{
 		CPU: cfg.AlertCPU, RAM: cfg.AlertRAM, Disk: cfg.AlertDisk,
@@ -89,6 +95,8 @@ func main() {
 		OfflineAfter: time.Duration(cfg.OfflineTimeoutSec) * time.Second,
 	}, rulesEngine(db, cfg))
 	log.Printf("server offline timeout: %ds", cfg.OfflineTimeoutSec)
+	healthcheck.EgressStrict = cfg.EgressStrict
+	health.EgressStrict = cfg.EgressStrict
 	healthcheck.StartLoop(db, broker)
 
 	promURL := cfg.PrometheusURL
@@ -128,18 +136,11 @@ func main() {
 	r.Use(middleware.RequestLog(gdb))
 
 	startTime := time.Now()
-	r.GET("/health", func(c *gin.Context) {
-		dbStatus := "up"
-		if err := db.Ping(); err != nil {
-			dbStatus = "down"
-		}
-		c.JSON(http.StatusOK, gin.H{
-			"status":    "ok",
-			"timestamp": time.Now().UTC().Format(time.RFC3339),
-			"uptimeSec": int64(time.Since(startTime).Seconds()),
-			"checks":    gin.H{"db": dbStatus},
-		})
-	})
+	// Liveness vs readiness split (see internal/healthhttp): /health stays
+	// as a backward-compatible readiness alias.
+	r.GET("/health/live", healthhttp.LiveHandler(startTime))
+	r.GET("/health/ready", healthhttp.ReadyHandler(db.Ping, startTime))
+	r.GET("/health", healthhttp.ReadyHandler(db.Ping, startTime))
 
 	authH := &handlers.AuthHandler{DB: db, Cfg: cfg}
 	loginLimiter := middleware.NewLoginLimiter()
@@ -161,7 +162,7 @@ func main() {
 	execH := &handlers.ExecHandler{DB: db, Docker: dockerClient, Broker: broker}
 	handlers.SetWSAllowedOrigins(origins)
 	{
-		projH := &handlers.ProjectHandler{DB: db}
+		projH := &handlers.ProjectHandler{DB: db, DeployRoots: cfg.DeployRoots}
 		viewer.GET("/projects", projH.List)
 		operator.POST("/projects", projH.Create)
 		viewer.GET("/projects/:id", projH.Get)
@@ -200,7 +201,7 @@ func main() {
 		viewer.GET("/dashboard", sysH.Dashboard)
 		viewer.GET("/audit", sysH.Audit)
 
-		depH := &handlers.DeploymentHandler{DB: db, Broker: broker}
+		depH := &handlers.DeploymentHandler{DB: db, Broker: broker, DeployRoots: cfg.DeployRoots, StrictEgress: cfg.EgressStrict}
 		viewer.GET("/deployments", depH.ListAll)
 		admin.DELETE("/deployments", depH.Wipe)
 		viewer.GET("/projects/:id/deployments", depH.ListByProject)
@@ -212,7 +213,7 @@ func main() {
 		viewer.GET("/telemetry", telH.History)
 		viewer.GET("/telemetry/latest", telH.Latest)
 
-		lifeH := &handlers.ProjectLifecycle{DB: db, Broker: broker}
+		lifeH := &handlers.ProjectLifecycle{DB: db, Broker: broker, DeployRoots: cfg.DeployRoots}
 		operator.POST("/projects/:id/start", lifeH.Start)
 		admin.POST("/projects/:id/stop", lifeH.Stop)
 		admin.POST("/projects/:id/restart", lifeH.Restart)
@@ -237,13 +238,15 @@ func main() {
 		// the WebSocket itself capability-gated, but minting requires admin.
 		admin.POST("/containers/:id/exec", execH.Create)
 
-		backH := &handlers.BackupsHandler{DB: db, Broker: broker, Dir: backupDir()}
+		backH := &handlers.BackupsHandler{DB: db, Broker: broker, Dir: backupDir(), DeployRoots: cfg.DeployRoots}
 		viewer.GET("/projects/:id/backups", backH.List)
 		operator.POST("/projects/:id/backups", backH.Create)
 		viewer.GET("/backups/:id", backH.Get)
 		viewer.GET("/backups/:id/download", backH.Download)
 		operator.DELETE("/backups/:id", backH.Delete)
-		operator.POST("/backups/:id/restore", backH.Restore)
+		// Restore overwrites live files: admin-only like exec shells and
+		// container stop/restart (was operator; see audit F6 follow-up).
+		admin.POST("/backups/:id/restore", backH.Restore)
 
 		// Central log store: single place for all activity + future aggregator.
 		logsH := &handlers.LogsHandler{GDB: gdb}
@@ -305,6 +308,23 @@ func main() {
 		operator.POST("/notification-rules", nrH.Create)
 		operator.PATCH("/notification-rules/:id", nrH.Update)
 		admin.DELETE("/notification-rules/:id", nrH.Delete)
+
+		// Central delivery policy (spam-proof engine; viewer reads,
+		// admin changes; every change audit-logged).
+		polH := &handlers.PolicyHandler{DB: db}
+		viewer.GET("/notification-policy", polH.Get)
+		admin.PUT("/notification-policy", polH.Update)
+
+		// Delivery history: attempts, suppressions and failures (viewer).
+		delH := &handlers.DeliveriesHandler{DB: db}
+		viewer.GET("/notification-deliveries", delH.List)
+
+		// Maintenance windows: viewer reads, operator manages, admin deletes.
+		mwH := &handlers.MaintenanceHandler{DB: db}
+		viewer.GET("/maintenance-windows", mwH.List)
+		operator.POST("/maintenance-windows", mwH.Create)
+		operator.PATCH("/maintenance-windows/:id", mwH.Update)
+		admin.DELETE("/maintenance-windows/:id", mwH.Delete)
 
 		// Alerts
 		altH := &handlers.AlertsHandler{DB: db}
@@ -410,7 +430,18 @@ func main() {
 	// drains with a grace period. Nothing else in main blocks shutdown.
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	retention.StartLoop(ctx, db, cfg.MetricsRetentionDays, retention.DefaultInterval)
+	// Per-category retention (see docs/retention-and-recovery.md): metrics,
+	// operational app_logs and probe results are pruned hourly in bounded
+	// batches. audit_logs, deployments, backups and operations are never
+	// pruned — their triggers reject it.
+	retention.StartPolicyLoop(ctx, db, retention.Policy{
+		MetricsDays:      cfg.MetricsRetentionDays,
+		AppLogDays:       cfg.AppLogRetentionDays,
+		HealthResultDays: cfg.HealthResultRetentionDays,
+		DeliveryDays:     cfg.DeliveryRetentionDays,
+	}, retention.DefaultInterval)
+	log.Printf("retention: metrics=%dd app_logs=%dd health_check_results=%dd delivery=%dd",
+		cfg.MetricsRetentionDays, cfg.AppLogRetentionDays, cfg.HealthResultRetentionDays, cfg.DeliveryRetentionDays)
 
 	srv := &http.Server{Addr: ":" + cfg.Port, Handler: r}
 	go func() {
@@ -431,13 +462,10 @@ func main() {
 // they are stored in the DB, not just stdout.
 func bootWarningsToDB(gdb *gorm.DB) {
 	if os.Getenv("SERVERHUB_ENCRYPTION_KEY") == "" {
-		applog.Warn(gdb, "system", "startup warning: SERVERHUB_ENCRYPTION_KEY not set — using ephemeral key")
+		applog.Warn(gdb, "system", "startup warning: SERVERHUB_ENCRYPTION_KEY not set — using ephemeral key (development only; production refuses to start)")
 	}
-	// JWTSecret length is checked by the caller config; mirror generically
-	// without leaking the value.
-	if v := os.Getenv("JWT_SECRET"); v != "" && len(v) < 32 {
-		applog.Warn(gdb, "auth", "startup warning: JWT_SECRET is short — use at least 32 characters in production")
-	}
+	// JWT_SECRET and COOKIE_SECURE misconfigurations are fatal (in Load),
+	// so there is nothing to mirror: a running server already passed them.
 }
 
 // rulesEngine builds the Phase 2 notification rules engine. It is inert
@@ -448,6 +476,26 @@ func rulesEngine(db *database.DB, cfg *config.Config) *rules.Engine {
 		DB:      db,
 		Enabled: cfg.NotificationRulesEnabled,
 		Sender:  &rules.NotifySender{DB: db},
+		// EMAIL/TELEGRAM flow through the centralized delivery pipeline
+		// (dedupe, pause, quiet hours, cooldowns, repeats, digests, rate
+		// limits, retries). IN_APP stays direct via Sender.
+		Deliver: func(req rules.DeliveryRequest) (string, error) {
+			outcome, err := delivery.Dispatch(db, delivery.Input{
+				Key: req.Key, Severity: req.Severity,
+				Title: req.Title, Body: req.Body, Channels: req.Channels,
+				GroupID: req.GroupID, ServerID: req.ServerID, RuleID: req.RuleID,
+				Labels: req.Labels, Resource: req.Resource,
+				IsRecovery: req.IsRecovery,
+				CooldownSec: req.CooldownSec, RepeatSec: req.RepeatSec,
+				MaxRepeats: req.MaxRepeats, NotifyRecovery: req.NotifyRecovery,
+				DigestMode: req.DigestMode, DigestIntervalMin: req.DigestIntervalMin,
+				GroupBy: req.GroupBy,
+			})
+			if err != nil {
+				return "", err
+			}
+			return outcome.Action, nil
+		},
 	}
 	if eng.Enabled {
 		log.Println("notification rules engine: enabled")

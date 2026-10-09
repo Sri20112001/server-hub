@@ -61,6 +61,13 @@ func OpenDatabase(databaseURL string) (*DB, error) {
 		&NotificationGroupMember{},
 		&NotificationRule{},
 		&NotificationRuleState{},
+		&DeliveryPolicy{},
+		&DeliveryState{},
+		&DeliveryOutbox{},
+		&DeliveryAttempt{},
+		&ProviderState{},
+		&DigestBatch{},
+		&MaintenanceWindow{},
 	} {
 		if gdb.Migrator().HasTable(m) {
 			continue
@@ -76,6 +83,9 @@ func OpenDatabase(databaseURL string) (*DB, error) {
 	db := &DB{GDB: gdb, SQL: sqldb}
 	// Idempotent schema upgrades for pre-existing installs (CreateTable
 	// above only creates missing tables, never alters them).
+	if err := db.ensureNotificationSchema(); err != nil {
+		return nil, err
+	}
 	if err := db.ensureMonitoringSchema(); err != nil {
 		return nil, err
 	}
@@ -106,10 +116,22 @@ func (d *DB) ensureMonitoringSchema() error {
 	return nil
 }
 
+// AppLogsPruneFloorDays is the reviewed exception to app_logs
+// immutability: DELETE is permitted only for rows at least this old.
+// Anything recent is still tamper-proof (an attacker cannot wipe fresh
+// history to cover tracks). audit_logs has NO such exception and stays
+// fully immutable. The operational prune job (internal/retention) must use
+// a retention >= this floor.
+const AppLogsPruneFloorDays = 30
+
 // ensureLogImmutability installs append-only guards on every table that
 // carries log/history data:
 //
-//	app_logs, audit_logs      -> no UPDATE, no DELETE (fully immutable)
+//	audit_logs              -> no UPDATE, no DELETE (fully immutable)
+//	app_logs                -> no UPDATE; DELETE only for rows older than
+//	                           AppLogsPruneFloorDays (reviewed operational
+//	                           retention exception; the audit trail itself
+//	                           lives in audit_logs and is untouched)
 //	deployments, backups,
 //	operations, server_snapshots -> no DELETE (history cannot be wiped;
 //	UPDATE still allowed so running pipelines can progress
@@ -125,14 +147,31 @@ func (d *DB) ensureLogImmutability() error {
 		$$ LANGUAGE plpgsql`); err != nil {
 		return fmt.Errorf("create reject function: %w", err)
 	}
+	// app_logs guard: UPDATE always rejected; DELETE allowed only past
+	// the prune floor so the retention job can work but recent history
+	// cannot be tampered with.
+	if _, err := d.SQL.Exec(fmt.Sprintf(`CREATE OR REPLACE FUNCTION serverhub_app_logs_guard()
+		RETURNS trigger AS $$
+		BEGIN
+			IF TG_OP = 'UPDATE' THEN
+				RAISE EXCEPTION 'Table app_logs is append-only and cannot be modified (operation: %%)', TG_OP;
+			END IF;
+			IF OLD.timestamp >= CURRENT_TIMESTAMP - INTERVAL '%d days' THEN
+				RAISE EXCEPTION 'Table app_logs rows newer than %d days cannot be deleted';
+			END IF;
+			RETURN OLD;
+		END;
+		$$ LANGUAGE plpgsql`, AppLogsPruneFloorDays, AppLogsPruneFloorDays)); err != nil {
+		return fmt.Errorf("create app_logs guard: %w", err)
+	}
 	exec := func(q string) error {
 		if _, err := d.SQL.Exec(q); err != nil {
 			return err
 		}
 		return nil
 	}
-	// Fully immutable log tables: block UPDATE and DELETE.
-	for _, tbl := range []string{"app_logs", "audit_logs"} {
+	// audit_logs stays fully immutable: block UPDATE and DELETE.
+	for _, tbl := range []string{"audit_logs"} {
 		trg := tbl + "_no_update_delete"
 		if err := exec(`DROP TRIGGER IF EXISTS ` + trg + ` ON ` + tbl); err != nil {
 			return err
@@ -142,6 +181,13 @@ func (d *DB) ensureLogImmutability() error {
 			` FOR EACH ROW EXECUTE FUNCTION serverhub_reject_log_mutation()`); err != nil {
 			return fmt.Errorf("create trigger %s: %w", trg, err)
 		}
+	}
+	// app_logs uses the age-floor guard instead of the blanket reject.
+	if err := exec(`DROP TRIGGER IF EXISTS app_logs_no_update_delete ON app_logs`); err != nil {
+		return err
+	}
+	if err := exec(`CREATE TRIGGER app_logs_guarded BEFORE UPDATE OR DELETE ON app_logs FOR EACH ROW EXECUTE FUNCTION serverhub_app_logs_guard()`); err != nil {
+		return fmt.Errorf("create trigger app_logs_guarded: %w", err)
 	}
 	// Delete-protected history tables.
 	for _, tbl := range []string{"deployments", "backups", "operations", "server_snapshots"} {
@@ -153,6 +199,36 @@ func (d *DB) ensureLogImmutability() error {
 			` BEFORE DELETE ON ` + tbl +
 			` FOR EACH ROW EXECUTE FUNCTION serverhub_reject_log_mutation()`); err != nil {
 			return fmt.Errorf("create trigger %s: %w", trg, err)
+		}
+	}
+	return nil
+}
+
+// ensureNotificationSchema applies idempotent upgrades for the centralized
+// delivery policy: new columns on groups/rules, the singleton policy row
+// with safe defaults, and indexes the dispatcher/worker rely on.
+func (d *DB) ensureNotificationSchema() error {
+	stmts := []string{
+		`ALTER TABLE notification_groups ADD COLUMN IF NOT EXISTS quiet_start TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE notification_groups ADD COLUMN IF NOT EXISTS quiet_end TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE notification_groups ADD COLUMN IF NOT EXISTS quiet_tz TEXT NOT NULL DEFAULT 'UTC'`,
+		`ALTER TABLE notification_groups ADD COLUMN IF NOT EXISTS quiet_allow_critical BOOLEAN NOT NULL DEFAULT TRUE`,
+		`ALTER TABLE notification_rules ADD COLUMN IF NOT EXISTS repeat_interval_sec INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE notification_rules ADD COLUMN IF NOT EXISTS max_repeats INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE notification_rules ADD COLUMN IF NOT EXISTS digest_mode TEXT NOT NULL DEFAULT 'immediate'`,
+		`ALTER TABLE notification_rules ADD COLUMN IF NOT EXISTS digest_interval_min INTEGER NOT NULL DEFAULT 60`,
+		`ALTER TABLE notification_rules ADD COLUMN IF NOT EXISTS group_by TEXT NOT NULL DEFAULT ''`,
+		`CREATE INDEX IF NOT EXISTS idx_delivery_outbox_due ON delivery_outbox(status, next_retry_at)`,
+		`CREATE INDEX IF NOT EXISTS idx_delivery_outbox_key ON delivery_outbox(dedupe_key)`,
+		`CREATE INDEX IF NOT EXISTS idx_delivery_attempts_outbox ON delivery_attempts(outbox_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_delivery_attempts_ts ON delivery_attempts(created_at)`,
+		`CREATE INDEX IF NOT EXISTS idx_digest_due ON digest_batches(status, window_end)`,
+		`CREATE INDEX IF NOT EXISTS idx_maint_windows ON maintenance_windows(enabled, starts_at, ends_at)`,
+		`INSERT INTO notification_policy (id) VALUES (1) ON CONFLICT (id) DO NOTHING`,
+	}
+	for _, q := range stmts {
+		if _, err := d.SQL.Exec(q); err != nil {
+			return fmt.Errorf("notification schema upgrade: %w", err)
 		}
 	}
 	return nil

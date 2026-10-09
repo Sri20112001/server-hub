@@ -344,6 +344,12 @@ type NotificationGroup struct {
 	ID          uint      `gorm:"primaryKey;autoIncrement" json:"id"`
 	Name        string    `gorm:"uniqueIndex;not null" json:"name"`
 	Description string    `gorm:"not null;default:''" json:"description"`
+	// Quiet hours ("HH:MM" local to QuietTZ, overnight spans allowed).
+	// Empty start/end disables quiet hours for the group.
+	QuietStart         string    `gorm:"not null;default:''" json:"quietStart"`
+	QuietEnd           string    `gorm:"not null;default:''" json:"quietEnd"`
+	QuietTZ            string    `gorm:"not null;default:'UTC'" json:"quietTZ"`
+	QuietAllowCritical bool      `gorm:"not null;default:true" json:"quietAllowCritical"`
 	CreatedAt   time.Time `gorm:"default:CURRENT_TIMESTAMP" json:"createdAt"`
 	UpdatedAt   time.Time `gorm:"default:CURRENT_TIMESTAMP" json:"updatedAt"`
 }
@@ -383,6 +389,16 @@ type NotificationRule struct {
 	Channels            string    `gorm:"not null;default:'EMAIL'" json:"channels"`
 	CooldownSeconds     int       `gorm:"not null;default:0" json:"cooldownSeconds"`
 	NotifyOnRecovery    bool      `gorm:"not null;default:false" json:"notifyOnRecovery"`
+	// Repeat reminders while an incident stays firing (0 = use policy default).
+	RepeatIntervalSec int `gorm:"not null;default:0" json:"repeatIntervalSec"`
+	// MaxRepeats caps repeat reminders per incident cycle (0 = policy default).
+	MaxRepeats int `gorm:"not null;default:0" json:"maxRepeats"`
+	// DigestMode immediate|digest (digest collapses a window into one summary).
+	DigestMode string `gorm:"not null;default:'immediate'" json:"digestMode"`
+	// DigestIntervalMin window in minutes when digest mode is on.
+	DigestIntervalMin int `gorm:"not null;default:60" json:"digestIntervalMin"`
+	// GroupBy comma-separated label keys splitting digest batches (max 3).
+	GroupBy string `gorm:"not null;default:''" json:"groupBy"`
 	CreatedBy           string    `gorm:"not null;default:''" json:"createdBy"`
 	UpdatedBy           string    `gorm:"not null;default:''" json:"updatedBy"`
 	CreatedAt           time.Time `gorm:"default:CURRENT_TIMESTAMP" json:"createdAt"`
@@ -407,3 +423,123 @@ type NotificationRuleState struct {
 }
 
 func (NotificationRuleState) TableName() string { return "notification_rule_state" }
+
+// ─── Centralized delivery policy (spam-proof notifications) ────────────────
+
+// DeliveryPolicy is the single global notification policy row (id=1,
+// seeded with safe defaults). All channels share it: dedupe, cooldowns,
+// repeats, rate budgets, digest defaults and the emergency pause.
+type DeliveryPolicy struct {
+	ID                    uint       `gorm:"primaryKey" json:"id"`
+	EmergencyPause        bool       `gorm:"not null;default:false" json:"emergencyPause"`
+	PauseUntil            *time.Time `json:"pauseUntil"`
+	PauseReason           string     `gorm:"not null;default:''" json:"pauseReason"`
+	CooldownCriticalSec   int        `gorm:"not null;default:900" json:"cooldownCriticalSec"`
+	CooldownWarningSec    int        `gorm:"not null;default:3600" json:"cooldownWarningSec"`
+	CooldownInfoSec       int        `gorm:"not null;default:21600" json:"cooldownInfoSec"`
+	RepeatIntervalSec     int        `gorm:"not null;default:3600" json:"repeatIntervalSec"`
+	MaxRepeats            int        `gorm:"not null;default:3" json:"maxRepeats"`
+	NotifyOnRecovery      bool       `gorm:"not null;default:true" json:"notifyOnRecovery"`
+	EmailPerHour          int        `gorm:"not null;default:60" json:"emailPerHour"`
+	TgPerHour             int        `gorm:"not null;default:60" json:"tgPerHour"`
+	DigestIntervalMin     int        `gorm:"not null;default:60" json:"digestIntervalMin"`
+	UpdatedBy             string     `gorm:"not null;default:''" json:"updatedBy"`
+	UpdatedAt             time.Time  `gorm:"default:CURRENT_TIMESTAMP" json:"updatedAt"`
+}
+
+func (DeliveryPolicy) TableName() string { return "notification_policy" }
+
+// DeliveryState is the concurrency-safe per-incident policy state keyed by
+// the stable dedupe key. Claimed inside a row-locked transaction, so
+// concurrent workers cannot double-notify one incident.
+type DeliveryState struct {
+	ID               uint      `gorm:"primaryKey;autoIncrement" json:"-"`
+	DedupeKey        string    `gorm:"uniqueIndex;not null" json:"dedupeKey"`
+	Severity         string    `gorm:"not null;default:''" json:"severity"`
+	FirstNotifiedAt  time.Time `gorm:"not null" json:"firstNotifiedAt"`
+	LastNotifiedAt   time.Time `gorm:"not null;index" json:"lastNotifiedAt"`
+	RepeatCount      int       `gorm:"not null;default:0" json:"repeatCount"`
+	LastState        string    `gorm:"not null;default:''" json:"lastState"`
+	SuppressedCount  int       `gorm:"not null;default:0" json:"suppressedCount"`
+	LastSuppressReason string  `gorm:"not null;default:''" json:"lastSuppressReason"`
+	UpdatedAt        time.Time `gorm:"default:CURRENT_TIMESTAMP" json:"updatedAt"`
+}
+
+func (DeliveryState) TableName() string { return "delivery_state" }
+
+// DeliveryOutbox is one pending channel delivery. Enqueued in the same
+// transaction as the state claim (atomic); the worker sends after commit.
+type DeliveryOutbox struct {
+	ID          uint       `gorm:"primaryKey;autoIncrement" json:"id"`
+	DedupeKey   string     `gorm:"index;not null" json:"dedupeKey"`
+	Severity    string     `gorm:"not null;default:''" json:"severity"`
+	Channel     string     `gorm:"not null;index" json:"channel"`
+	GroupID     uint       `gorm:"not null;default:0" json:"groupId"`
+	Title       string     `gorm:"not null" json:"title"`
+	Body        string     `gorm:"not null;default:''" json:"body"`
+	Status      string     `gorm:"not null;index;default:'pending'" json:"status"`
+	Attempts    int        `gorm:"not null;default:0" json:"attempts"`
+	NextRetryAt time.Time  `gorm:"not null;index" json:"nextRetryAt"`
+	LastError   string     `gorm:"not null;default:''" json:"lastError"`
+	CreatedAt   time.Time  `gorm:"default:CURRENT_TIMESTAMP" json:"createdAt"`
+	SentAt      *time.Time `json:"sentAt"`
+}
+
+func (DeliveryOutbox) TableName() string { return "delivery_outbox" }
+
+// DeliveryAttempt records one provider send attempt for observability.
+type DeliveryAttempt struct {
+	ID        uint      `gorm:"primaryKey;autoIncrement" json:"id"`
+	OutboxID  uint      `gorm:"index;not null" json:"outboxId"`
+	Ok        bool      `gorm:"not null" json:"ok"`
+	Error     string    `gorm:"not null;default:''" json:"error"`
+	LatencyMs int64     `gorm:"not null;default:0" json:"latencyMs"`
+	CreatedAt time.Time `gorm:"index;default:CURRENT_TIMESTAMP" json:"createdAt"`
+}
+
+func (DeliveryAttempt) TableName() string { return "delivery_attempts" }
+
+// ProviderState holds the circuit breaker per channel.
+type ProviderState struct {
+	Channel              string     `gorm:"primaryKey" json:"channel"`
+	ConsecutiveFailures  int        `gorm:"not null;default:0" json:"consecutiveFailures"`
+	OpenedUntil          *time.Time `json:"openedUntil"`
+	LastSuccessAt        *time.Time `json:"lastSuccessAt"`
+	LastFailureAt        *time.Time `json:"lastFailureAt"`
+}
+
+func (ProviderState) TableName() string { return "delivery_provider_state" }
+
+// DigestBatch accumulates one summary window for digest-mode rules.
+type DigestBatch struct {
+	ID         uint      `gorm:"primaryKey;autoIncrement" json:"id"`
+	DigestKey  string    `gorm:"uniqueIndex:idx_digest_key_window,priority:1;not null" json:"digestKey"`
+	WindowEnd  time.Time `gorm:"uniqueIndex:idx_digest_key_window,priority:2;not null" json:"windowEnd"`
+	Channel    string    `gorm:"not null" json:"channel"`
+	GroupID    uint      `gorm:"not null;default:0" json:"groupId"`
+	Severity   string    `gorm:"not null;default:''" json:"severity"`
+	Count      int       `gorm:"not null;default:0" json:"count"`
+	Titles     string    `gorm:"not null;default:''" json:"titles"`
+	Resources  string    `gorm:"not null;default:''" json:"resources"`
+	Status     string    `gorm:"not null;default:'open';index" json:"status"`
+	CreatedAt  time.Time `gorm:"default:CURRENT_TIMESTAMP" json:"createdAt"`
+	UpdatedAt  time.Time `gorm:"default:CURRENT_TIMESTAMP" json:"updatedAt"`
+}
+
+func (DigestBatch) TableName() string { return "digest_batches" }
+
+// MaintenanceWindow suppresses non-critical delivery for a scope while active.
+type MaintenanceWindow struct {
+	ID        uint       `gorm:"primaryKey;autoIncrement" json:"id"`
+	Name      string     `gorm:"not null" json:"name"`
+	Scope     string     `gorm:"not null;default:'all';index" json:"scope"`
+	StartsAt  time.Time  `gorm:"not null;index" json:"startsAt"`
+	EndsAt    time.Time  `gorm:"not null;index" json:"endsAt"`
+	Reason    string     `gorm:"not null;default:''" json:"reason"`
+	Enabled   bool       `gorm:"not null;default:true" json:"enabled"`
+	CreatedBy string     `gorm:"not null;default:''" json:"createdBy"`
+	CreatedAt time.Time  `gorm:"default:CURRENT_TIMESTAMP" json:"createdAt"`
+	UpdatedAt time.Time  `gorm:"default:CURRENT_TIMESTAMP" json:"updatedAt"`
+}
+
+func (MaintenanceWindow) TableName() string { return "maintenance_windows" }

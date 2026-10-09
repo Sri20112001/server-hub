@@ -19,6 +19,7 @@ import (
 
 	"serverhub/internal/audit"
 	"serverhub/internal/database"
+	"serverhub/internal/deploypath"
 	"serverhub/internal/events"
 	"serverhub/internal/middleware"
 	"serverhub/internal/notify"
@@ -27,12 +28,22 @@ import (
 
 // BackupsHandler snapshots project deployment directories as .tar.gz
 // archives plus a metadata manifest, and restores them on demand.
-// Restore overwrites live files: HIGH RISK, confirmation-gated.
+// Restore overwrites live files: HIGH RISK, confirmation-gated AND
+// admin-only (see route wiring in cmd/server/main.go).
 type BackupsHandler struct {
 	DB     *database.DB
 	Broker *events.Broker
 	Dir    string
+	// DeployRoots bounds the restore destination (see deploypath).
+	DeployRoots []string
 }
+
+// Extraction bomb limits (package vars so tests can shrink them).
+var (
+	maxExtractFiles int64 = 100000
+	maxExtractBytes int64 = 10 << 30 // 10 GiB total
+	maxSingleFile   int64 = 2 << 30  // 2 GiB per file
+)
 
 type backupRow struct {
 	ID        int64  `json:"id"`
@@ -173,6 +184,39 @@ func (h *BackupsHandler) runBackup(opID string, pid int64, name, deployPath, act
 	})
 }
 
+// snapshotLive archives the current destination before a restore
+// overwrites it. Returns the snapshot file name for the audit trail.
+func (h *BackupsHandler) snapshotLive(pid int64, name, destDir string) (string, error) {
+	if _, err := os.Stat(destDir); err != nil {
+		return "", fmt.Errorf("live path not found: %s", destDir)
+	}
+	if err := os.MkdirAll(h.dir(), 0o755); err != nil {
+		return "", fmt.Errorf("cannot create backup dir: %v", err)
+	}
+	stamp := time.Now().UTC().Format("20060102-150405")
+	archive := filepath.Join(h.dir(), fmt.Sprintf("%s-pre-restore-%s.tar.gz", sanitize(name), stamp))
+	f, err := os.Create(archive)
+	if err != nil {
+		return "", fmt.Errorf("cannot create snapshot: %v", err)
+	}
+	size, werr := writeTarGz(f, destDir)
+	cerr := f.Close()
+	if werr != nil || cerr != nil {
+		_ = os.Remove(archive)
+		if werr != nil {
+			return "", fmt.Errorf("snapshot failed: %v", werr)
+		}
+		return "", fmt.Errorf("snapshot failed to close")
+	}
+	if _, err := h.DB.InsertID(`INSERT INTO backups (project_id,kind,path,size_bytes,status,logs)
+		VALUES (?, 'pre-restore', ?, ?, 'SUCCESS', ?)`, pid, archive, size,
+		"pre-restore snapshot before restore"); err != nil {
+		_ = os.Remove(archive)
+		return "", fmt.Errorf("cannot record snapshot: %v", err)
+	}
+	return filepath.Base(archive), nil
+}
+
 func (h *BackupsHandler) manifest(pid int64, name, deployPath string) map[string]interface{} {
 	var svcCount, depCount, secretCount int
 	_ = h.DB.QueryRow(`SELECT COUNT(*) FROM services WHERE project_id=?`, pid).Scan(&svcCount)
@@ -209,7 +253,18 @@ func (h *BackupsHandler) Download(c *gin.Context) {
 	c.Header("Content-Disposition", `attachment; filename="`+filename+`"`)
 	c.Header("Content-Type", "application/zip")
 	zw := zip.NewWriter(c.Writer)
-	_ = writeZip(zw, path)
+	if fi, err := os.Stat(path); err != nil {
+		_ = zw.Close()
+		c.JSON(http.StatusNotFound, gin.H{"error": "backup archive not found on disk"})
+		return
+	} else if !fi.IsDir() {
+		// Backup archives are single .tar.gz files: zip the file itself.
+		// (writeZip walks a directory — handed a file it yields nothing,
+		// producing an empty download.)
+		_ = writeZipSingle(zw, path)
+	} else {
+		_ = writeZip(zw, path)
+	}
 	_ = zw.Close()
 }
 
@@ -275,16 +330,32 @@ func (h *BackupsHandler) Restore(c *gin.Context) {
 	}
 	var path string
 	var pid int64
-	var name, deployPath string
-	err = h.DB.QueryRow(`SELECT b.project_id, b.path, p.name, p.deployment_path
+	var status, name, deployPath string
+	err = h.DB.QueryRow(`SELECT b.project_id, b.path, b.status, p.name, p.deployment_path
 		FROM backups b JOIN projects p ON p.id = b.project_id WHERE b.id=?`, id).
-		Scan(&pid, &path, &name, &deployPath)
+		Scan(&pid, &path, &status, &name, &deployPath)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "backup not found"})
 		return
 	}
+	// Pre-checks run synchronously so doomed restores fail before an
+	// operation is minted: only SUCCESS backups with a present archive
+	// and a contained destination may proceed.
+	if status != "SUCCESS" {
+		c.JSON(http.StatusConflict, gin.H{"error": "backup not available (status=" + status + ")"})
+		return
+	}
+	if fi, err := os.Stat(path); err != nil || fi.IsDir() {
+		c.JSON(http.StatusNotFound, gin.H{"error": "backup archive not found on disk"})
+		return
+	}
+	resolvedDest, err := deploypath.ResolveExec(deployPath, h.DeployRoots)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
 	op, err := ops.Create(h.DB, "restore", "backup", strconv.FormatInt(id, 10), u,
-		[]string{"Extract archive"})
+		[]string{"Snapshot live files", "Extract archive"})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not track operation"})
 		return
@@ -292,7 +363,23 @@ func (h *BackupsHandler) Restore(c *gin.Context) {
 	go func() {
 		_ = ops.Start(h.DB, op.ID)
 		_ = ops.SetStage(h.DB, op.ID, 0, false, "")
-		rerr := extractTarGz(path, deployPath)
+		// Recoverability first: snapshot live files so a failed or
+		// unwanted restore can be recovered manually. A snapshot
+		// failure aborts BEFORE anything is overwritten.
+		snapName, serr := h.snapshotLive(pid, name, resolvedDest)
+		if serr != nil {
+			_ = ops.SetStage(h.DB, op.ID, 0, true, "")
+			_ = ops.Finish(h.DB, op.ID, "FAILED", "pre-restore snapshot failed: "+serr.Error())
+			audit.Write(h.DB, u, "restore", "backup", strconv.FormatInt(id, 10), "failed",
+				"pre-restore snapshot failed: "+serr.Error())
+			h.emit("backup.restoreFailed", map[string]interface{}{
+				"projectId": pid, "backupId": id, "operationId": op.ID,
+				"error": "pre-restore snapshot failed: " + serr.Error(),
+			})
+			return
+		}
+		_ = ops.SetStage(h.DB, op.ID, 1, false, "")
+		rerr := extractTarGz(path, resolvedDest)
 		if rerr != nil {
 			_ = ops.SetStage(h.DB, op.ID, 0, true, "")
 			_ = ops.Finish(h.DB, op.ID, "FAILED", rerr.Error())
@@ -305,12 +392,28 @@ func (h *BackupsHandler) Restore(c *gin.Context) {
 		}
 		_ = ops.Finish(h.DB, op.ID, "SUCCESS", "")
 		audit.Write(h.DB, u, "restore", "backup", strconv.FormatInt(id, 10), "ok",
-			fmt.Sprintf("project=%s", name))
+			fmt.Sprintf("project=%s pre-restore-snapshot=%s", name, snapName))
 		h.emit("backup.restored", map[string]interface{}{
 			"projectId": pid, "project": name, "backupId": id, "operationId": op.ID,
 		})
 	}()
 	c.JSON(http.StatusAccepted, gin.H{"ok": true, "operationId": op.ID, "backupId": id})
+}
+
+// writeZipSingle adds one archive file to the download zip under its base
+// name (used because stored backups are files, not directories).
+func writeZipSingle(zw *zip.Writer, filePath string) error {
+	f, err := os.Open(filePath)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	w, err := zw.Create(filepath.Base(filePath))
+	if err != nil {
+		return err
+	}
+	_, err = io.Copy(w, f)
+	return err
 }
 
 func writeZip(zw *zip.Writer, srcDir string) error {
@@ -445,6 +548,8 @@ func extractTarGz(archive, destDir string) error {
 	if err := os.MkdirAll(destDir, 0o755); err != nil {
 		return err
 	}
+	// Bomb limits: a malicious or corrupt archive must not fill the disk.
+	var files, total int64
 	for {
 		hdr, err := tr.Next()
 		if err == io.EOF {
@@ -452,6 +557,10 @@ func extractTarGz(archive, destDir string) error {
 		}
 		if err != nil {
 			return err
+		}
+		files++
+		if files > maxExtractFiles {
+			return fmt.Errorf("archive exceeds file-count limit (%d)", maxExtractFiles)
 		}
 		// ZipSlip protection: reject absolute paths and .. escapes.
 		clean := filepath.Clean(hdr.Name)
@@ -465,6 +574,9 @@ func extractTarGz(archive, destDir string) error {
 				return err
 			}
 		case tar.TypeReg, tar.TypeRegA:
+			if hdr.Size > maxSingleFile {
+				return fmt.Errorf("archive entry %q exceeds per-file limit", clean)
+			}
 			if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 				return err
 			}
@@ -472,11 +584,15 @@ func extractTarGz(archive, destDir string) error {
 			if err != nil {
 				return err
 			}
-			if _, err := io.Copy(out, tr); err != nil {
-				out.Close()
+			n, err := io.Copy(out, io.LimitReader(tr, maxSingleFile+1))
+			out.Close()
+			if err != nil {
 				return err
 			}
-			out.Close()
+			total += n
+			if total > maxExtractBytes {
+				return fmt.Errorf("archive exceeds total size limit")
+			}
 		case tar.TypeSymlink, tar.TypeLink:
 			_ = os.Remove(target)
 			linkTarget := filepath.Clean(hdr.Linkname)

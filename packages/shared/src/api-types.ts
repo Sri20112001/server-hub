@@ -602,6 +602,13 @@ export interface PromRangeResult {
   }[];
 }
 
+/** GET /server-hub/api/monitoring/metrics envelope */
+export interface MonitoringMetricHistory {
+  metric: string;
+  range: string;
+  data: PromRangeResult;
+}
+
 /** Query filters for GET /server-hub/api/logs (shared by web + mobile). */
 export interface LogsParams {
   level?: string;
@@ -648,7 +655,9 @@ export type NotificationEventType =
   | "SERVER_ALERT_RESOLVED";
 
 /** Supported rule channels. */
-export type NotificationChannel = "EMAIL" | "IN_APP";
+export type NotificationChannel = "EMAIL" | "TELEGRAM" | "IN_APP";
+
+export type DigestMode = "immediate" | "digest";
 
 export interface NotificationRule {
   id: number;
@@ -663,6 +672,11 @@ export interface NotificationRule {
   channels: string;
   cooldownSeconds: number;
   notifyOnRecovery: boolean;
+  repeatIntervalSec: number;
+  maxRepeats: number;
+  digestMode: DigestMode;
+  digestIntervalMin: number;
+  groupBy: string;
   createdBy: string;
   updatedBy: string;
   createdAt: string;
@@ -686,6 +700,11 @@ export interface NotificationRuleCreate {
   channels?: NotificationChannel[];
   cooldownSeconds?: number;
   notifyOnRecovery?: boolean;
+  repeatIntervalSec?: number;
+  maxRepeats?: number;
+  digestMode?: DigestMode;
+  digestIntervalMin?: number;
+  groupBy?: string[];
 }
 
 export interface NotificationRuleUpdate {
@@ -699,6 +718,67 @@ export interface NotificationRuleUpdate {
   channels?: NotificationChannel[];
   cooldownSeconds?: number;
   notifyOnRecovery?: boolean;
+  repeatIntervalSec?: number;
+  maxRepeats?: number;
+  digestMode?: DigestMode;
+  digestIntervalMin?: number;
+  groupBy?: string[];
+}
+
+export interface NotificationGroupQuiet {
+  quietStart: string;
+  quietEnd: string;
+  quietTZ: string;
+  quietAllowCritical: boolean;
+}
+
+// ─── Central delivery policy ─────────────────────────────────────────────
+
+export interface DeliveryPolicy {
+  emergencyPause: boolean;
+  pauseUntil: string | null;
+  pauseReason: string;
+  cooldownCriticalSec: number;
+  cooldownWarningSec: number;
+  cooldownInfoSec: number;
+  repeatIntervalSec: number;
+  maxRepeats: number;
+  notifyOnRecovery: boolean;
+  emailPerHour: number;
+  tgPerHour: number;
+  digestIntervalMin: number;
+}
+
+export type DeliveryStatus = "pending" | "sending" | "sent" | "failed" | "deferred";
+
+export interface DeliveryRecord {
+  id: number;
+  dedupeKey: string;
+  severity: string;
+  channel: string;
+  groupId: number;
+  title: string;
+  body: string;
+  status: DeliveryStatus;
+  attempts: number;
+  nextRetryAt: string;
+  lastError: string;
+  createdAt: string;
+  sentAt: string | null;
+}
+
+export interface MaintenanceWindow {
+  id: number;
+  name: string;
+  scope: string;
+  startsAt: string;
+  endsAt: string;
+  reason: string;
+  enabled: boolean;
+  active: boolean;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export function toFleetStatus(raw: string | undefined): FleetStatus {

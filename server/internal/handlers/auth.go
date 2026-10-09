@@ -98,10 +98,25 @@ func (h *AuthHandler) revokeRefresh(token string) {
 	_, _ = h.DB.Exec(`UPDATE refresh_tokens SET revoked=true WHERE token_hash=?`, hashRefresh(token))
 }
 
-// revokeAllRefreshes revokes every refresh token for a user (used on logout
-// theft-detection, password change, and explicit logout-all).
+// revokeAllRefreshes revokes every refresh token for a user (used on
+// password change and explicit logout-all).
 func (h *AuthHandler) revokeAllRefreshes(username string) {
 	_, _ = h.DB.Exec(`UPDATE refresh_tokens SET revoked=true WHERE username=?`, username)
+}
+
+// revokeAllRefreshesExceptRecent revokes every refresh token for a user
+// EXCEPT ones created in the last `leeway` (DB clock). Used on the
+// reuse/race paths: a concurrent-refresh loser must not nuke the winner's
+// just-issued replacement, while a genuinely stolen old token still kills
+// every other (older) session.
+func (h *AuthHandler) revokeAllRefreshesExceptRecent(username string, leeway time.Duration) {
+	secs := int(leeway.Seconds())
+	if secs < 1 {
+		secs = 1
+	}
+	_, _ = h.DB.Exec(`UPDATE refresh_tokens SET revoked=true WHERE username=?
+		AND created_at < CURRENT_TIMESTAMP - make_interval(secs => ?)`,
+		username, float64(secs))
 }
 
 // Login sets an HttpOnly session cookie pair for web clients.
@@ -185,9 +200,11 @@ func (h *AuthHandler) Refresh(c *gin.Context) {
 		return
 	}
 	if revoked {
-		// Possible token theft: kill every session for this user.
-		h.revokeAllRefreshes(username)
-		audit.Write(h.DB, username, "refresh-reuse", "auth", "", "failed", "revoked token reused; all sessions revoked")
+		// Possible token theft: kill sessions, sparing tokens minted in
+		// the last 30s so a concurrent-refresh loser cannot nuke the
+		// winner's just-issued replacement (see the atomic claim below).
+		h.revokeAllRefreshesExceptRecent(username, 30*time.Second)
+		audit.Write(h.DB, username, "refresh-reuse", "auth", "", "failed", "revoked token reused; sessions revoked")
 		clearSessionCookies(c, h.Cfg)
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid session"})
 		return
@@ -204,9 +221,25 @@ func (h *AuthHandler) Refresh(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid session"})
 		return
 	}
-	// Rotate: revoke the presented token before issuing replacements so it
-	// can never be used twice, even on concurrent requests.
-	h.revokeRefresh(presented)
+	// Rotate with an atomic claim: the UPDATE only matches a still-valid
+	// token, so two concurrent requests with the same token cannot both
+	// win — the loser sees zero rows affected and is treated as reuse.
+	res, err := h.DB.Exec(`UPDATE refresh_tokens SET revoked=true WHERE token_hash=? AND revoked=false`,
+		hashRefresh(presented))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not refresh session"})
+		return
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		// Lost a concurrent race (or DB state changed under us): fail
+		// closed like a revoked-token reuse, but spare just-minted
+		// replacements so the winner's session survives.
+		h.revokeAllRefreshesExceptRecent(username, 30*time.Second)
+		audit.Write(h.DB, username, "refresh-reuse", "auth", "", "failed", "concurrent refresh race; sessions revoked")
+		clearSessionCookies(c, h.Cfg)
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid session"})
+		return
+	}
 	access, refresh, err := h.issuePair(username, role)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not refresh session"})
@@ -237,8 +270,18 @@ func (h *AuthHandler) verifyCredentials(username, password string) (user, role, 
 
 func (h *AuthHandler) Logout(c *gin.Context) {
 	u, _ := middleware.CurrentUser(c)
-	if rc, err := c.Cookie("serverhub_refresh"); err == nil && rc != "" {
-		h.revokeRefresh(rc)
+	refresh, err := c.Cookie("serverhub_refresh")
+	if err != nil || refresh == "" {
+		// Mobile/API clients carry the refresh token in the body, not a
+		// cookie — without this, their logout revokes nothing.
+		var body struct {
+			RefreshToken string `json:"refreshToken"`
+		}
+		_ = c.ShouldBindJSON(&body)
+		refresh = body.RefreshToken
+	}
+	if refresh != "" {
+		h.revokeRefresh(refresh)
 	}
 	clearSessionCookies(c, h.Cfg)
 	audit.Write(h.DB, u, "logout", "auth", "", "ok", "")

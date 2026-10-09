@@ -11,6 +11,7 @@ export default function AppLayout() {
       <Stack.Screen name="(tabs)" />
       <Stack.Screen name="projects/[id]" />
       <Stack.Screen name="logs" />
+      <Stack.Screen name="notification-settings" />
     </Stack>
   );
 }

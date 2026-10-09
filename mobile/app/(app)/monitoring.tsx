@@ -52,6 +52,51 @@ function severityColor(sev: string | undefined): string {
   }
 }
 
+function severityRank(sev: string | undefined): number {
+  switch ((sev ?? "").toLowerCase()) {
+    case "critical": return 0;
+    case "warning": return 1;
+    default: return 2;
+  }
+}
+
+// ── Mini history chart (bar strip; zero and unavailable stay distinct) ──────
+
+function HistoryStrip({ values }: { values: (number | null)[] }) {
+  if (values.length === 0) {
+    return (
+      <Text className="text-fog text-xs">No history for this range.</Text>
+    );
+  }
+  const nums = values.filter((v): v is number => v !== null && v >= 0);
+  const max = nums.length > 0 ? Math.max(...nums, 1) : 1;
+  return (
+    <View className="flex-row items-end gap-[2px] h-16">
+      {values.map((v, i) => {
+        const h = v === null || v < 0 ? 2 : Math.max(2, Math.round((v / max) * 64));
+        return (
+          <View
+            key={i}
+            style={{
+              height: h,
+              flex: 1,
+              borderRadius: 1,
+              backgroundColor: v === null || v < 0 ? colors.emboss : v >= 90 ? "#ef4444" : v >= 70 ? "#eab308" : colors.moss,
+              opacity: v === null || v < 0 ? 0.5 : 1,
+            }}
+          />
+        );
+      })}
+    </View>
+  );
+}
+
+const HISTORY_RANGES = [
+  { label: "1h", range: "1h", step: "60" },
+  { label: "6h", range: "6h", step: "300" },
+  { label: "24h", range: "24h", step: "900" },
+];
+
 // ── MetricBar ─────────────────────────────────────────────────────────────────
 
 function MetricBar({ label, value }: { label: string; value: number | null }) {
@@ -106,6 +151,7 @@ function StatusRow({ label, ok, detail }: { label: string; ok: boolean | undefin
 // ── Dashboard tab ─────────────────────────────────────────────────────────────
 
 function DashboardTab() {
+  const [histRange, setHistRange] = useState(0);
   const { data: overview, isLoading: ovLoading, refetch: refetchOv, isRefetching: ovRefetching } =
     useQuery({ queryKey: ["monitoring-overview"], queryFn: monitoringApi.overview, refetchInterval: 60_000 });
 
@@ -118,7 +164,40 @@ function DashboardTab() {
   const { data: amAlerts = [] } =
     useQuery<AmAlert[]>({ queryKey: ["am-alerts"], queryFn: monitoringApi.alerts, refetchInterval: 30_000 });
 
+  const { data: targets } =
+    useQuery({
+      queryKey: ["prom-targets"],
+      queryFn: monitoringApi.targets,
+      refetchInterval: 60_000,
+      retry: 1,
+    });
+
+  const range = HISTORY_RANGES[histRange];
+  const { data: cpuHistory, isLoading: histLoading, error: histError } =
+    useQuery({
+      queryKey: ["cpu-history", range.range],
+      queryFn: () => monitoringApi.metricHistory("cpu", range.range, range.step),
+      refetchInterval: 60_000,
+      retry: 1,
+    });
+
   const firing = amAlerts.filter((a) => a.status.state === "active");
+  const targetsUp = targets?.activeTargets.filter((t) => t.health === "up").length ?? null;
+  const targetsDown = targets?.activeTargets.filter((t) => t.health !== "up").length ?? null;
+  const cpuValues: (number | null)[] = (() => {
+    const series = cpuHistory?.data?.result?.[0]?.values ?? [];
+    // Downsample to at most 48 bars so the strip stays readable.
+    const stride = Math.max(1, Math.floor(series.length / 48));
+    const out: (number | null)[] = [];
+    for (let i = 0; i < series.length; i += stride) {
+      const v = parseFloat(series[i][1]);
+      out.push(Number.isFinite(v) ? v : null);
+    }
+    return out;
+  })();
+  const histStaleAt = cpuHistory?.data?.result?.[0]?.values.length
+    ? new Date(cpuHistory.data.result[0].values[cpuHistory.data.result[0].values.length - 1][0] * 1000)
+    : null;
 
   return (
     <ScrollView
@@ -169,6 +248,54 @@ function DashboardTab() {
         </View>
       )}
 
+      {/* CPU history */}
+      <View className="bg-panel border border-edge rounded-xl p-4 mb-4">
+        <View className="flex-row items-center justify-between mb-2">
+          <Text className="text-fog text-[10px] uppercase tracking-wider">CPU history</Text>
+          <View className="flex-row gap-1">
+            {HISTORY_RANGES.map((r, i) => (
+              <TouchableOpacity
+                key={r.label}
+                onPress={() => setHistRange(i)}
+                className={`px-2 py-1 rounded-md border ${i === histRange ? "border-ember" : "border-edge"}`}
+                accessibilityRole="tab"
+                accessibilityState={{ selected: i === histRange }}
+              >
+                <Text className={`font-mono text-[11px] ${i === histRange ? "text-ember" : "text-fog"}`}>
+                  {r.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+        {histLoading ? (
+          <View className="items-center py-4">
+            <ActivityIndicator size="small" color={colors.fog} />
+          </View>
+        ) : histError || !cpuHistory ? (
+          <Text className="text-fog text-xs">History unavailable — Prometheus may be down.</Text>
+        ) : (
+          <>
+            <HistoryStrip values={cpuValues} />
+            <Text className="text-fog text-[10px] font-mono mt-1">
+              {histStaleAt ? `Last sample ${histStaleAt.toLocaleTimeString()}` : "No samples"}
+            </Text>
+          </>
+        )}
+      </View>
+
+      {/* Prometheus targets */}
+      <View className="bg-panel border border-edge rounded-xl p-4 mb-4">
+        <Text className="text-fog text-[10px] uppercase tracking-wider mb-2">Targets</Text>
+        {targetsUp === null ? (
+          <Text className="text-fog text-xs">Target health unavailable.</Text>
+        ) : (
+          <Text className="text-bone text-sm font-mono">
+            {targetsUp} up{targetsDown ? ` · ${targetsDown} down` : ""}
+          </Text>
+        )}
+      </View>
+
       {/* Active alerts summary */}
       {firing.length > 0 && (
         <View className="bg-panel border border-edge rounded-xl p-4 mb-4">
@@ -205,9 +332,13 @@ const SILENCE_DURATIONS = [
 function AlertsTab() {
   const qc = useQueryClient();
   const [silencing, setSilencing] = useState<AmAlert | null>(null);
+  const [detail, setDetail] = useState<AmAlert | null>(null);
   const [silenceDur, setSilenceDur] = useState(60);
   const [silenceComment, setSilenceComment] = useState("");
   const [busy, setBusy] = useState(false);
+  const [query, setQuery] = useState("");
+  const [sevFilter, setSevFilter] = useState<"all" | "critical" | "warning" | "other">("all");
+  const [sortNewest, setSortNewest] = useState(true);
 
   const { data: alerts = [], isLoading, isRefetching, refetch, error } =
     useQuery<AmAlert[]>({
@@ -262,6 +393,24 @@ function AlertsTab() {
   const firing = alerts.filter((a) => a.status.state === "active");
   const suppressed = alerts.filter((a) => a.status.state === "suppressed");
 
+  const q = query.trim().toLowerCase();
+  const visible = alerts
+    .filter((a) => {
+      if (sevFilter !== "all") {
+        const sev = (a.labels.severity ?? "").toLowerCase();
+        if (sevFilter === "other" ? sev === "critical" || sev === "warning" : sev !== sevFilter) return false;
+      }
+      if (!q) return true;
+      const hay = `${a.labels.alertname ?? ""} ${a.labels.instance ?? ""} ${a.labels.job ?? ""} ${a.annotations.summary ?? ""}`.toLowerCase();
+      return hay.includes(q);
+    })
+    .sort((x, y) =>
+      sortNewest
+        ? +new Date(y.startsAt) - +new Date(x.startsAt)
+        : severityRank(x.labels.severity) - severityRank(y.labels.severity) ||
+          +new Date(y.startsAt) - +new Date(x.startsAt),
+    );
+
   return (
     <>
       <ScrollView
@@ -280,15 +429,56 @@ function AlertsTab() {
           </TouchableOpacity>
         </View>
 
+        {suppressed.length > 0 && (
+          <Text className="text-fog text-[11px] mb-3">
+            {suppressed.length} silenced — silencing mutes notifications but the underlying problem keeps evaluating.
+          </Text>
+        )}
+
+        <TextInput
+          className="bg-emboss border border-edge rounded-xl px-3 py-2.5 text-bone text-sm mb-2"
+          placeholder="Search name, instance, summary…"
+          placeholderTextColor={colors.fog}
+          value={query}
+          onChangeText={setQuery}
+        />
+        <View className="flex-row gap-1.5 mb-3">
+          {(["all", "critical", "warning", "other"] as const).map((s) => (
+            <TouchableOpacity
+              key={s}
+              onPress={() => setSevFilter(s)}
+              className={`px-2.5 py-1 rounded-full border ${sevFilter === s ? "border-ember" : "border-edge"}`}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: sevFilter === s }}
+            >
+              <Text className={`font-mono text-[11px] capitalize ${sevFilter === s ? "text-ember" : "text-fog"}`}>
+                {s}
+              </Text>
+            </TouchableOpacity>
+          ))}
+          <TouchableOpacity
+            onPress={() => setSortNewest((v) => !v)}
+            className="px-2.5 py-1 rounded-full border border-edge ml-auto"
+          >
+            <Text className="font-mono text-[11px] text-fog">{sortNewest ? "Newest" : "Severity"}</Text>
+          </TouchableOpacity>
+        </View>
+
         {alerts.length === 0 ? (
           <View className="items-center py-16">
             <CheckCircle size={36} color={colors.moss} />
             <Text className="text-fog text-sm mt-3">No active alerts.</Text>
           </View>
+        ) : visible.length === 0 ? (
+          <View className="items-center py-16">
+            <Text className="text-fog text-sm mt-3">No alerts match the current filter.</Text>
+          </View>
         ) : (
-          alerts.map((a) => (
-            <View
+          visible.map((a) => (
+            <TouchableOpacity
               key={a.fingerprint}
+              onPress={() => setDetail(a)}
+              activeOpacity={0.8}
               className="bg-panel border border-edge rounded-xl p-4 mb-3"
             >
               <View className="flex-row items-start justify-between gap-2">
@@ -330,10 +520,65 @@ function AlertsTab() {
               <Text className="text-fog text-[10px] font-mono mt-1">
                 Started {fmtDuration(a.startsAt)} ago
               </Text>
-            </View>
+            </TouchableOpacity>
           ))
         )}
       </ScrollView>
+
+      {/* Alert detail */}
+      <Modal visible={!!detail} transparent animationType="slide" onRequestClose={() => setDetail(null)}>
+        <View style={{ flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.5)" }}>
+          <View className="bg-panel border-t border-edge rounded-t-2xl p-5" style={{ maxHeight: "85%" }}>
+            <Text className="text-bone font-bold text-[17px] mb-1" numberOfLines={2}>
+              {detail?.labels.alertname ?? "Alert"}
+            </Text>
+            <Text className="font-mono text-[11px] uppercase mb-3" style={{ color: severityColor(detail?.labels.severity) }}>
+              {detail?.labels.severity ?? ""} · {detail?.status.state}
+            </Text>
+            <ScrollView>
+              {detail?.annotations.summary ? (
+                <Text className="text-bone text-sm mb-1">{detail.annotations.summary}</Text>
+              ) : null}
+              {detail?.annotations.description ? (
+                <Text className="text-fog text-sm mb-2">{detail.annotations.description}</Text>
+              ) : null}
+              <Text className="text-fog text-[11px] font-mono mb-2">
+                Started {detail ? new Date(detail.startsAt).toLocaleString() : ""}
+                {detail?.status.silencedBy?.length
+                  ? `\nSilenced by ${detail.status.silencedBy.length} silence(s) — notifications muted, evaluation continues`
+                  : ""}
+                {detail?.status.inhibitedBy?.length
+                  ? `\nInhibited by ${detail.status.inhibitedBy.length} rule(s)`
+                  : ""}
+              </Text>
+              <Text className="text-fog text-[10px] uppercase tracking-wider mb-1 mt-2">Labels</Text>
+              {Object.entries(detail?.labels ?? {}).map(([k, v]) => (
+                <View key={k} className="flex-row gap-2 py-0.5">
+                  <Text className="font-mono text-[11px] text-fog">{k}</Text>
+                  <Text className="font-mono text-[11px] text-bone flex-1" numberOfLines={1}>{v}</Text>
+                </View>
+              ))}
+            </ScrollView>
+            <View className="flex-row gap-3 mt-4">
+              <TouchableOpacity
+                onPress={() => setDetail(null)}
+                className="flex-1 py-3 rounded-xl border border-edge items-center"
+              >
+                <Text className="text-fog text-sm">Close</Text>
+              </TouchableOpacity>
+              {detail?.status.state === "active" && (
+                <TouchableOpacity
+                  onPress={() => { setSilencing(detail); setDetail(null); }}
+                  className="flex-1 py-3 rounded-xl items-center"
+                  style={{ backgroundColor: colors.ember }}
+                >
+                  <Text className="text-black font-semibold text-sm">Silence…</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* Silence modal */}
       <Modal visible={!!silencing} transparent animationType="slide" onRequestClose={() => setSilencing(null)}>

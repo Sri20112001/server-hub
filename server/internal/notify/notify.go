@@ -237,7 +237,52 @@ func cleanEmails(in []string) []string {
 	return out
 }
 
-// Never blocks the caller; never returns delivery errors (they go to app_logs).
+// Provider implements the delivery pipeline's sender interface with the
+// configured channels. It performs no policy decisions — the pipeline
+// gates everything; this only moves bytes via SMTP/Telegram at worker
+// time. Recipients resolve at send time (membership may change after
+// enqueue). The interface is satisfied structurally (no import of the
+// delivery package needed here): SendEmail(groupID, subject, text) and
+// SendTelegram(text).
+type Provider struct {
+	DB *database.DB
+}
+
+// SendEmail delivers to a notification group's current members.
+func (p Provider) SendEmail(groupID uint, subject, text string) error {
+	to := GroupMemberEmails(p.DB, groupID)
+	if len(to) == 0 {
+		// Fall back to the legacy single recipient so group-less legacy
+		// events still deliver.
+		m := settings(p.DB)
+		to = emailRecipients(p.DB, m)
+	}
+	if len(to) == 0 {
+		return fmt.Errorf("no valid recipients")
+	}
+	return SendEmailTo(p.DB, to, subject, text)
+}
+
+// SendTelegram delivers to the configured chat.
+func (p Provider) SendTelegram(text string) error {
+	return SendTelegramText(p.DB, text)
+}
+
+// legacySeverity maps legacy events to pipeline severities.
+func legacySeverity(event string) string {
+	switch event {
+	case EventThreshold:
+		return "WARNING"
+	default:
+		return "CRITICAL"
+	}
+}
+
+// Send routes a legacy event through the centralized delivery pipeline
+// (dedupe, cooldown, quiet hours, rate limits, retries). Channel toggles
+// are checked here so disabled installs enqueue nothing; everything else
+// is policy. Never blocks the caller; outcomes land in delivery_outbox
+// and app_logs, never in the return value.
 func Send(db *database.DB, event, title, body string) {
 	if db == nil || eventKey(event) == "" {
 		return
@@ -247,25 +292,31 @@ func Send(db *database.DB, event, title, body string) {
 		if !on(m, KeyEnabled) || !on(m, eventKey(event)) {
 			return
 		}
+		var channels []string
+		var groupID uint
+		if on(m, KeyTgEnabled) {
+			channels = append(channels, "TELEGRAM")
+		}
+		if on(m, KeySmtpEnabled) {
+			channels = append(channels, "EMAIL")
+			if gid, err := strconv.ParseInt(strings.TrimSpace(m[KeyEmailGroupID]), 10, 64); err == nil && gid > 0 {
+				groupID = uint(gid)
+			}
+		}
+		if len(channels) == 0 {
+			return
+		}
 		text := title
 		if strings.TrimSpace(body) != "" {
 			text += "\n" + truncate(body, 1500)
 		}
-		if on(m, KeyTgEnabled) {
-			if err := sendTelegram(m, text); err != nil {
-				applog.Warn(db.GDB, "system", "notify: telegram failed: "+err.Error())
-			}
+		outcome, err := DispatchSend(db, event, title, text, channels, groupID)
+		if err != nil {
+			applog.Warn(db.GDB, "system", "notify: dispatch failed: "+err.Error())
+			return
 		}
-		if on(m, KeySmtpEnabled) {
-			if err := sendEmail(db, m, title, text); err != nil {
-				applog.Warn(db.GDB, "system", "notify: email failed: "+err.Error())
-			} else {
-				// Success marker (recipient count only — never addresses):
-				// lets operators answer "did the alert go out?" from app_logs.
-				// Failures are logged above; per-recipient receipts are out of
-				// scope (see docs/api-notes.md).
-				applog.Info(db.GDB, "system", fmt.Sprintf("notify: email sent (%s, %d recipient(s))", event, len(emailRecipients(db, m))))
-			}
+		if outcome.Action == "suppressed" {
+			applog.Info(db.GDB, "system", fmt.Sprintf("notify: %s suppressed (%s)", event, outcome.Reason))
 		}
 	}()
 }
@@ -349,6 +400,20 @@ func SendEmailTo(db *database.DB, to []string, subject, text string) error {
 		return fmt.Errorf("email channel disabled")
 	}
 	return deliverEmail(m, cleanEmails(to), subject, text)
+}
+
+// SendTelegramText delivers text to the configured chat (delivery worker
+// path). Channel switches still apply; errors are returned to the caller
+// for retry/circuit-breaker bookkeeping.
+func SendTelegramText(db *database.DB, text string) error {
+	m := settings(db)
+	if !on(m, KeyEnabled) {
+		return fmt.Errorf("notifications disabled")
+	}
+	if !on(m, KeyTgEnabled) {
+		return fmt.Errorf("telegram channel disabled")
+	}
+	return sendTelegram(m, text)
 }
 
 // GroupMemberEmails returns up to MaxGroupMembers addresses for a group,

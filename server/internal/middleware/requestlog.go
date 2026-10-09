@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -9,16 +10,28 @@ import (
 	"serverhub/internal/applog"
 )
 
+// skipRequestLog reports whether path must not produce a per-hit app_logs
+// row: health probes, the SSE event stream, and single-use exec capability
+// URLs. Exec tokens are secrets in the URL path; persisting them would leak
+// live session credentials to every viewer able to read /api/logs.
+func skipRequestLog(path string) bool {
+	if path == "/health" || path == "/health/live" || path == "/health/ready" ||
+		path == "/server-hub/api/events" {
+		return true
+	}
+	return strings.HasPrefix(path, "/server-hub/api/exec/")
+}
+
 // RequestLog persists one app_logs row per HTTP request (source=api) into
-// the append-only central log store. Liveness probes (/health) and
-// long-lived SSE streams (/server-hub/api/events) are intentionally not
-// stored per-hit (they would flood the immutable store); their state
-// transitions remain fully logged via audit -> app_logs mirroring.
+// the append-only central log store. Health probes (/health, /health/live,
+// /health/ready) and long-lived SSE streams (/server-hub/api/events) are
+// intentionally not stored per-hit (they would flood the immutable store);
+// their state transitions remain fully logged via audit -> app_logs mirroring.
 func RequestLog(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()
 		path := c.Request.URL.Path
-		if path == "/health" || path == "/server-hub/api/events" {
+		if skipRequestLog(path) {
 			c.Next()
 			return
 		}

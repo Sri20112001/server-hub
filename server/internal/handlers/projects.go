@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"database/sql"
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -9,12 +10,36 @@ import (
 
 	"serverhub/internal/audit"
 	"serverhub/internal/database"
+	"serverhub/internal/deploypath"
 	"serverhub/internal/middleware"
 	"serverhub/internal/models"
+	"serverhub/internal/safehttp"
 )
 
 type ProjectHandler struct {
 	DB *database.DB
+	// DeployRoots bounds deployment_path (see deploypath). Nil/empty =
+	// unconfigured (legacy mode, absolute-path rule only).
+	DeployRoots []string
+}
+
+// validateDeployConfig enforces execution-time safety at save time:
+// contained deployment_path, bare compose filename, well-formed health URL.
+func (h *ProjectHandler) validateDeployConfig(deployPath, composeFile, healthURL string) error {
+	if _, err := deploypath.ValidateWrite(deployPath, h.DeployRoots); err != nil {
+		return err
+	}
+	if composeFile != "" {
+		if err := deploypath.ValidateComposeFile(composeFile); err != nil {
+			return err
+		}
+	}
+	if healthURL != "" {
+		if err := safehttp.ValidateURL(healthURL); err != nil {
+			return fmt.Errorf("health_url: %v", err)
+		}
+	}
+	return nil
 }
 
 func scanProject(row interface {
@@ -69,6 +94,10 @@ func (h *ProjectHandler) Create(c *gin.Context) {
 	if p.ComposeFile == "" {
 		p.ComposeFile = "docker-compose.yml"
 	}
+	if err := h.validateDeployConfig(p.DeploymentPath, p.ComposeFile, p.HealthURL); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
 	id, err := h.DB.InsertID(`INSERT INTO projects (name,description,repository,branch,environment,deployment_path,compose_file,gateway_prefix,health_url,status,auto_deploy)
 		VALUES (?,?,?,?,?,?,?,?,?,'unknown',?)`,
 		p.Name, p.Description, p.Repository, p.Branch, p.Environment, p.DeploymentPath, p.ComposeFile, p.GatewayPrefix, p.HealthURL, p.AutoDeploy)
@@ -108,6 +137,10 @@ func (h *ProjectHandler) Update(c *gin.Context) {
 	var p models.Project
 	if err := c.ShouldBindJSON(&p); err != nil || p.Name == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "name is required"})
+		return
+	}
+	if err := h.validateDeployConfig(p.DeploymentPath, p.ComposeFile, p.HealthURL); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 	_, err = h.DB.Exec(`UPDATE projects SET name=?,description=?,repository=?,branch=?,environment=?,deployment_path=?,compose_file=?,gateway_prefix=?,health_url=?,auto_deploy=?,updated_at=CURRENT_TIMESTAMP WHERE id=?`,

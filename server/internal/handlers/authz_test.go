@@ -59,6 +59,15 @@ func testSetupSecure(t *testing.T) (*database.DB, *config.Config, *gin.Engine) {
 	ctrH := &ContainerHandler{DB: db, Docker: dockerx.New()}
 	operator.POST("/containers/:id/start", ctrH.Start)
 	admin.POST("/containers/:id/stop", ctrH.Stop)
+	execH := &ExecHandler{DB: db, Docker: dockerx.New(), Broker: nil}
+	admin.POST("/containers/:id/exec", execH.Create)
+	depH := &DeploymentHandler{DB: db, Broker: nil}
+	operator.POST("/projects/:id/deploy", depH.Deploy)
+	operator.POST("/projects/:id/services", (&ServiceHandler{DB: db}).Create)
+	backH := &BackupsHandler{DB: db, Broker: nil}
+	admin.POST("/backups/:id/restore", backH.Restore)
+	secH := &SecretHandler{DB: db, Cfg: cfg}
+	admin.POST("/secrets/:id/reveal", secH.Reveal)
 	usrH := &UserHandler{DB: db}
 	admin.GET("/users", usrH.List)
 	admin.POST("/users", usrH.Create)
@@ -149,6 +158,62 @@ func TestRBACMatrix(t *testing.T) {
 	}
 }
 
+// TestPrivilegedMatrix exercises every destructive/privileged route as
+// anon, viewer, operator and admin. Docker-dependent handlers run without
+// a daemon here: viewer/operator must be stopped by middleware (403)
+// before any handler logic, while admin must reach the handler (4xx/5xx
+// from the handler itself proves authorization passed).
+func TestPrivilegedMatrix(t *testing.T) {
+	_, _, r := testSetupSecure(t)
+	adminC := loginAs(t, r, "admin", "testpass123")
+	opC := loginAs(t, r, "op", "testpass123")
+	viewC := loginAs(t, r, "view", "testpass123")
+
+	type tc struct {
+		method, path string
+		body         interface{}
+		anon, viewer int
+		operator     int
+		admin        int
+	}
+	cases := []tc{
+		// exec mint (admin-only; no confirm → 400 proves admin got through)
+		{"POST", "/api/containers/abc/exec", nil,
+			http.StatusUnauthorized, http.StatusForbidden, http.StatusForbidden, http.StatusBadRequest},
+		// container stop (admin-only, confirm-gated; no daemon → 503
+		// from the handler proves admin passed authorization)
+		{"POST", "/api/containers/abc/stop?confirm=true", nil,
+			http.StatusUnauthorized, http.StatusForbidden, http.StatusForbidden, http.StatusServiceUnavailable},
+		// restore (admin-only since hardening; missing row → 404 for admin)
+		{"POST", "/api/backups/999999/restore?confirm=true", nil,
+			http.StatusUnauthorized, http.StatusForbidden, http.StatusForbidden, http.StatusNotFound},
+		// secret reveal (admin-only; missing row → 404 for admin)
+		{"POST", "/api/secrets/999999/reveal", nil,
+			http.StatusUnauthorized, http.StatusForbidden, http.StatusForbidden, http.StatusNotFound},
+		// deploy (operator+; missing project → 404 past authz)
+		{"POST", "/api/projects/999999/deploy", map[string]string{},
+			http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound, http.StatusNotFound},
+		// service create with bad health_url (operator+; 400 validation)
+		{"POST", "/api/projects/1/services",
+			map[string]string{"name": "s", "type": "other", "healthUrl": "ftp://x/y"},
+			http.StatusUnauthorized, http.StatusForbidden, http.StatusBadRequest, http.StatusBadRequest},
+	}
+	for _, c := range cases {
+		if w := doReq(t, r, c.method, c.path, c.body, nil); w.Code != c.anon {
+			t.Fatalf("%s %s anon: want %d, got %d", c.method, c.path, c.anon, w.Code)
+		}
+		if w := doReq(t, r, c.method, c.path, c.body, viewC); w.Code != c.viewer {
+			t.Fatalf("%s %s viewer: want %d, got %d", c.method, c.path, c.viewer, w.Code)
+		}
+		if w := doReq(t, r, c.method, c.path, c.body, opC); w.Code != c.operator {
+			t.Fatalf("%s %s operator: want %d, got %d %s", c.method, c.path, c.operator, w.Code, w.Body.String())
+		}
+		if w := doReq(t, r, c.method, c.path, c.body, adminC); w.Code != c.admin {
+			t.Fatalf("%s %s admin: want %d, got %d %s", c.method, c.path, c.admin, w.Code, w.Body.String())
+		}
+	}
+}
+
 func TestUserManagementGuards(t *testing.T) {
 	_, _, r := testSetupSecure(t)
 	adminC := loginAs(t, r, "admin", "testpass123")
@@ -224,7 +289,7 @@ func TestLoginRateLimit(t *testing.T) {
 }
 
 func TestRefreshRotationAndReuse(t *testing.T) {
-	_, _, r := testSetupSecure(t)
+	db, _, r := testSetupSecure(t)
 	cookies := loginAs(t, r, "admin", "testpass123")
 	r1 := cookieByName(cookies, "serverhub_refresh")
 	if r1 == nil || r1.Value == "" {
@@ -244,12 +309,41 @@ func TestRefreshRotationAndReuse(t *testing.T) {
 		t.Fatal("refresh did not rotate the refresh cookie")
 	}
 
-	// reuse of the old token → theft response: 401 + all sessions dead
+	// reuse of the old token → theft response: 401 + sessions revoked.
+	// Revocation spares tokens minted in the last 30s (race leeway), so
+	// backdate r2 to prove older sessions die while fresh ones survive.
 	if w := doReq(t, r, "POST", "/api/auth/refresh", nil, []*http.Cookie{r1}); w.Code != http.StatusUnauthorized {
 		t.Fatalf("reuse: want 401, got %d", w.Code)
 	}
-	if w := doReq(t, r, "POST", "/api/auth/refresh", nil, []*http.Cookie{r2}); w.Code != http.StatusUnauthorized {
-		t.Fatalf("post-theft refresh: want 401, got %d", w.Code)
+	w2 := doReq(t, r, "POST", "/api/auth/refresh", nil, []*http.Cookie{r2})
+	if w2.Code != http.StatusOK {
+		t.Fatalf("fresh post-reuse refresh: want 200 (race leeway), got %d", w2.Code)
+	}
+	// An OLD session does not survive reuse: backdate r2 past the 30s
+	// race leeway, rotate once more, then reuse the pre-rotation token.
+	r2fresh := cookieByName(w2.Result().Cookies(), "serverhub_refresh")
+	if r2fresh == nil || r2fresh.Value == "" {
+		t.Fatal("rotation issued no replacement refresh cookie")
+	}
+	if _, err := db.Exec(`UPDATE refresh_tokens SET created_at = CURRENT_TIMESTAMP - INTERVAL '1 hour' WHERE token_hash=?`,
+		hashRefresh(r2fresh.Value)); err != nil {
+		t.Fatalf("backdate: %v", err)
+	}
+	w2 = doReq(t, r, "POST", "/api/auth/refresh", nil, []*http.Cookie{r2fresh})
+	if w2.Code != http.StatusOK {
+		t.Fatalf("rotate backdated token: %d %s", w2.Code, w2.Body.String())
+	}
+	r3 := cookieByName(w2.Result().Cookies(), "serverhub_refresh")
+	// Age r3 past the leeway too, then reuse must kill it.
+	if _, err := db.Exec(`UPDATE refresh_tokens SET created_at = CURRENT_TIMESTAMP - INTERVAL '1 hour' WHERE token_hash=?`,
+		hashRefresh(r3.Value)); err != nil {
+		t.Fatalf("backdate r3: %v", err)
+	}
+	if w := doReq(t, r, "POST", "/api/auth/refresh", nil, []*http.Cookie{r2fresh}); w.Code != http.StatusUnauthorized {
+		t.Fatalf("reuse of backdated token: want 401, got %d", w.Code)
+	}
+	if w := doReq(t, r, "POST", "/api/auth/refresh", nil, []*http.Cookie{r3}); w.Code != http.StatusUnauthorized {
+		t.Fatalf("old post-reuse refresh: want 401, got %d", w.Code)
 	}
 
 	// mobile-style body refresh works too

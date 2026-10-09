@@ -16,16 +16,32 @@ import (
 
 	"serverhub/internal/audit"
 	"serverhub/internal/database"
+	"serverhub/internal/deploypath"
 	"serverhub/internal/events"
 	"serverhub/internal/middleware"
 	"serverhub/internal/models"
 	"serverhub/internal/notify"
 	"serverhub/internal/ops"
+	"serverhub/internal/safehttp"
 )
 
 type DeploymentHandler struct {
 	DB     *database.DB
 	Broker *events.Broker
+	// DeployRoots bounds deployment_path (see deploypath).
+	DeployRoots []string
+	// StrictEgress applies strict SSRF policy to deploy health polling.
+	StrictEgress bool
+}
+
+// ExecPolicy bundles the trust-boundary inputs for compose execution.
+type ExecPolicy struct {
+	Roots        []string
+	StrictEgress bool
+}
+
+func (h *DeploymentHandler) policy() ExecPolicy {
+	return ExecPolicy{Roots: h.DeployRoots, StrictEgress: h.StrictEgress}
 }
 
 var deployStages = []string{"Pull images", "Start services", "Health check"}
@@ -185,7 +201,7 @@ func (h *DeploymentHandler) Deploy(c *gin.Context) {
 }
 
 func (h *DeploymentHandler) runDeploy(opID string, deployID, projectID int64, projectName, deployPath, composeFile, actor, commit, healthURL string) {
-	executeDeploy(h.DB, h.Broker, opID, deployID, projectID, projectName, deployPath, composeFile, actor, commit, healthURL)
+	executeDeploy(h.DB, h.Broker, h.policy(), opID, deployID, projectID, projectName, deployPath, composeFile, actor, commit, healthURL)
 }
 
 // Rollback re-runs `docker compose up` for a previous deployment record:
@@ -229,24 +245,49 @@ func (h *DeploymentHandler) Rollback(c *gin.Context) {
 
 	var d models.Deployment
 	scanDeploymentRow(h.DB.QueryRow(`SELECT id,project_id,commit_sha,branch,trigger,status,started_at,completed_at,duration_sec,logs FROM deployments WHERE id=?`, newID), &d)
-	c.JSON(http.StatusAccepted, gin.H{"deployment": d, "operationId": op.ID})
+	// Honest semantics: this re-runs `compose up` against the project's
+	// CURRENT files — it does not check out the recorded commit. The note
+	// keeps the API honest without renaming the endpoint.
+	c.JSON(http.StatusAccepted, gin.H{"deployment": d, "operationId": op.ID,
+		"note": "rollback reapplies the project's current compose files (redeploy); it does not check out the recorded commit"})
 }
 
-// validateDeployInputs checks that deployPath is an absolute path and
-// composeFile is a safe bare filename (no path separators, no leading dashes).
+// validateDeployInputs is kept for backward compatibility and delegates
+// to the deploypath package (containment-aware).
 func validateDeployInputs(deployPath, composeFile string) error {
-	if !filepath.IsAbs(deployPath) {
-		return fmt.Errorf("deployment_path must be an absolute path")
+	if _, err := deploypath.ValidateWrite(deployPath, nil); err != nil {
+		return err
 	}
-	if filepath.Base(composeFile) != composeFile || strings.HasPrefix(composeFile, "-") {
-		return fmt.Errorf("compose_file must be a plain filename with no path separators or leading dashes")
+	return deploypath.ValidateComposeFile(composeFile)
+}
+
+// warnComposeRefs surfaces compose-file references resolving outside the
+// deployment roots into the deploy log + audit trail. See deploypath for
+// why this warns instead of failing.
+func warnComposeRefs(db *database.DB, buf *bytes.Buffer, actor string, deployID, projectID int64, composePath string, roots []string) {
+	refs, err := deploypath.CheckComposeRefs(composePath, roots)
+	if err != nil {
+		fmt.Fprintf(buf, "compose scan: %v\n", err)
+		return
 	}
-	return nil
+	if len(refs) == 0 {
+		return
+	}
+	fmt.Fprintf(buf, "compose references outside deployment roots (review):\n")
+	detail := make([]string, 0, len(refs))
+	for _, r := range refs {
+		fmt.Fprintf(buf, "  - %s: %s\n", r.Field, r.Value)
+		detail = append(detail, r.Field+"="+r.Value)
+	}
+	audit.Write(db, actor, "deploy-refs", "deployment", strconv.FormatInt(deployID, 10), "warn",
+		"project="+strconv.FormatInt(projectID, 10)+" "+strings.Join(detail, " "))
 }
 
 // executeDeploy runs the staged pipeline (pull → up → health check),
 // updating the operation stages and broadcasting events throughout.
-func executeDeploy(db *database.DB, broker *events.Broker, opID string, deployID, projectID int64, projectName, deployPath, composeFile, actor, commit, healthURL string) {
+// deployPath is resolved (symlinks + root containment) before ANY command
+// runs, so a path planted or swapped after project save cannot escape.
+func executeDeploy(db *database.DB, broker *events.Broker, policy ExecPolicy, opID string, deployID, projectID int64, projectName, deployPath, composeFile, actor, commit, healthURL string) {
 	start := time.Now()
 	emit := func(t string, data interface{}) {
 		if broker != nil {
@@ -271,21 +312,33 @@ func executeDeploy(db *database.DB, broker *events.Broker, opID string, deployID
 	_ = ops.Start(db, opID)
 	emit("deployment.started", base)
 
-	if deployPath == "" {
-		fail("No deployment_path configured for this project. Set it in project settings.")
-		return
-	}
-	if err := validateDeployInputs(deployPath, composeFile); err != nil {
+	resolvedPath, err := deploypath.ResolveExec(deployPath, policy.Roots)
+	if err != nil {
 		fail(err.Error())
 		return
 	}
+	if err := deploypath.ValidateComposeFile(composeFile); err != nil {
+		fail(err.Error())
+		return
+	}
+	if healthURL != "" {
+		if err := safehttp.ValidateURL(healthURL); err != nil {
+			fail(fmt.Sprintf("health_url: %v", err))
+			return
+		}
+	}
+	deployPath = resolvedPath
 	composePath := filepath.Join(deployPath, composeFile)
 	if _, err := os.Stat(composePath); err != nil {
 		fail(fmt.Sprintf("Compose file not found: %s", composePath))
 		return
 	}
-
 	var buf bytes.Buffer
+	// Indirect references (include/env_file/bind mounts outside the roots)
+	// are legitimate in real stacks (e.g. docker.sock), so they warn
+	// instead of failing — but they are always surfaced for review.
+	warnComposeRefs(db, &buf, actor, deployID, projectID, composePath, policy.Roots)
+
 	run := func(name string, args ...string) error {
 		cmd := exec.Command(name, args...)
 		cmd.Dir = deployPath
@@ -317,8 +370,11 @@ func executeDeploy(db *database.DB, broker *events.Broker, opID string, deployID
 	_ = ops.SetStage(db, opID, 2, false, "")
 	if healthURL != "" {
 		fmt.Fprintf(&buf, "health check: polling %s for 200 (30s budget)\n", healthURL)
-		if !pollHealthy(healthURL, 30*time.Second) {
+		if ok, reason := safehttp.Get(healthURL, 5*time.Second, 30*time.Second, policy.StrictEgress); !ok {
 			_ = ops.SetStage(db, opID, 2, true, "")
+			if reason != "" {
+				fmt.Fprintf(&buf, "health check: %s\n", reason)
+			}
 			fail(buf.String() + "\nhealth check failed: endpoint did not return 2xx in time")
 			return
 		}
@@ -334,19 +390,4 @@ func executeDeploy(db *database.DB, broker *events.Broker, opID string, deployID
 	emit("deployment.completed", base)
 }
 
-func pollHealthy(url string, budget time.Duration) bool {
-	client := &http.Client{Timeout: 5 * time.Second}
-	deadline := time.Now().Add(budget)
-	for time.Now().Before(deadline) {
-		resp, err := client.Get(url)
-		if err == nil {
-			code := resp.StatusCode
-			resp.Body.Close()
-			if code >= 200 && code < 300 {
-				return true
-			}
-		}
-		time.Sleep(2 * time.Second)
-	}
-	return false
-}
+

@@ -2,11 +2,8 @@ package handlers
 
 import (
 	"database/sql"
-	"fmt"
 	"io"
-	"net"
 	"net/http"
-	"net/url"
 	"strconv"
 	"time"
 
@@ -16,6 +13,7 @@ import (
 	"serverhub/internal/database"
 	"serverhub/internal/dockerx"
 	"serverhub/internal/models"
+	"serverhub/internal/safehttp"
 	"serverhub/internal/serverinfo"
 )
 
@@ -25,31 +23,9 @@ type SystemHandler struct {
 	Cfg    *config.Config
 }
 
-// isSafeHealthURL returns an error if the URL targets a private/loopback
-// address (SSRF guard). Only http/https are allowed.
-func isSafeHealthURL(raw string) error {
-	u, err := url.Parse(raw)
-	if err != nil {
-		return fmt.Errorf("invalid URL")
-	}
-	if u.Scheme != "http" && u.Scheme != "https" {
-		return fmt.Errorf("only http/https URLs are allowed")
-	}
-	hostname := u.Hostname()
-	addrs, err := net.LookupHost(hostname)
-	if err != nil {
-		return nil // allow — DNS failure is not a security issue here
-	}
-	for _, addr := range addrs {
-		ip := net.ParseIP(addr)
-		if ip == nil {
-			continue
-		}
-		if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() {
-			return fmt.Errorf("health URL must not target a private or loopback address")
-		}
-	}
-	return nil
+// strictEgress reports whether strict SSRF policy applies (nil-safe).
+func (h *SystemHandler) strictEgress() bool {
+	return h != nil && h.Cfg != nil && h.Cfg.EgressStrict
 }
 
 // GET /api/health — overall rollup for the dashboard.
@@ -125,11 +101,14 @@ func (h *SystemHandler) ProjectHealth(c *gin.Context) {
 	var rtMs *int64
 	var lastCheck string
 	if healthURL != "" {
-		if err := isSafeHealthURL(healthURL); err != nil {
+		// Same SSRF policy as every other server-side fetch of this URL
+		// (deploy polling, monitor loop): scheme validated, metadata IP
+		// denied, redirects refused, body capped.
+		if err := safehttp.ValidateURL(healthURL); err != nil {
 			live = "UNKNOWN"
 		} else {
 			start := time.Now()
-			client := &http.Client{Timeout: 8 * time.Second}
+			client := safehttp.Client(8*time.Second, h.strictEgress())
 			resp, err := client.Get(healthURL)
 			ms := time.Since(start).Milliseconds()
 			rtMs = &ms
@@ -137,9 +116,8 @@ func (h *SystemHandler) ProjectHealth(c *gin.Context) {
 			if err != nil {
 				live = "DOWN"
 			} else {
-				body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+				_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, safehttp.MaxBodyBytes))
 				resp.Body.Close()
-				_ = body
 				switch {
 				case resp.StatusCode >= 200 && resp.StatusCode < 300:
 					live = "HEALTHY"

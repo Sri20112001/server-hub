@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -22,7 +23,8 @@ type NotificationGroupsHandler struct {
 
 func (h *NotificationGroupsHandler) List(c *gin.Context) {
 	rows, err := h.DB.Query(`
-		SELECT g.id, g.name, g.description, g.created_at, g.updated_at,
+		SELECT g.id, g.name, g.description, g.quiet_start, g.quiet_end,
+		       g.quiet_tz, g.quiet_allow_critical, g.created_at, g.updated_at,
 		       COUNT(m.id) AS members
 		FROM notification_groups g
 		LEFT JOIN notification_group_members m ON m.group_id = g.id
@@ -35,12 +37,16 @@ func (h *NotificationGroupsHandler) List(c *gin.Context) {
 	out := []gin.H{}
 	for rows.Next() {
 		var id uint
-		var name, desc string
+		var name, desc, qs, qe, qtz string
+		var qallow bool
 		var createdAt, updatedAt time.Time
 		var members int
-		if err := rows.Scan(&id, &name, &desc, &createdAt, &updatedAt, &members); err == nil {
+		if err := rows.Scan(&id, &name, &desc, &qs, &qe, &qtz, &qallow,
+			&createdAt, &updatedAt, &members); err == nil {
 			out = append(out, gin.H{
 				"id": id, "name": name, "description": desc,
+				"quietStart": qs, "quietEnd": qe, "quietTZ": qtz,
+				"quietAllowCritical": qallow,
 				"memberCount": members, "createdAt": createdAt, "updatedAt": updatedAt,
 			})
 		}
@@ -55,19 +61,50 @@ func (h *NotificationGroupsHandler) Get(c *gin.Context) {
 		return
 	}
 	var gid uint
-	var name, desc string
+	var name, desc, qs, qe, qtz string
+	var qallow bool
 	var createdAt, updatedAt time.Time
 	if err := h.DB.QueryRow(`
-		SELECT id, name, description, created_at, updated_at
-		FROM notification_groups WHERE id=$1`, id).Scan(&gid, &name, &desc, &createdAt, &updatedAt); err != nil {
+		SELECT id, name, description, quiet_start, quiet_end, quiet_tz,
+		       quiet_allow_critical, created_at, updated_at
+		FROM notification_groups WHERE id=$1`, id).Scan(
+		&gid, &name, &desc, &qs, &qe, &qtz, &qallow, &createdAt, &updatedAt); err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "group not found"})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{
 		"id": gid, "name": name, "description": desc,
+		"quietStart": qs, "quietEnd": qe, "quietTZ": qtz,
+		"quietAllowCritical": qallow,
 		"members": h.listMembers(id),
 		"createdAt": createdAt, "updatedAt": updatedAt,
 	})
+}
+
+// validateQuiet checks HH:MM pairs and a loadable IANA timezone.
+// Both empty disables quiet hours.
+func validateQuiet(start, end, tz string) error {
+	if strings.TrimSpace(start) == "" && strings.TrimSpace(end) == "" {
+		return nil
+	}
+	for _, v := range []string{start, end} {
+		parts := strings.Split(strings.TrimSpace(v), ":")
+		if len(parts) != 2 {
+			return fmt.Errorf("quiet hours must be HH:MM")
+		}
+		h, err1 := strconv.Atoi(parts[0])
+		m, err2 := strconv.Atoi(parts[1])
+		if err1 != nil || err2 != nil || h < 0 || h > 23 || m < 0 || m > 59 {
+			return fmt.Errorf("quiet hours must be HH:MM")
+		}
+	}
+	if strings.TrimSpace(tz) == "" {
+		return fmt.Errorf("quiet timezone is required with quiet hours")
+	}
+	if _, err := time.LoadLocation(strings.TrimSpace(tz)); err != nil {
+		return fmt.Errorf("unknown timezone %q", tz)
+	}
+	return nil
 }
 
 func (h *NotificationGroupsHandler) listMembers(groupID int64) []gin.H {
@@ -92,8 +129,12 @@ func (h *NotificationGroupsHandler) listMembers(groupID int64) []gin.H {
 
 func (h *NotificationGroupsHandler) Create(c *gin.Context) {
 	var body struct {
-		Name        string `json:"name"`
-		Description string `json:"description"`
+		Name               string `json:"name"`
+		Description        string `json:"description"`
+		QuietStart         string `json:"quietStart"`
+		QuietEnd           string `json:"quietEnd"`
+		QuietTZ            string `json:"quietTZ"`
+		QuietAllowCritical *bool  `json:"quietAllowCritical"`
 	}
 	if err := c.ShouldBindJSON(&body); err != nil || strings.TrimSpace(body.Name) == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "name is required"})
@@ -103,10 +144,24 @@ func (h *NotificationGroupsHandler) Create(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "name (max 100) or description (max 500) too long"})
 		return
 	}
+	qtz := strings.TrimSpace(body.QuietTZ)
+	if qtz == "" {
+		qtz = "UTC"
+	}
+	if err := validateQuiet(body.QuietStart, body.QuietEnd, qtz); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	qallow := true
+	if body.QuietAllowCritical != nil {
+		qallow = *body.QuietAllowCritical
+	}
 	id, err := h.DB.InsertID(`
-		INSERT INTO notification_groups (name,description,created_at,updated_at)
-		VALUES ($1,$2,NOW(),NOW())`,
-		strings.TrimSpace(body.Name), strings.TrimSpace(body.Description))
+		INSERT INTO notification_groups
+		  (name,description,quiet_start,quiet_end,quiet_tz,quiet_allow_critical,created_at,updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,NOW(),NOW())`,
+		strings.TrimSpace(body.Name), strings.TrimSpace(body.Description),
+		strings.TrimSpace(body.QuietStart), strings.TrimSpace(body.QuietEnd), qtz, qallow)
 	if err != nil {
 		if strings.Contains(err.Error(), "duplicate") || strings.Contains(err.Error(), "unique") {
 			c.JSON(http.StatusConflict, gin.H{"error": "group name already exists"})
@@ -127,8 +182,13 @@ func (h *NotificationGroupsHandler) Update(c *gin.Context) {
 		return
 	}
 	var body struct {
-		Name        *string `json:"name"`
-		Description *string `json:"description"`
+		Name               *string `json:"name"`
+		Description        *string `json:"description"`
+		QuietStart         *string `json:"quietStart"`
+		QuietEnd           *string `json:"quietEnd"`
+		QuietTZ            *string `json:"quietTZ"`
+		QuietAllowCritical *bool   `json:"quietAllowCritical"`
+		ClearQuiet         *bool   `json:"clearQuiet"`
 	}
 	if err := c.ShouldBindJSON(&body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
@@ -142,13 +202,40 @@ func (h *NotificationGroupsHandler) Update(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "name (max 100) or description (max 500) too long"})
 		return
 	}
+	// Merge quiet-hours patch over the stored row for validation.
+	var curQS, curQE, curTZ string
+	_ = h.DB.QueryRow(`SELECT quiet_start, quiet_end, quiet_tz FROM notification_groups WHERE id=$1`, id).
+		Scan(&curQS, &curQE, &curTZ)
+	qs, qe, qtz := curQS, curQE, curTZ
+	if body.QuietStart != nil {
+		qs = strings.TrimSpace(*body.QuietStart)
+	}
+	if body.QuietEnd != nil {
+		qe = strings.TrimSpace(*body.QuietEnd)
+	}
+	if body.QuietTZ != nil && strings.TrimSpace(*body.QuietTZ) != "" {
+		qtz = strings.TrimSpace(*body.QuietTZ)
+	}
+	if body.ClearQuiet != nil && *body.ClearQuiet {
+		qs, qe = "", ""
+	}
+	if err := validateQuiet(qs, qe, qtz); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	var qallow any
+	if body.QuietAllowCritical != nil {
+		qallow = *body.QuietAllowCritical
+	}
 	res, err := h.DB.Exec(`
 		UPDATE notification_groups SET
 		  name=COALESCE($1,name),
 		  description=COALESCE($2,description),
+		  quiet_start=$3, quiet_end=$4, quiet_tz=$5,
+		  quiet_allow_critical=COALESCE($6,quiet_allow_critical),
 		  updated_at=NOW()
-		WHERE id=$3`,
-		nullableStr(body.Name), nullableStr(body.Description), id)
+		WHERE id=$7`,
+		nullableStr(body.Name), nullableStr(body.Description), qs, qe, qtz, qallow, id)
 	if err != nil {
 		if strings.Contains(err.Error(), "duplicate") || strings.Contains(err.Error(), "unique") {
 			c.JSON(http.StatusConflict, gin.H{"error": "group name already exists"})

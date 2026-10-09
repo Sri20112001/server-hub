@@ -17,6 +17,8 @@ import (
 type Sender interface {
 	// SendEmail delivers subject/text to every member of groupID.
 	SendEmail(groupID uint, subject, text string) error
+	// SendTelegram delivers text to the configured chat.
+	SendTelegram(text string) error
 	// SendInApp files an in-app notification for every user.
 	SendInApp(serverID *uint, alertID *int64, title, body string) error
 }
@@ -34,6 +36,34 @@ func (s *NotifySender) SendEmail(groupID uint, subject, text string) error {
 	return notify.SendEmailTo(s.DB, to, subject, text)
 }
 
+func (s *NotifySender) SendTelegram(text string) error {
+	return notify.SendTelegramText(s.DB, text)
+}
+
+// DeliveryRequest is what the engine hands to the centralized delivery
+// pipeline for EMAIL/TELEGRAM channels. IN_APP stays direct via Sender.
+type DeliveryRequest struct {
+	RuleID            uint
+	GroupID           uint
+	ServerID          *uint
+	Key               string // stable incident identity
+	Fingerprint       string
+	Severity          string
+	Title             string
+	Body              string
+	Channels          []string
+	Labels            map[string]string
+	Resource          string
+	IsRecovery        bool
+	CooldownSec       int
+	RepeatSec         int
+	MaxRepeats        int
+	NotifyRecovery    bool
+	DigestMode        string
+	DigestIntervalMin int
+	GroupBy           []string
+}
+
 func (s *NotifySender) SendInApp(serverID *uint, alertID *int64, title, body string) error {
 	notify.NotifyUsers(s.DB, serverID, alertID, title, body, "alert")
 	return nil
@@ -47,6 +77,11 @@ type Engine struct {
 	Enabled bool
 	// Now is overridden in tests; defaults to time.Now().UTC.
 	Now func() time.Time
+	// Deliver routes EMAIL/TELEGRAM through the centralized delivery
+	// pipeline and returns the pipeline outcome action
+	// (notified|queued|digested|suppressed). Nil keeps the legacy
+	// direct-send behavior (used by unit tests without a pipeline).
+	Deliver func(req DeliveryRequest) (string, error)
 }
 
 func (e *Engine) now() time.Time {
@@ -67,6 +102,11 @@ type ruleRow struct {
 	Channels            []string
 	CooldownSeconds     int
 	NotifyOnRecovery    bool
+	RepeatIntervalSec   int
+	MaxRepeats          int
+	DigestMode          string
+	DigestIntervalMin   int
+	GroupBy             []string
 }
 
 // Evaluate processes one event against all enabled rules for its type.
@@ -119,7 +159,8 @@ func (e *Engine) loadRules(eventType string) ([]ruleRow, error) {
 	}
 	rows, err := e.DB.Query(`
 		SELECT id,name,event_type,severity,condition_json,notification_group_id,
-		       channels,cooldown_seconds,notify_on_recovery
+		       channels,cooldown_seconds,notify_on_recovery,
+		       repeat_interval_sec,max_repeats,digest_mode,digest_interval_min,group_by
 		FROM notification_rules
 		WHERE enabled=true AND event_type IN ($1,$2)
 		  AND (event_type <> $3 OR notify_on_recovery=true)
@@ -133,9 +174,11 @@ func (e *Engine) loadRules(eventType string) ([]ruleRow, error) {
 		var r ruleRow
 		var sev, cond, ch string
 		var gid uint
-		var cd int
+		var cd, ri, mr, dim int
 		var rec bool
-		if err := rows.Scan(&r.ID, &r.Name, &r.EventType, &sev, &cond, &gid, &ch, &cd, &rec); err != nil {
+		var dm, gb string
+		if err := rows.Scan(&r.ID, &r.Name, &r.EventType, &sev, &cond, &gid, &ch, &cd, &rec,
+			&ri, &mr, &dm, &dim, &gb); err != nil {
 			continue
 		}
 		r.Severity = sev
@@ -144,9 +187,25 @@ func (e *Engine) loadRules(eventType string) ([]ruleRow, error) {
 		r.Channels = parseChannels(ch)
 		r.CooldownSeconds = cd
 		r.NotifyOnRecovery = rec
+		r.RepeatIntervalSec = ri
+		r.MaxRepeats = mr
+		r.DigestMode = dm
+		r.DigestIntervalMin = dim
+		r.GroupBy = splitCSV(gb)
 		out = append(out, r)
 	}
 	return out, rows.Err()
+}
+
+// splitCSV splits a stored comma list, trimming blanks.
+func splitCSV(raw string) []string {
+	var out []string
+	for _, p := range strings.Split(raw, ",") {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 // parseChannels splits a stored channel list, keeping supported values only.
@@ -209,18 +268,57 @@ func (e *Engine) evaluateRule(r ruleRow, ev Event) error {
 		title = ev.Message
 	}
 	body := ev.Message
+	var external []string
 	for _, ch := range r.Channels {
-		var derr error
 		switch ch {
-		case "EMAIL":
-			derr = e.Sender.SendEmail(r.NotificationGroupID, title, body)
+		case "EMAIL", "TELEGRAM":
+			external = append(external, ch)
 		case "IN_APP":
-			derr = e.Sender.SendInApp(ev.ServerID, ev.AlertID, title, body)
+			if derr := e.Sender.SendInApp(ev.ServerID, ev.AlertID, title, body); derr != nil {
+				e.log("rule dispatch failed", ev, r.Name, ch+": "+derr.Error())
+			} else {
+				e.log("rule dispatched", ev, r.Name, ch)
+			}
 		}
-		if derr != nil {
-			e.log("rule dispatch failed", ev, r.Name, ch+": "+derr.Error())
+	}
+	if len(external) > 0 {
+		req := DeliveryRequest{
+			RuleID: r.ID, GroupID: r.NotificationGroupID, ServerID: ev.ServerID,
+			Key: fmt.Sprintf("rule:%d:%s", r.ID, ev.Fingerprint),
+			Fingerprint: ev.Fingerprint,
+			Severity: ev.Severity, Title: title, Body: body,
+			Channels: external,
+			Labels:   map[string]string{"condition": ev.Condition},
+			Resource: ev.Message,
+			IsRecovery: ev.IsRecovery(),
+			CooldownSec: r.CooldownSeconds, RepeatSec: r.RepeatIntervalSec,
+			MaxRepeats: r.MaxRepeats, NotifyRecovery: r.NotifyOnRecovery,
+			DigestMode: r.DigestMode, DigestIntervalMin: r.DigestIntervalMin,
+			GroupBy: r.GroupBy,
+		}
+		if e.Deliver != nil {
+			action, derr := e.Deliver(req)
+			if derr != nil {
+				e.log("rule delivery failed", ev, r.Name, derr.Error())
+			} else {
+				e.log("rule delivery "+action, ev, r.Name, strings.Join(external, ","))
+			}
 		} else {
-			e.log("rule dispatched", ev, r.Name, ch)
+			// Legacy direct-send fallback (unit tests without a pipeline).
+			for _, ch := range external {
+				var derr error
+				switch ch {
+				case "EMAIL":
+					derr = e.Sender.SendEmail(r.NotificationGroupID, title, body)
+				case "TELEGRAM":
+					derr = e.Sender.SendTelegram(title + "\n" + body)
+				}
+				if derr != nil {
+					e.log("rule dispatch failed", ev, r.Name, ch+": "+derr.Error())
+				} else {
+					e.log("rule dispatched", ev, r.Name, ch)
+				}
+			}
 		}
 	}
 	return nil

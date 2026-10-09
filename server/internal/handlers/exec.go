@@ -109,8 +109,15 @@ func (h *ExecHandler) Create(c *gin.Context) {
 	// Verify the container exists before minting.
 	ctx, cancel := dockerCtx()
 	defer cancel()
-	if _, err := h.Docker.InspectContainer(ctx, id); err != nil {
+	info, err := h.Docker.InspectContainer(ctx, id)
+	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "container not found"})
+		return
+	}
+	// Self-protection: no shells on our own or infra containers.
+	if reason := denyContainerTarget(info.Name, info.ID); reason != "" {
+		audit.Write(h.DB, u, "exec-blocked", "container", id, "blocked", reason)
+		c.JSON(http.StatusForbidden, gin.H{"error": reason})
 		return
 	}
 	op, err := ops.Create(h.DB, "container.exec", "container", id, u, []string{"shell"})

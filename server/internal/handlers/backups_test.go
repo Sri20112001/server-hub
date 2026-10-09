@@ -48,6 +48,42 @@ func TestTarGzRoundtrip(t *testing.T) {
 	}
 }
 
+func TestExtractEnforcesBombLimits(t *testing.T) {
+	oldFiles, oldTotal, oldSingle := maxExtractFiles, maxExtractBytes, maxSingleFile
+	defer func() { maxExtractFiles, maxExtractBytes, maxSingleFile = oldFiles, oldTotal, oldSingle }()
+
+	// Build an archive with 5 small files, then shrink limits below it.
+	src := t.TempDir()
+	for i := 0; i < 5; i++ {
+		name := "f" + itoaInt(int64(i)) + ".txt"
+		if err := os.WriteFile(filepath.Join(src, name), []byte("hello"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mkArchive := func() string {
+		a := filepath.Join(t.TempDir(), "snap.tar.gz")
+		f, err := os.Create(a)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := writeTarGz(f, src); err != nil {
+			t.Fatal(err)
+		}
+		f.Close()
+		return a
+	}
+	maxExtractFiles = 3
+	if err := extractTarGz(mkArchive(), t.TempDir()); err == nil {
+		t.Fatal("file-count limit: want error, got nil")
+	}
+	maxExtractFiles = oldFiles
+	maxExtractBytes = 10
+	if err := extractTarGz(mkArchive(), t.TempDir()); err == nil {
+		t.Fatal("total-bytes limit: want error, got nil")
+	}
+	maxExtractBytes = oldTotal
+}
+
 func TestExtractRejectsZipSlip(t *testing.T) {
 	if err := extractTarGz("/nonexistent.tar.gz", t.TempDir()); err == nil {
 		t.Fatal("expected error for missing archive")

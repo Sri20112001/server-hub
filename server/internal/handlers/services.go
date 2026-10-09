@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"database/sql"
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -11,6 +12,7 @@ import (
 	"serverhub/internal/database"
 	"serverhub/internal/middleware"
 	"serverhub/internal/models"
+	"serverhub/internal/safehttp"
 )
 
 type ServiceHandler struct {
@@ -102,6 +104,15 @@ func (h *ServiceHandler) Create(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid service type"})
 		return
 	}
+	// health_url is fetched server-side by the monitor loop and the live
+	// probe: validate its shape at save time (request-time SSRF policy
+	// in safehttp is the second layer).
+	if s.HealthURL != "" {
+		if err := safehttp.ValidateURL(s.HealthURL); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("health_url: %v", err)})
+			return
+		}
+	}
 	var ip, hp interface{}
 	if s.InternalPort != nil {
 		ip = *s.InternalPort
@@ -144,6 +155,12 @@ func (h *ServiceHandler) Update(c *gin.Context) {
 	if s.Type != "" && !allowedServiceTypes[s.Type] {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid service type"})
 		return
+	}
+	if s.HealthURL != "" {
+		if err := safehttp.ValidateURL(s.HealthURL); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("health_url: %v", err)})
+			return
+		}
 	}
 	var ip, hp interface{}
 	if s.InternalPort != nil {

@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/docker/docker/api/types/container"
@@ -79,13 +81,26 @@ func (h *ContainerHandler) Inspect(c *gin.Context) {
 	c.JSON(http.StatusOK, info)
 }
 
+// parseTailParam bounds the Docker `tail` parameter: unclamped values reach
+// io.ReadAll and let any viewer-sized request pin arbitrary memory.
+func parseTailParam(raw string) string {
+	n, err := strconv.Atoi(strings.TrimSpace(raw))
+	if err != nil || n <= 0 {
+		return "200"
+	}
+	if n > 5000 {
+		n = 5000
+	}
+	return strconv.Itoa(n)
+}
+
 func (h *ContainerHandler) Logs(c *gin.Context) {
 	id := c.Param("id")
 	if !h.Docker.Available() {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "docker unavailable"})
 		return
 	}
-	tail := c.DefaultQuery("tail", "200")
+	tail := parseTailParam(c.DefaultQuery("tail", "200"))
 	cli, err := h.rawClient()
 	if err != nil {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": err.Error()})
@@ -125,6 +140,13 @@ func (h *ContainerHandler) Logs(c *gin.Context) {
 		c.Header("Connection", "keep-alive")
 		buf := make([]byte, 4096)
 		for {
+			// Stop tailing when the client disconnects instead of
+			// holding the Docker stream (and goroutine) forever.
+			select {
+			case <-c.Request.Context().Done():
+				return
+			default:
+			}
 			n, err := reader.Read(buf)
 			if n > 0 {
 				// Docker multiplexes logs with 8-byte headers; strip them best-effort.
@@ -263,6 +285,15 @@ func (h *ContainerHandler) lifecycle(c *gin.Context, action string, needConfirm 
 		c.JSON(http.StatusBadRequest, gin.H{"error": action + "ing a container is high-risk: retry with ?confirm=true or body {\"confirm\": true}"})
 		return
 	}
+	// Self-protection: never stop/restart our own or infra containers
+	// through the API (recover via host docker CLI instead).
+	if needConfirm {
+		if reason := h.denyProtected(id); reason != "" {
+			audit.Write(h.DB, u, action+"-blocked", "container", id, "blocked", reason)
+			c.JSON(http.StatusForbidden, gin.H{"error": reason})
+			return
+		}
+	}
 	op, err := ops.Create(h.DB, "container."+action, "container", id, u, []string{action})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not track operation"})
@@ -299,6 +330,22 @@ func (h *ContainerHandler) lifecycle(c *gin.Context, action string, needConfirm 
 	audit.Write(h.DB, u, action, "container", id, "ok", "op="+op.ID)
 	emit("container."+action, true, "op="+op.ID)
 	c.JSON(http.StatusOK, gin.H{"ok": true, "id": id, "action": action, "operationId": op.ID})
+}
+
+// denyProtected best-effort resolves the target to a name/ID and refuses
+// protected containers. Unknown targets (inspect error) pass through: the
+// Docker operation itself will fail with a proper error downstream.
+func (h *ContainerHandler) denyProtected(id string) string {
+	if !h.Docker.Available() {
+		return ""
+	}
+	ctx, cancel := dockerCtx()
+	defer cancel()
+	info, err := h.Docker.InspectContainer(ctx, id)
+	if err != nil {
+		return ""
+	}
+	return denyContainerTarget(info.Name, info.ID)
 }
 
 // POST /api/containers/:id/start — medium risk, no confirmation needed.

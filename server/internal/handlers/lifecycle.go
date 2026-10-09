@@ -14,6 +14,7 @@ import (
 	"serverhub/internal/applog"
 	"serverhub/internal/audit"
 	"serverhub/internal/database"
+	"serverhub/internal/deploypath"
 	"serverhub/internal/events"
 	"serverhub/internal/middleware"
 	"serverhub/internal/notify"
@@ -25,6 +26,8 @@ import (
 type ProjectLifecycle struct {
 	DB     *database.DB
 	Broker *events.Broker
+	// DeployRoots bounds deployment_path (see deploypath).
+	DeployRoots []string
 }
 
 func (h *ProjectLifecycle) Start(c *gin.Context) {
@@ -61,23 +64,41 @@ func (h *ProjectLifecycle) runOne(u string, pid int64, action string, composeArg
 	if err := h.DB.QueryRow(`SELECT name, deployment_path FROM projects WHERE id=?`, pid).Scan(&name, &deployPath); err != nil {
 		return http.StatusNotFound, gin.H{"error": "project not found"}
 	}
-	if deployPath == "" {
-		audit.Write(h.DB, u, action, "project", strconv.FormatInt(pid, 10), "failed", "no deployment_path configured")
-		return http.StatusBadRequest, gin.H{"error": "no deployment_path configured for this project"}
+	// Resolve (symlinks + root containment) before running anything: the
+	// stored path is operator input and must not reach `docker compose`.
+	resolved, err := deploypath.ResolveExec(deployPath, h.DeployRoots)
+	if err != nil {
+		audit.Write(h.DB, u, action, "project", strconv.FormatInt(pid, 10), "failed", err.Error())
+		return http.StatusBadRequest, gin.H{"error": err.Error()}
 	}
-	if _, err := os.Stat(filepath.Join(deployPath, "docker-compose.yml")); err != nil {
+	deployPath = resolved
+	effectiveCompose := "docker-compose.yml"
+	if _, err := os.Stat(filepath.Join(deployPath, effectiveCompose)); err != nil {
 		// Fall back to whatever compose file the project declares.
 		var composeFile string
 		_ = h.DB.QueryRow(`SELECT compose_file FROM projects WHERE id=?`, pid).Scan(&composeFile)
 		if composeFile == "" {
 			composeFile = "docker-compose.yml"
 		}
+		if err := deploypath.ValidateComposeFile(composeFile); err != nil {
+			audit.Write(h.DB, u, action, "project", strconv.FormatInt(pid, 10), "failed", err.Error())
+			return http.StatusBadRequest, gin.H{"error": err.Error()}
+		}
 		if _, err := os.Stat(filepath.Join(deployPath, composeFile)); err != nil {
 			audit.Write(h.DB, u, action, "project", strconv.FormatInt(pid, 10), "failed", "compose file missing")
 			return http.StatusBadRequest, gin.H{"error": "compose file not found in deployment_path"}
 		}
+		effectiveCompose = composeFile
 	}
 	var buf bytes.Buffer
+	// Surface indirect outside-root references (see warnComposeRefs).
+	if refs, err := deploypath.CheckComposeRefs(filepath.Join(deployPath, effectiveCompose), h.DeployRoots); err != nil {
+		fmt.Fprintf(&buf, "compose scan: %v\n", err)
+	} else {
+		for _, r := range refs {
+			fmt.Fprintf(&buf, "compose reference outside deployment roots (review): %s: %s\n", r.Field, r.Value)
+		}
+	}
 	op, err := ops.Create(h.DB, "project."+action, "project", strconv.FormatInt(pid, 10), u, []string{action})
 	if err != nil {
 		return http.StatusInternalServerError, gin.H{"error": "could not track operation"}

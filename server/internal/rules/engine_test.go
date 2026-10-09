@@ -28,6 +28,13 @@ func (f *fakeSender) SendEmail(groupID uint, subject, text string) error {
 	return nil
 }
 
+func (f *fakeSender) SendTelegram(text string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.emails = append(f.emails, fakeMail{groupID: 0, subject: "tg:" + text})
+	return nil
+}
+
 func (f *fakeSender) SendInApp(serverID *uint, alertID *int64, title, body string) error {
 	atomic.AddInt32(&f.inApps, 1)
 	return nil
@@ -326,6 +333,66 @@ func TestValidateRule(t *testing.T) {
 	}
 	if err := ValidateRule("n", "", "AGENT_OFFLINE", "", "", []string{"EMAIL"}, MaxCooldownSeconds+1); err == nil {
 		t.Fatal("overlong cooldown must fail")
+	}
+}
+
+// TestDeliverHookRoutesExternalChannels verifies the pipeline hook:
+// EMAIL/TELEGRAM go through Deliver (not direct sends), IN_APP stays
+// direct, and rule cooldown still gates repeat Deliver calls.
+func TestDeliverHookRoutesExternalChannels(t *testing.T) {
+	db := testdb.Open(t)
+	s := &fakeSender{}
+	eng := testEngine(t, db, s)
+	var mu sync.Mutex
+	var got []DeliveryRequest
+	eng.Deliver = func(req DeliveryRequest) (string, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		got = append(got, req)
+		return "queued", nil
+	}
+	gid := seedGroup(t, db, "G-hook")
+	seedRule(t, db, "R-hook", EventServerAlert, gid, func(s *ruleSeed) {
+		s.channels = "EMAIL,TELEGRAM,IN_APP"
+		s.cooldown = 3600
+	})
+	eng.Evaluate(baseEvent())
+	eng.Evaluate(baseEvent()) // cooldown: no second Deliver
+	mu.Lock()
+	defer mu.Unlock()
+	if len(got) != 1 {
+		t.Fatalf("want 1 Deliver call, got %d", len(got))
+	}
+	req := got[0]
+	if len(req.Channels) != 2 || req.GroupID != gid {
+		t.Fatalf("channels/group wrong: %v %d", req.Channels, req.GroupID)
+	}
+	if req.Key == "" || req.Severity == "" {
+		t.Fatalf("missing key/severity: %+v", req)
+	}
+	if atomic.LoadInt32(&s.inApps) != 1 {
+		t.Fatalf("IN_APP must stay direct, got %d", s.inApps)
+	}
+	if s.emailCount() != 0 {
+		t.Fatalf("EMAIL must not send directly when Deliver is set, got %d", s.emailCount())
+	}
+}
+
+func TestTelegramChannelValid(t *testing.T) {
+	if err := ValidateRule("n", "", "AGENT_OFFLINE", "", "", []string{"TELEGRAM"}, 0); err != nil {
+		t.Fatalf("TELEGRAM must be accepted: %v", err)
+	}
+	if err := ValidateRuleFull(RuleParams{
+		Name: "n", EventType: "AGENT_OFFLINE", Channels: []string{"EMAIL"},
+		DigestMode: "digest", DigestIntervalMin: 7,
+	}); err == nil {
+		t.Fatal("bad digest interval must fail")
+	}
+	if err := ValidateRuleFull(RuleParams{
+		Name: "n", EventType: "AGENT_OFFLINE", Channels: []string{"EMAIL"},
+		GroupBy: []string{"nope"},
+	}); err == nil {
+		t.Fatal("bad group-by key must fail")
 	}
 }
 

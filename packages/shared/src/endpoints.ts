@@ -234,6 +234,29 @@ export function notificationRule(id: number): string {
   return `${API}/notification-rules/${id}`;
 }
 
+// ─── Central delivery policy ─────────────────────────────────────────────
+export function notificationPolicy(): string {
+  return `${API}/notification-policy`;
+}
+export function notificationDeliveries(params?: {
+  status?: string;
+  channel?: string;
+  limit?: number;
+}): string {
+  const q = new URLSearchParams();
+  if (params?.status) q.set("status", params.status);
+  if (params?.channel) q.set("channel", params.channel);
+  if (params?.limit !== undefined) q.set("limit", String(params.limit));
+  const suffix = q.toString() ? `?${q.toString()}` : "";
+  return `${API}/notification-deliveries${suffix}`;
+}
+export function maintenanceWindows(): string {
+  return `${API}/maintenance-windows`;
+}
+export function maintenanceWindow(id: number): string {
+  return `${API}/maintenance-windows/${id}`;
+}
+
 // ─── Managed servers ─────────────────────────────────────────────────────────
 export function servers(): string {
   return `${API}/servers`;

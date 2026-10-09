@@ -3,9 +3,9 @@ package healthcheck
 
 import (
 	"fmt"
+	"io"
 	"log"
 	"net"
-	"net/http"
 	"os/exec"
 	"runtime"
 	"strings"
@@ -13,9 +13,15 @@ import (
 
 	"serverhub/internal/database"
 	"serverhub/internal/events"
+	"serverhub/internal/safehttp"
 )
 
 const runInterval = 30 * time.Second
+
+// EgressStrict applies strict SSRF policy to HTTP probes (deny loopback/
+// private/link-local after DNS resolution). Set from config at startup;
+// default false (metadata-IP + no-redirect guardrails always apply).
+var EgressStrict = false
 
 func StartLoop(db *database.DB, broker *events.Broker) {
 	go func() {
@@ -82,12 +88,19 @@ func runProbe(typ, target string, timeout, expectedStatus int) (status, errMsg s
 }
 
 func probeHTTP(url string, timeout time.Duration, expectedStatus int) (string, string) {
-	client := &http.Client{Timeout: timeout}
+	// SSRF-hardened fetch: scheme/userinfo validated, metadata IP denied,
+	// redirects never followed, body capped. Strict mode additionally
+	// denies loopback/private/link-local (see safehttp).
+	if err := safehttp.ValidateURL(url); err != nil {
+		return "DOWN", err.Error()
+	}
+	client := safehttp.Client(timeout, EgressStrict)
 	resp, err := client.Get(url)
 	if err != nil {
 		return "DOWN", err.Error()
 	}
 	defer resp.Body.Close()
+	drainCapped(resp.Body)
 	if expectedStatus > 0 && resp.StatusCode != expectedStatus {
 		return "DOWN", fmt.Sprintf("got %d, expected %d", resp.StatusCode, expectedStatus)
 	}
@@ -95,6 +108,12 @@ func probeHTTP(url string, timeout time.Duration, expectedStatus int) (string, s
 		return "UP", ""
 	}
 	return "DOWN", fmt.Sprintf("status %d", resp.StatusCode)
+}
+
+// drainCapped drains the body up to the shared cap so connections reuse
+// without letting a probe target pin memory.
+func drainCapped(body io.Reader) {
+	_, _ = io.Copy(io.Discard, io.LimitReader(body, safehttp.MaxBodyBytes))
 }
 
 func probeTCP(addr string, timeout time.Duration) (string, string) {

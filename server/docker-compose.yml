@@ -100,13 +100,20 @@ services:
       - "8080"
 
   serverhub:
+    # Immutable release tagging: CI sets SERVERHUB_VERSION=rc-<build> so the
+    # scanned image and the deployed image are the same digest. Local dev
+    # keeps the default `latest` tag.
+    image: serverhub:${SERVERHUB_VERSION:-latest}
     build:
       context: ..
       dockerfile: server/Dockerfile
     container_name: serverhub
     restart: unless-stopped
+    # Loopback-only by default: the API must never be reachable from the
+    # LAN/Internet without a TLS-terminating reverse proxy in front.
+    # Override with SERVERHUB_BIND=0.0.0.0 only if you know what you do.
     ports:
-      - "4000:4000"
+      - "${SERVERHUB_BIND:-127.0.0.1}:${SERVERHUB_PORT:-4000}:4000"
     volumes:
       - ./data:/app/data
       - /var/run/docker.sock:/var/run/docker.sock:ro
@@ -118,6 +125,7 @@ services:
       alertmanager:
         condition: service_healthy
     environment:
+      SERVERHUB_ENV: ${SERVERHUB_ENV:-production}
       PORT: "4000"
       DATABASE_URL: postgres://${POSTGRES_USER:-serverhub}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in the environment or server/.env (no default password)}@postgres:5432/${POSTGRES_DB:-serverhub}?sslmode=disable
       LOG_RETENTION_DAYS: ${LOG_RETENTION_DAYS:-30}

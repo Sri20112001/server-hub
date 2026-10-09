@@ -1,6 +1,7 @@
 package health
 
 import (
+	"io"
 	"log"
 	"net/http"
 	"strconv"
@@ -10,7 +11,14 @@ import (
 	"serverhub/internal/audit"
 	"serverhub/internal/database"
 	"serverhub/internal/events"
+	"serverhub/internal/safehttp"
 )
+
+// EgressStrict applies strict SSRF policy to monitor-loop probes (deny
+// loopback/private/link-local after DNS resolution). Set from config at
+// startup; default false (metadata-IP + no-redirect guardrails always on,
+// private targets allowed because internal monitoring is the job).
+var EgressStrict = false
 
 // StartLoop periodically checks every service/project health_url and
 // updates services.status / projects.status.
@@ -47,7 +55,7 @@ func transition(db *database.DB, broker *events.Broker, resource, id, name, befo
 }
 
 func check(db *database.DB, broker *events.Broker) {
-	client := &http.Client{Timeout: 8 * time.Second}
+	client := safehttp.Client(8*time.Second, EgressStrict)
 	// Services
 	rows, err := db.Query(`SELECT id, name, health_url, last_health FROM services WHERE health_url <> ''`)
 	if err != nil {
@@ -134,12 +142,18 @@ func check(db *database.DB, broker *events.Broker) {
 
 func probe(client *http.Client, url string) (string, int64) {
 	start := time.Now()
+	// Belt and suspenders: rows written before save-time validation
+	// existed may hold malformed URLs; never fetch those.
+	if err := safehttp.ValidateURL(url); err != nil {
+		return "DOWN", time.Since(start).Milliseconds()
+	}
 	resp, err := client.Get(url)
 	rt := time.Since(start).Milliseconds()
 	if err != nil {
 		return "DOWN", rt
 	}
 	defer resp.Body.Close()
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, safehttp.MaxBodyBytes))
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		return "HEALTHY", rt
 	}

@@ -28,6 +28,22 @@ type WebhookHandler struct {
 	Broker *events.Broker
 }
 
+// deployRoots returns the configured deployment roots (nil-safe: tests and
+// minimal setups without config fall back to legacy absolute-path rules).
+func (h *WebhookHandler) deployRoots() []string {
+	if h == nil || h.Cfg == nil {
+		return nil
+	}
+	return h.Cfg.DeployRoots
+}
+
+func (h *WebhookHandler) strictEgress() bool {
+	if h == nil || h.Cfg == nil {
+		return false
+	}
+	return h.Cfg.EgressStrict
+}
+
 func verifySignature(secret string, body []byte, header string) bool {
 	const prefix = "sha256="
 	if !strings.HasPrefix(header, prefix) {
@@ -63,7 +79,11 @@ func (h *WebhookHandler) GitHub(c *gin.Context) {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "webhooks not configured (GITHUB_WEBHOOK_SECRET unset)"})
 		return
 	}
-	body, err := io.ReadAll(c.Request.Body)
+	// Bound the body like the Alertmanager webhook (1 MiB): the endpoint is
+	// unauthenticated pre-signature, so an unbounded read is a trivial
+	// memory-exhaustion vector. Oversized bodies fail signature verification
+	// against the truncated bytes and are rejected below.
+	body, err := io.ReadAll(io.LimitReader(c.Request.Body, 1<<20))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "cannot read body"})
 		return
@@ -138,7 +158,8 @@ func (h *WebhookHandler) GitHub(c *gin.Context) {
 			if op != nil {
 				opID = op.ID
 			}
-			go executeDeploy(h.DB, h.Broker, opID, deployID, m.id, m.name, m.deployPath, m.composeFile, "webhook", p.After, m.healthURL)
+			policy := ExecPolicy{Roots: h.deployRoots(), StrictEgress: h.strictEgress()}
+			go executeDeploy(h.DB, h.Broker, policy, opID, deployID, m.id, m.name, m.deployPath, m.composeFile, "webhook", p.After, m.healthURL)
 			audit.Write(h.DB, "webhook", "deploy", "project", strconv.FormatInt(m.id, 10), "started", p.After)
 			results = append(results, gin.H{"project": m.name, "deployed": true, "commit": p.After, "operationId": opID})
 		} else {
