@@ -243,25 +243,29 @@ stage('Prepare') {
     }
 
     stage('Integration') {
-      steps {
-        dir('server') {
-          sh '''
-            set -e
+    steps {
+    dir('server') {
+    sh '''
+    set -eu
 
-            echo "Running deployment integration tests (disposable Postgres + real binary)..."
+    ```
+                echo "=== Running ServerHub integration tests ==="
 
-            # Strict mode: prerequisite skips fail instead of passing silently.
-            # A green stage means the behaviors executed, not that Docker was absent.
-            export SERVERHUB_INT_STRICT=1
+                export SERVERHUB_INT_STRICT=1
 
-            go test -tags integration ./internal/integration/... \
-              -count=1 \
-              -timeout 1200s \
-              -v
-          '''
+                go test \
+                    -tags=integration \
+                    ./internal/integration/... \
+                    -count=1 \
+                    -timeout=20m \
+                    -v
+            '''
         }
-      }
     }
+    ```
+
+    }
+
 
     stage('Build') {
       steps {
