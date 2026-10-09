@@ -164,7 +164,7 @@ stage('Prepare') {
           docker run -d \
             --name "$TEST_PG_CONTAINER" \
             --network "$TEST_PG_NETWORK" \
-            -p "127.0.0.1:${TEST_PG_PORT}:5432" \
+            -p "127.0.0.1::5432" \
             -e POSTGRES_DB=serverhub \
             -e POSTGRES_USER=serverhub \
             -e POSTGRES_PASSWORD=changeme \
@@ -199,17 +199,23 @@ stage('Prepare') {
           # Pick a reachable address for the agent shell: the container name
           # when it resolves (shared network), else the published loopback
           # port. Persisted for the Test stage (env vars do not cross stages).
+          # Prefer the container hostname when reachable from the agent.
           if getent hosts "$TEST_PG_CONTAINER" >/dev/null 2>&1; then
             TEST_DATABASE_URL="postgres://serverhub:changeme@${TEST_PG_CONTAINER}:5432/serverhub?sslmode=disable"
           else
-            TEST_DATABASE_URL="postgres://serverhub:changeme@127.0.0.1:${TEST_PG_PORT}/serverhub?sslmode=disable"
-          fi
-          echo "$TEST_DATABASE_URL" > "$WORKSPACE/.jenkins-test-db-url"
+            # Docker dynamically allocates an available host port.
+            MAPPED_PORT="$(docker port "$TEST_PG_CONTAINER" 5432/tcp |
+              awk -F: 'NR==1 {print $NF}')"
 
-          echo "Test database: serverhub"
-          echo "Test PostgreSQL container: $TEST_PG_CONTAINER"
-          echo "Test Docker network: $TEST_PG_NETWORK"
-          echo "Test DATABASE_URL host: $(echo "$TEST_DATABASE_URL" | sed 's/.*@//;s/:.*//')"
+            if [ -z "$MAPPED_PORT" ]; then
+              echo "ERROR: unable to resolve test PostgreSQL host port."
+              exit 1
+            fi
+
+            TEST_DATABASE_URL="postgres://serverhub:changeme@127.0.0.1:${MAPPED_PORT}/serverhub?sslmode=disable"
+          fi
+
+          echo "$TEST_DATABASE_URL" > "$WORKSPACE/.jenkins-test-db-url"
         '''
       }
     }
@@ -339,6 +345,7 @@ stage('Prepare') {
             "aquasec/trivy:${TRIVY_VERSION}" image \
             --severity HIGH,CRITICAL --exit-code 1 \
             --format json --output /src/trivy-image.json \
+            -v "$WORKSPACE:/src" \
             "$RC_TAG"
 
           echo "Syft SBOM for the release candidate..."
