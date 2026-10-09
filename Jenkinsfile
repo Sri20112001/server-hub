@@ -695,7 +695,7 @@ stage('Prepare') {
             "$BASE/maintenance-windows")"
           echo "$MW" | grep -q '"id":' || { echo "SMOKE FAIL: window create: $MW"; exit 1; }
           echo "SMOKE OK: window created"
-          MID="$(echo "$MW" | sed 's/.*"id":\([0-9]*\).*/\1/')"
+          MID="$(echo "$MW" | grep -o '"id":[0-9]*' | head -1 | tr -cd '0-9')"
           CODE="$(curl -s -o /dev/null -w '%{http_code}' -b "$COOKIES" -X DELETE "$BASE/maintenance-windows/$MID")"
           need "window deleted" "200" "$CODE"
 
