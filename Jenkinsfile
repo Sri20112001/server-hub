@@ -10,7 +10,12 @@ pipeline {
     timestamps()
     timeout(time: 30, unit: 'MINUTES')
     disableConcurrentBuilds()
-    buildDiscarder(logRotator(numToKeepStr: '20'))
+    buildDiscarder(logRotator(
+      numToKeepStr: '10',
+      artifactNumToKeepStr: '3',
+      daysToKeepStr: '7',
+      artifactDaysToKeepStr: '3'
+    ))
   }
 
   parameters {
@@ -456,6 +461,7 @@ stage('Prepare') {
 
             if docker inspect serverhub-postgres >/dev/null 2>&1; then
               echo "Backing up production database..."
+              find "$WORKSPACE" -maxdepth 1 -name 'pg-backup-*.sql.gz' -delete 2>/dev/null || true
               docker exec serverhub-postgres \
                 pg_dump -U serverhub serverhub 2>/dev/null | \
                 gzip > "$WORKSPACE/pg-backup-${BUILD_NUMBER:-local}.sql.gz" || \
@@ -521,8 +527,29 @@ stage('Prepare') {
                   NAME="$(echo "$HOLDER" | awk '{print $1}')"
                   echo "Detected stale ServerHub container: $NAME"
                   echo "Stopping and removing it..."
-                  docker stop "$NAME" >/dev/null
-                  docker rm "$NAME" >/dev/null
+                  if ! docker stop -t 5 "$NAME" 2>/dev/null; then
+                    echo "Standard docker stop failed; escalating to docker kill / rm -f..."
+                    docker kill "$NAME" 2>/dev/null || docker rm -f "$NAME" 2>/dev/null || true
+                  else
+                    docker rm "$NAME" 2>/dev/null || true
+                  fi
+
+                  # If still active (e.g. host AppArmor blocked containerd signal), kill host PID via unconfined helper:
+                  if docker inspect -f '{{.State.Running}}' "$NAME" 2>/dev/null | grep -q true; then
+                    PID="$(docker inspect -f '{{.State.Pid}}' "$NAME" 2>/dev/null || true)"
+                    if [ -n "$PID" ] && [ "$PID" != "0" ]; then
+                      echo "Container still running. Attempting unconfined kill on host PID $PID..."
+                      docker run --rm --privileged --pid=host alpine kill -9 "$PID" 2>/dev/null || true
+                    fi
+                    docker rm -f "$NAME" 2>/dev/null || true
+                  fi
+
+                  if docker ps --format '{{.Names}} {{.Ports}}' 2>/dev/null | grep -q '4000->4000'; then
+                    echo "ERROR: Could not stop stale container $NAME on port 4000."
+                    echo "If Docker reported 'permission denied', AppArmor on the host is blocking signal delivery."
+                    echo "Run on host: sudo aa-remove-unknown && sudo systemctl restart docker"
+                    exit 1
+                  fi
                   ;;
                 *)
                   echo "ERROR: Host port 4000 is held by another Docker container."
