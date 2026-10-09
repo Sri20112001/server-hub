@@ -332,25 +332,31 @@ stage('Prepare') {
             --format json --output "$SCAN_DIR/trivy-fs.json" \
             "$SCAN_DIR"
 
+          # Export candidate image archive so Trivy and Syft can scan it
+          # directly without registry lookups or Docker daemon image resolution quirks.
+          echo "Exporting candidate image archive for security scanners..."
+          docker save "$RC_TAG" -o "$WORKSPACE/candidate.tar"
+
           echo "Trivy image scan of the release candidate (report-only)..."
           run_report_only "Trivy-image" docker run --rm \
             $MOUNT_OPTS \
-            -v /var/run/docker.sock:/var/run/docker.sock \
             "aquasec/trivy:${TRIVY_VERSION}" image \
             --severity HIGH,CRITICAL --exit-code 1 \
             --format json --output "$SCAN_DIR/trivy-image.json" \
-            "$RC_TAG"
+            --input "$SCAN_DIR/candidate.tar"
 
           echo "Syft SBOM for the release candidate..."
           docker run --rm \
             $MOUNT_OPTS \
-            -v /var/run/docker.sock:/var/run/docker.sock \
             "anchore/syft:${SYFT_VERSION}" \
-            "$RC_TAG" -o "spdx-json=$SCAN_DIR/sbom.spdx.json"
+            "docker-archive:$SCAN_DIR/candidate.tar" -o "spdx-json=$SCAN_DIR/sbom.spdx.json"
           if [ ! -s "$WORKSPACE/sbom.spdx.json" ]; then
             echo "ERROR: SBOM was not produced (absent report is not a clean scan)."
+            rm -f "$WORKSPACE/candidate.tar"
             exit 1
           fi
+
+          rm -f "$WORKSPACE/candidate.tar"
 
           echo "Release candidate: $RC_TAG @ $(cat "$WORKSPACE/image-digest.txt")"
         '''
