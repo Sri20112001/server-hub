@@ -518,23 +518,19 @@ stage('Prepare') {
               # legacy compose builds as server-hub-serverhub).
               case "$IMG" in
                 serverhub*|server-hub-serverhub|docker.io/library/serverhub*)
-
-                NAME="$(echo "$HOLDER" | awk '{print $1}')"
-
-                echo "Detected stale ServerHub container: $NAME"
-                echo "Stopping and removing it..."
-
-                docker stop "$NAME" >/dev/null
-                docker rm "$NAME" >/dev/null
-
-              else
-                echo "ERROR: Host port 4000 is held by another Docker container."
-                echo "$HOLDER"
-
-                echo ""
-                echo "Stop the conflicting container or change the ServerHub host port."
-
-                exit 1
+                  NAME="$(echo "$HOLDER" | awk '{print $1}')"
+                  echo "Detected stale ServerHub container: $NAME"
+                  echo "Stopping and removing it..."
+                  docker stop "$NAME" >/dev/null
+                  docker rm "$NAME" >/dev/null
+                  ;;
+                *)
+                  echo "ERROR: Host port 4000 is held by another Docker container."
+                  echo "$HOLDER"
+                  echo ""
+                  echo "Stop the conflicting container or change the ServerHub host port."
+                  exit 1
+                  ;;
               esac
             fi
 
