@@ -469,7 +469,8 @@ stage('Prepare') {
       steps {
         dir('server') {
           sh '''
-            set -e
+            #!/usr/bin/env bash
+            set -Eeuo pipefail
 
             if [ ! -s "$WORKSPACE/.jenkins-compose" ]; then
               echo "ERROR: compose wrapper missing (Prepare stage did not run?)."
@@ -485,18 +486,8 @@ stage('Prepare') {
             # anything is touched when the encryption key cannot work.
             # ---------------------------------------------------------
 
-            python3 - <<'PY'
-            import os
-            import re
-            import sys
-
-            key = os.environ.get("SERVERHUB_ENCRYPTION_KEY", "")
-            print("Encryption key present:", bool(key))
-            print("Encryption key length:", len(key))
-            ok = bool(re.fullmatch(r"[0-9a-fA-F]{64}", key))
-            print("Encryption key format valid:", ok)
-            sys.exit(0 if ok else 1)
-            PY
+            # Avoid an indented heredoc inside Jenkins' multiline sh string.
+            python3 -c 'import os, re, sys; key=os.environ.get("SERVERHUB_ENCRYPTION_KEY", ""); print("Encryption key present:", bool(key)); print("Encryption key length:", len(key)); ok=bool(re.fullmatch(r"[0-9a-fA-F]{64}", key)); print("Encryption key format valid:", ok); sys.exit(0 if ok else 1)'
 
             # ---------------------------------------------------------
             # Back up production database before schema changes.
@@ -505,15 +496,18 @@ stage('Prepare') {
             # ---------------------------------------------------------
 
             if docker inspect serverhub-postgres >/dev/null 2>&1; then
+              if [ "$(docker inspect --format '{{.State.Running}}' serverhub-postgres 2>/dev/null)" != "true" ]; then
+                echo "ERROR: production PostgreSQL exists but is not running; aborting deployment."
+                exit 1
+              fi
               echo "Backing up production database..."
               # Retention policy: one pre-deploy dump per build, archived as
               # a build artifact; older workspace copies are removed.
               find "$WORKSPACE" -maxdepth 1 -name 'pg-backup-*.sql.gz' -delete 2>/dev/null || true
               BACKUP="$WORKSPACE/pg-backup-${BUILD_NUMBER:-local}.sql.gz"
-              # pipefail scoped to this block: a pg_dump failure must not
-              # hide behind gzip's success, and an empty/corrupt dump must
-              # abort the deployment (no migration without a backup).
-              set -o pipefail
+              # pipefail is on for the whole stage: a pg_dump failure must
+              # not hide behind gzip's success, and an empty/corrupt dump
+              # must abort the deployment (no migration without a backup).
               BACKUP_OK=false
               if docker exec serverhub-postgres \
                 pg_dump -U serverhub serverhub 2>/dev/null | \
@@ -523,7 +517,6 @@ stage('Prepare') {
                   echo "Database backup OK: $BACKUP ($(du -h "$BACKUP" | awk '{print $1}'))"
                 fi
               fi
-              set +o pipefail
               if [ "$BACKUP_OK" != "true" ]; then
                 echo "ERROR: database backup failed or is corrupt; aborting deployment."
                 exit 1
@@ -741,8 +734,8 @@ except Exception:
       }
       steps {
         sh '''
-          set -e
-          set -o pipefail
+          #!/usr/bin/env bash
+          set -Eeuo pipefail
           BASE="http://localhost:4000/server-hub/api"
           HEALTH="http://localhost:4000/health"
           COOKIES="$(mktemp)"
