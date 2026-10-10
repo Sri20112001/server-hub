@@ -74,7 +74,11 @@ stage('Prepare') {
       echo "$TEST_PG_NETWORK" > "$WORKSPACE/.jenkins-test-net"
 
       echo "Preparing test Docker network ($TEST_PG_NETWORK)..."
-      docker network create "$TEST_PG_NETWORK" 2>/dev/null || true
+      if ! docker network inspect "$TEST_PG_NETWORK" >/dev/null 2>&1; then
+        docker network create "$TEST_PG_NETWORK"
+      fi
+      docker network inspect "$TEST_PG_NETWORK" >/dev/null
+      echo "Test network ready: $TEST_PG_NETWORK"
 
       # The compose wrapper previous stages assumed but nothing created.
       # Written here deterministically instead of relying on agent state.
@@ -155,11 +159,17 @@ stage('Prepare') {
           # Per-build name: immune to leftovers from older runs, so a
           # best-effort remove is all that's needed here.
           export TEST_PG_CONTAINER="${TEST_PG_CONTAINER_BASE}-${BUILD_NUMBER:-local}"
+          test -s "$WORKSPACE/.jenkins-test-net" || {
+            echo "ERROR: test network name file is missing or empty"
+            exit 1
+          }
           TEST_PG_NETWORK="$(cat "$WORKSPACE/.jenkins-test-net")"
           docker rm -f "$TEST_PG_CONTAINER" >/dev/null 2>&1 || true
 
-          # Make sure the network exists.
-          docker network create "$TEST_PG_NETWORK" 2>/dev/null || true
+          if ! docker network inspect "$TEST_PG_NETWORK" >/dev/null 2>&1; then
+            docker network create "$TEST_PG_NETWORK"
+          fi
+          docker network inspect "$TEST_PG_NETWORK" >/dev/null
 
           # Best-effort: attach the agent itself to the test network so the
           # container name resolves from `go test`. Works when the agent is
