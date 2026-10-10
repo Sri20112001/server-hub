@@ -544,16 +544,27 @@ stage('Prepare') {
               echo "No running serverhub container; nothing to roll back to."
             fi
 
-            # ready_ok parses /health/ready as JSON (key order independent).
+            # Health helpers: api_get prints an app endpoint body — agent
+            # localhost first (works when the agent shares the host
+            # network), container loopback via docker exec second: the
+            # Jenkins agent is itself containerized, so host-published
+            # loopback ports are normally unreachable from it. Empty
+            # output = unreachable everywhere. ready_ok parses the body
+            # as JSON (key order independent).
+            api_get() {
+              BODY="$(curl -s "http://localhost:4000$1" 2>/dev/null || true)"
+              if [ -z "$BODY" ]; then
+                BODY="$(docker exec serverhub curl -s "http://localhost:4000$1" 2>/dev/null || true)"
+              fi
+              printf '%s' "$BODY"
+            }
+
+            live_ok() {
+              api_get /health/live | grep -q '"status":"ok"'
+            }
+
             ready_ok() {
-              python3 -c '
-import json, sys, urllib.request
-try:
-    with urllib.request.urlopen("http://localhost:4000/health/ready", timeout=5) as r:
-        b = json.load(r)
-    sys.exit(0 if b.get("status") == "ok" and b.get("checks", {}).get("db") == "up" else 1)
-except Exception:
-    sys.exit(1)'
+              api_get /health/ready | python3 -c 'import json,sys; b=json.load(sys.stdin); sys.exit(0 if b.get("status")=="ok" and b.get("checks",{}).get("db")=="up" else 1)'
             }
 
             rollback() {
@@ -668,7 +679,7 @@ except Exception:
 
             READY=false
             for i in $(seq 1 40); do
-              if curl -s -f http://localhost:4000/health/live >/dev/null 2>&1; then
+              if live_ok 2>/dev/null; then
                 if ready_ok 2>/dev/null; then
                   READY=true
                   echo "ServerHub ready (liveness + readiness with DB up)."
@@ -736,10 +747,32 @@ except Exception:
         sh '''
           #!/usr/bin/env bash
           set -Eeuo pipefail
-          BASE="http://localhost:4000/server-hub/api"
-          HEALTH="http://localhost:4000/health"
-          COOKIES="$(mktemp)"
-          trap 'rm -f "$COOKIES"' EXIT
+          # Paths below are app-rooted (/health/ready, /server-hub/api/...).
+          API="http://localhost:4000"
+          JAR="/tmp/smoke-cookies.txt"
+
+          # All app contact goes through the app container itself: the
+          # Jenkins agent is containerized, so host-published loopback ports
+          # are unreachable from it (this silently failed every check that
+          # used agent-side curl). curl is baked into the server image.
+          dexec() { docker exec serverhub "$@"; }
+
+          # apicall <METHOD> <PATH> [DATA] — sets API_CODE and API_BODY.
+          # Session cookies persist in the in-container jar across calls.
+          apicall() {
+            local method="$1" path="$2" data="${3:-}"
+            dexec rm -f /tmp/smoke.body /tmp/smoke.hdrs || true
+            if [ -n "$data" ]; then
+              dexec curl -s -D /tmp/smoke.hdrs -o /tmp/smoke.body \
+                -X "$method" -H 'Content-Type: application/json' \
+                -b "$JAR" -c "$JAR" -d "$data" "$API$path" || true
+            else
+              dexec curl -s -D /tmp/smoke.hdrs -o /tmp/smoke.body \
+                -X "$method" -b "$JAR" -c "$JAR" "$API$path" || true
+            fi
+            API_CODE="$(dexec awk 'NR==1{print $2}' /tmp/smoke.hdrs 2>/dev/null || true)"
+            API_BODY="$(dexec cat /tmp/smoke.body 2>/dev/null || true)"
+          }
 
           need() { # need <desc> <expected> <actual>
             if [ "$2" != "$3" ]; then
@@ -749,54 +782,51 @@ except Exception:
             echo "SMOKE OK: $1"
           }
 
+          dexec rm -f "$JAR" /tmp/smoke.body /tmp/smoke.hdrs || true
+          dexec touch "$JAR"
+
           echo "== readiness =="
-          need "ready db up" "200" "$(curl -s -o /dev/null -w '%{http_code}' "$HEALTH/ready")"
+          apicall GET /health/ready
+          need "ready db up" "200" "$API_CODE"
 
           echo "== auth + RBAC =="
-          CODE="$(curl -s -o /dev/null -w '%{http_code}' "$BASE/notification-policy")"
-          need "unauthenticated policy denied" "401" "$CODE"
-          CODE="$(curl -s -o /dev/null -w '%{http_code}' -c "$COOKIES" \
-            -H 'Content-Type: application/json' \
-            -d '{"username":"admin","password":"'"$ADMIN_PASSWORD"'"}' \
-            "$BASE/auth/login")"
-          need "admin login" "200" "$CODE"
+          apicall GET /server-hub/api/notification-policy
+          need "unauthenticated policy denied" "401" "$API_CODE"
+          apicall POST /server-hub/api/auth/login '{"username":"admin","password":"'"$ADMIN_PASSWORD"'"}'
+          need "admin login" "200" "$API_CODE"
 
           echo "== notification policy round-trip =="
-          CODE="$(curl -s -o /dev/null -w '%{http_code}' -b "$COOKIES" "$BASE/notification-policy")"
-          need "policy GET" "200" "$CODE"
-          CODE="$(curl -s -o /dev/null -w '%{http_code}' -b "$COOKIES" \
-            -H 'Content-Type: application/json' -X PUT \
-            -d '{"maxRepeats":3}' "$BASE/notification-policy")"
-          need "policy PUT" "200" "$CODE"
+          apicall GET /server-hub/api/notification-policy
+          need "policy GET" "200" "$API_CODE"
+          apicall PUT /server-hub/api/notification-policy '{"maxRepeats":3}'
+          need "policy PUT" "200" "$API_CODE"
 
           echo "== emergency pause set/verify/clear =="
           UNTIL="$(date -u -d '+10 minutes' +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -v+10M +%Y-%m-%dT%H:%M:%SZ)"
-          curl -s -b "$COOKIES" -H 'Content-Type: application/json' -X PUT \
-            -d '{"emergencyPause":true,"pauseReason":"staging-smoke","pauseUntil":"'"$UNTIL"'"}' \
-            "$BASE/notification-policy" | grep -q '"emergencyPause":true'
+          apicall PUT /server-hub/api/notification-policy '{"emergencyPause":true,"pauseReason":"staging-smoke","pauseUntil":"'"$UNTIL"'"}'
+          echo "$API_BODY" | grep -q '"emergencyPause":true'
           echo "SMOKE OK: pause armed"
-          curl -s -b "$COOKIES" -H 'Content-Type: application/json' -X PUT \
-            -d '{"clearPause":true}' "$BASE/notification-policy" | grep -q '"emergencyPause":false'
+          apicall PUT /server-hub/api/notification-policy '{"clearPause":true}'
+          echo "$API_BODY" | grep -q '"emergencyPause":false'
           echo "SMOKE OK: pause cleared"
 
           echo "== maintenance window lifecycle =="
           MW_END="$(date -u -d '+70 minutes' +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -v+70M +%Y-%m-%dT%H:%M:%SZ)"
-          MW="$(curl -s -b "$COOKIES" -H 'Content-Type: application/json' \
-            -d '{"name":"staging-smoke","scope":"all","startsAt":"'"$UNTIL"'","endsAt":"'"$MW_END"'","reason":"smoke"}' \
-            "$BASE/maintenance-windows")"
-          echo "$MW" | grep -q '"id":' || { echo "SMOKE FAIL: window create: $MW"; exit 1; }
+          apicall POST /server-hub/api/maintenance-windows '{"name":"staging-smoke","scope":"all","startsAt":"'"$UNTIL"'","endsAt":"'"$MW_END"'","reason":"smoke"}'
+          echo "$API_BODY" | grep -q '"id":' || { echo "SMOKE FAIL: window create: $API_BODY"; exit 1; }
           echo "SMOKE OK: window created"
-          MID="$(echo "$MW" | grep -o '"id":[0-9]*' | head -1 | tr -cd '0-9')"
-          CODE="$(curl -s -o /dev/null -w '%{http_code}' -b "$COOKIES" -X DELETE "$BASE/maintenance-windows/$MID")"
-          need "window deleted" "200" "$CODE"
+          MID="$(echo "$API_BODY" | grep -o '"id":[0-9]*' | head -1 | tr -cd '0-9')"
+          apicall DELETE "/server-hub/api/maintenance-windows/$MID"
+          need "window deleted" "200" "$API_CODE"
 
           echo "== delivery history serves =="
-          CODE="$(curl -s -o /dev/null -w '%{http_code}' -b "$COOKIES" "$BASE/notification-deliveries?limit=5")"
-          need "deliveries GET" "200" "$CODE"
+          apicall GET "/server-hub/api/notification-deliveries?limit=5"
+          need "deliveries GET" "200" "$API_CODE"
 
           if [ "${STAGING_SEND_TESTS}" = "true" ]; then
             echo "== provider test-send (explicitly enabled) =="
-            curl -s -b "$COOKIES" -X POST "$BASE/settings/notifications/test" | tee /dev/stderr | grep -q '"telegram"'
+            apicall POST /server-hub/api/settings/notifications/test
+            echo "$API_BODY" | grep -q '"telegram"'
             echo "SMOKE OK: test-send responded (check recipients got exactly one message)"
           else
             echo "== provider test-send skipped (STAGING_SEND_TESTS=false; no burst in routine CI) =="
@@ -868,3 +898,4 @@ except Exception:
     }
   }
 }
+

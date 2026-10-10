@@ -35,7 +35,10 @@ RUN CGO_ENABLED=0 go build -o /serverhub ./cmd/server
 # 3. Final runtime image
 FROM alpine:3.20
 
-RUN apk add --no-cache ca-certificates docker-cli && \
+# curl is the in-container HTTP client for CI health/smoke checks: the
+# Jenkins agent is itself containerized, so host-published loopback ports
+# are unreachable from it and probes must run inside the app container.
+RUN apk add --no-cache ca-certificates curl docker-cli && \
     adduser -D -u 1001 serverhub
 
 WORKDIR /app
