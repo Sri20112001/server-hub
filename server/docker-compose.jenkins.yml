@@ -1,4 +1,11 @@
 # Jenkins-only override for docker-compose.yml.
+#
+# The monitoring config bind mounts need HOST-visible paths: the Docker
+# daemon resolves bind sources on the host, where the in-container Jenkins
+# workspace path does not exist. JENKINS_MOUNT_BASE is the host-side path
+# of the Jenkins workspace root; export it in the agent environment when
+# this host layout changes, otherwise the default below applies.
+# Example: JENKINS_MOUNT_BASE=/var/snap/docker/common/var-lib-docker/volumes/jenkins_home/_data/workspace/server-hub-pipeline
 services:
   serverhub:
     volumes:
@@ -7,13 +14,13 @@ services:
 
   prometheus:
     volumes:
-      - /var/snap/docker/common/var-lib-docker/volumes/jenkins_home/_data/workspace/server-hub-pipeline/server/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - /var/snap/docker/common/var-lib-docker/volumes/jenkins_home/_data/workspace/server-hub-pipeline/server/rules:/etc/prometheus/rules:ro
+      - ${JENKINS_MOUNT_BASE:-/var/snap/docker/common/var-lib-docker/volumes/jenkins_home/_data/workspace/server-hub-pipeline}/server/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ${JENKINS_MOUNT_BASE:-/var/snap/docker/common/var-lib-docker/volumes/jenkins_home/_data/workspace/server-hub-pipeline}/server/rules:/etc/prometheus/rules:ro
       - promdata:/prometheus
 
   alertmanager:
     volumes:
-      - /var/snap/docker/common/var-lib-docker/volumes/jenkins_home/_data/workspace/server-hub-pipeline/server/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - ${JENKINS_MOUNT_BASE:-/var/snap/docker/common/var-lib-docker/volumes/jenkins_home/_data/workspace/server-hub-pipeline}/server/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
       - amdata:/alertmanager
 
 volumes:

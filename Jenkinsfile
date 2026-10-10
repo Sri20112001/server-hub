@@ -21,10 +21,9 @@ pipeline {
   parameters {
     booleanParam(name: 'BUILD_WEB', defaultValue: true, description: 'Build the web application')
     booleanParam(name: 'BUILD_MOBILE', defaultValue: false, description: 'Run mobile CI and build the mobile application')
-    booleanParam(name: 'DEPLOY', defaultValue: true, description: 'Deploy ServerHub after successful CI')
+    booleanParam(name: 'DEPLOY', defaultValue: false, description: 'Deploy ServerHub (manual opt-in only; routine CI never touches production)')
     booleanParam(name: 'STAGING_SMOKE', defaultValue: true, description: 'Run post-deploy staging smoke checks (notification policy gate)')
     booleanParam(name: 'STAGING_SEND_TESTS', defaultValue: false, description: 'Include real provider test-sends in staging smoke (sends one email/Telegram; leave off in routine CI)')
-    booleanParam(name: 'CREDENTIAL_CHECK', defaultValue: true, description: 'Verify injected secret presence/format without deploying (never prints values)')
   }
 
   environment {
@@ -435,31 +434,6 @@ stage('Prepare') {
 
 
 
-    stage('Credential Check') {
-      // Non-deploying diagnostic: verifies Jenkins injects the encryption
-      // key credential and that its format is plausible, without printing
-      // the value and without touching any deployment. Run this (with
-      // DEPLOY off) to isolate credential-binding issues from app issues.
-      when { expression { params.CREDENTIAL_CHECK } }
-      environment {
-        SERVERHUB_ENCRYPTION_KEY = credentials('serverhub-encryption-key')
-      }
-      steps {
-        sh '''
-          python3 - <<'PY'
-          import os
-          import re
-
-          key = os.environ.get("SERVERHUB_ENCRYPTION_KEY", "")
-          print("Encryption key present:", bool(key))
-          print("Encryption key length:", len(key))
-          print("Encryption key format valid:",
-                bool(re.fullmatch(r"[0-9a-fA-F]{64}", key)))
-          PY
-        '''
-      }
-    }
-
     stage('Deploy') {
       // Blocked on UNSTABLE: optional mobile bundle/APK failures (caught as
       // UNSTABLE above) must not silently precede a production deployment.
@@ -488,6 +462,25 @@ stage('Prepare') {
             COMPOSE="$(cat "$WORKSPACE/.jenkins-compose")"
             export SERVERHUB_VERSION="rc-${BUILD_NUMBER:-local}"
             PREV_TAG="serverhub:prev-${BUILD_NUMBER:-local}"
+
+            # ---------------------------------------------------------
+            # Preflight: credential diagnostic (presence/length/format
+            # only; values are never printed). Fails the build before
+            # anything is touched when the encryption key cannot work.
+            # ---------------------------------------------------------
+
+            python3 - <<'PY'
+            import os
+            import re
+            import sys
+
+            key = os.environ.get("SERVERHUB_ENCRYPTION_KEY", "")
+            print("Encryption key present:", bool(key))
+            print("Encryption key length:", len(key))
+            ok = bool(re.fullmatch(r"[0-9a-fA-F]{64}", key))
+            print("Encryption key format valid:", ok)
+            sys.exit(0 if ok else 1)
+            PY
 
             # ---------------------------------------------------------
             # Back up production database before schema changes.
@@ -527,39 +520,17 @@ stage('Prepare') {
               fi
               echo "Restoring previous image ($PREV_TAG)..."
               export SERVERHUB_VERSION="prev-${BUILD_NUMBER:-local}"
-              # Full stack: `down` removed postgres/prometheus too (named
-              # volumes preserve their data). Best-effort restore, then fail.
-              $COMPOSE up -d >/dev/null 2>&1 || true
+              # No teardown was run, so the stack (postgres, volumes, data)
+              # is intact: recreating just the app service restores it.
+              $COMPOSE up -d serverhub >/dev/null 2>&1 || true
               echo "Rolled back to previous image. Build still fails to signal."
               exit 1
             }
 
-            force_cleanup_container() {
-              c="$1"
-              if docker inspect "$c" >/dev/null 2>&1; then
-                echo "Terminating container $c..."
-                docker stop -t 5 "$c" 2>/dev/null || docker kill "$c" 2>/dev/null || docker rm -f "$c" 2>/dev/null || true
-                if docker inspect -f '{{.State.Running}}' "$c" 2>/dev/null | grep -q true; then
-                  PID="$(docker inspect -f '{{.State.Pid}}' "$c" 2>/dev/null || true)"
-                  if [ -n "$PID" ] && [ "$PID" != "0" ]; then
-                    echo "Container $c still running (AppArmor signal denied). Force-killing PID $PID..."
-                    docker run --rm --privileged --pid=host alpine kill -9 "$PID" 2>/dev/null || true
-                  fi
-                  docker rm -f "$c" 2>/dev/null || true
-                fi
-              fi
-            }
-
-            echo "Stopping previous ServerHub Compose deployment..."
-            $COMPOSE down --remove-orphans >/dev/null 2>&1 || true
-
-            # Clean up all containers in the stack to prevent recreation failures under host AppArmor issues:
-            for c in serverhub serverhub-postgres serverhub-prometheus serverhub-alertmanager serverhub-node-exporter serverhub-cadvisor; do
-              force_cleanup_container "$c"
-            done
-
             # ---------------------------------------------------------
-            # Check host port 4000
+            # Port holder diagnostic (report-only, never kills anything).
+            # `up -d` recreates our own previous container in place; only a
+            # foreign holder is a hard error.
             # ---------------------------------------------------------
 
             HOLDER="$(
@@ -580,15 +551,7 @@ stage('Prepare') {
               # legacy compose builds as server-hub-serverhub).
               case "$IMG" in
                 serverhub*|server-hub-serverhub|docker.io/library/serverhub*)
-                  NAME="$(echo "$HOLDER" | awk '{print $1}')"
-                  force_cleanup_container "$NAME"
-
-                  if docker ps --format '{{.Names}} {{.Ports}}' 2>/dev/null | grep -q '4000->4000'; then
-                    echo "ERROR: Could not stop stale container $NAME on port 4000."
-                    echo "If Docker reported 'permission denied', AppArmor on the host is blocking signal delivery."
-                    echo "Run on host: sudo aa-remove-unknown && sudo systemctl restart docker"
-                    exit 1
-                  fi
+                  echo "Held by our own previous container; 'up -d' will recreate it in place."
                   ;;
                 *)
                   echo "ERROR: Host port 4000 is held by another Docker container."
@@ -624,10 +587,13 @@ stage('Prepare') {
             fi
 
             # ---------------------------------------------------------
-            # Start production deployment (scanned candidate digest)
+            # Deploy the scanned candidate with an in-place rolling
+            # recreate. No `down`, no container killing: postgres,
+            # monitoring and volumes stay up; only services whose image or
+            # config changed are recreated.
             # ---------------------------------------------------------
 
-            echo "Starting ServerHub (${SERVERHUB_VERSION})..."
+            echo "Deploying ServerHub (${SERVERHUB_VERSION})..."
 
             $COMPOSE up -d
 
@@ -797,9 +763,15 @@ stage('Prepare') {
         docker rm -f "$TEST_PG_CONTAINER" >/dev/null 2>&1 || true
 
         # Remove the per-build Docker network (name persisted by Prepare;
-        # never a shared fixed name another job may be using).
+        # never a shared fixed name another job may be using). Disconnect
+        # this agent first: Start Test Database attaches it so the test
+        # container name resolves, and `network rm` fails while endpoints
+        # remain attached (the old code swallowed that failure, leaking
+        # one stale network per build).
         if [ -f "$WORKSPACE/.jenkins-test-net" ]; then
-          docker network rm "$(cat "$WORKSPACE/.jenkins-test-net")" >/dev/null 2>&1 || true
+          TEST_NET="$(cat "$WORKSPACE/.jenkins-test-net")"
+          docker network disconnect "$TEST_NET" "$(hostname)" >/dev/null 2>&1 || true
+          docker network rm "$TEST_NET" >/dev/null 2>&1 || true
         fi
 
         # Remove temporary helper files.
