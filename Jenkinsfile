@@ -24,6 +24,7 @@ pipeline {
     booleanParam(name: 'DEPLOY', defaultValue: true, description: 'Deploy ServerHub after successful CI')
     booleanParam(name: 'STAGING_SMOKE', defaultValue: true, description: 'Run post-deploy staging smoke checks (notification policy gate)')
     booleanParam(name: 'STAGING_SEND_TESTS', defaultValue: false, description: 'Include real provider test-sends in staging smoke (sends one email/Telegram; leave off in routine CI)')
+    booleanParam(name: 'CREDENTIAL_CHECK', defaultValue: true, description: 'Verify injected secret presence/format without deploying (never prints values)')
   }
 
   environment {
@@ -423,6 +424,31 @@ stage('Prepare') {
     }
 
 
+
+    stage('Credential Check') {
+      // Non-deploying diagnostic: verifies Jenkins injects the encryption
+      // key credential and that its format is plausible, without printing
+      // the value and without touching any deployment. Run this (with
+      // DEPLOY off) to isolate credential-binding issues from app issues.
+      when { expression { params.CREDENTIAL_CHECK } }
+      environment {
+        SERVERHUB_ENCRYPTION_KEY = credentials('serverhub-encryption-key')
+      }
+      steps {
+        sh '''
+          python3 - <<'PY'
+          import os
+          import re
+
+          key = os.environ.get("SERVERHUB_ENCRYPTION_KEY", "")
+          print("Encryption key present:", bool(key))
+          print("Encryption key length:", len(key))
+          print("Encryption key format valid:",
+                bool(re.fullmatch(r"[0-9a-fA-F]{64}", key)))
+          PY
+        '''
+      }
+    }
 
     stage('Deploy') {
       // Blocked on UNSTABLE: optional mobile bundle/APK failures (caught as
