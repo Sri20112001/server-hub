@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { UserPlus, Trash2, Users } from "lucide-react";
 import { api } from "../../../lib/api";
 import { useAuth, useUi } from "../../../stores/store";
@@ -27,7 +27,8 @@ export function TeamTab() {
   const [newRole, setNewRole] = useState("operator");
   const [addBusy, setAddBusy] = useState(false);
 
-  const loadUsers = async () => {
+  // Shared fetcher for event handlers (create/role-change/delete refresh).
+  const loadUsers = useCallback(async () => {
     try {
       const data = await api.users();
       setUsers(data);
@@ -36,11 +37,27 @@ export function TeamTab() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [pushToast]);
 
+  // Initial load fetches inline so the effect performs no synchronous
+  // set-state on setup; the cancelled flag guards unmount races.
   useEffect(() => {
-    void loadUsers();
-  }, []);
+    let cancelled = false;
+    const run = async () => {
+      try {
+        const data = await api.users();
+        if (!cancelled) setUsers(data);
+      } catch (e) {
+        if (!cancelled) pushToast(e instanceof Error ? e.message : "Failed to load team members", true);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [pushToast]);
 
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();

@@ -103,11 +103,19 @@ function AddServerModal({ onClose, onCreated }: { onClose: () => void; onCreated
     }
   };
 
-  // Step 4: Live connection polling
-  useEffect(() => {
-    if (step !== 4 || !createdServerId) return;
+  // Entering step 4 (re)initializes polling state in the event handler,
+  // keeping the polling effect itself free of synchronous set-state.
+  const handleEnterStep4 = () => {
     setPollStatus("connecting");
     setSecondsWaiting(0);
+    setStep(4);
+  };
+
+  // Step 4: Live connection polling. Polling state is (re)initialized by
+  // handleEnterStep4, the transition that enters this step — never here,
+  // so this effect performs no synchronous set-state on setup.
+  useEffect(() => {
+    if (step !== 4 || !createdServerId) return;
 
     const timer = setInterval(() => {
       setSecondsWaiting((s) => s + 1);
@@ -233,7 +241,7 @@ function AddServerModal({ onClose, onCreated }: { onClose: () => void; onCreated
               ].map((opt) => (
                 <button
                   key={opt.id}
-                  onClick={() => setOsType(opt.id as any)}
+                  onClick={() => setOsType(opt.id as "linux" | "docker" | "windows")}
                   className={`p-4 rounded-xl border text-left transition-all cursor-pointer ${
                     osType === opt.id
                       ? "border-accent dark:border-ember bg-tint/40 dark:bg-emboss ring-1 ring-accent dark:ring-ember"
@@ -288,8 +296,8 @@ function AddServerModal({ onClose, onCreated }: { onClose: () => void; onCreated
               <button onClick={() => setStep(2)} className="px-4 py-2 text-sm text-muted dark:text-fog hover:text-ink dark:hover:text-bone border border-line dark:border-edge rounded-lg cursor-pointer">
                 ← Back
               </button>
-              <button
-                onClick={() => setStep(4)}
+                <button
+                 onClick={handleEnterStep4}
                 className="px-4 py-2 text-sm bg-accent dark:bg-ember text-white dark:text-black font-semibold rounded-lg hover:bg-accent-hover dark:hover:bg-ember-hover cursor-pointer shadow-sm"
               >
                 I've Run the Command → Verify Connection
