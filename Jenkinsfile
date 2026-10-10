@@ -155,9 +155,11 @@ stage('Prepare') {
 
           echo "Preparing test PostgreSQL..."
 
-          # Per-build name: immune to leftovers from older runs, so a
-          # best-effort remove is all that's needed here.
-          export TEST_PG_CONTAINER="${TEST_PG_CONTAINER_BASE}-${BUILD_NUMBER:-local}"
+          # Per-build, per-job name: BUILD_NUMBER alone collides across
+          # Jenkins jobs (two jobs can both be at build 1), so the sanitized
+          # job name is included exactly like the network name.
+          SAFE_JOB="$(echo "${JOB_NAME:-local}" | tr -c 'a-zA-Z0-9' '-' | cut -c1-64)"
+          export TEST_PG_CONTAINER="${TEST_PG_CONTAINER_BASE}-${SAFE_JOB}-${BUILD_NUMBER:-local}"
           test -s "$WORKSPACE/.jenkins-test-net" || {
             echo "ERROR: test network name file is missing or empty"
             exit 1
@@ -383,16 +385,23 @@ stage('Prepare') {
     when { expression { params.BUILD_MOBILE } }
       steps {
         dir('mobile') {
-          catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') {
-                sh '''
-            set -e
+          script {
+            try {
+              sh '''
+                set -e
 
-            echo "Validating mobile JS bundle (no token required)..."
-            export EXPO_PUBLIC_API_URL="$EXPO_PUBLIC_API_URL"
+                echo "Validating mobile JS bundle (no token required)..."
+                export EXPO_PUBLIC_API_URL="$EXPO_PUBLIC_API_URL"
 
-            npx expo export --platform android
-          '''
-              }
+                npx expo export --platform android
+              '''
+            } catch (e) {
+              // Explicit flag: catchError(buildResult:'SUCCESS') would leave
+              // the build SUCCESS and defeat the Deploy gate below.
+              env.MOBILE_OK = 'false'
+              unstable("Mobile Bundle Check failed: ${e.getMessage()}")
+            }
+          }
         }
       }
     }
@@ -401,33 +410,38 @@ stage('Prepare') {
     when { expression { params.BUILD_MOBILE } }
       steps {
         dir('mobile') {
-          catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') {
-                sh '''
-            set -e
+          script {
+            try {
+              sh '''
+                set -e
 
-            echo "Building Android debug APK (prebuild + Gradle)..."
+                echo "Building Android debug APK (prebuild + Gradle)..."
 
-            export EXPO_PUBLIC_API_URL="$EXPO_PUBLIC_API_URL"
-            export ANDROID_HOME="${ANDROID_HOME:-/var/jenkins_home/android-sdk}"
-            export ANDROID_SDK_ROOT="$ANDROID_HOME"
-            export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH"
+                export EXPO_PUBLIC_API_URL="$EXPO_PUBLIC_API_URL"
+                export ANDROID_HOME="${ANDROID_HOME:-/var/jenkins_home/android-sdk}"
+                export ANDROID_SDK_ROOT="$ANDROID_HOME"
+                export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH"
 
-            # Set clean JVM heap ceilings without explicit GC flags
-            export GRADLE_OPTS="-Xmx2048m -XX:MaxMetaspaceSize=512m -Dorg.gradle.daemon=false -Dorg.gradle.parallel=false -Dkotlin.compiler.execution.strategy=in-process"
-            export NODE_OPTIONS="--max-old-space-size=1536"
+                # Set clean JVM heap ceilings without explicit GC flags
+                export GRADLE_OPTS="-Xmx2048m -XX:MaxMetaspaceSize=512m -Dorg.gradle.daemon=false -Dorg.gradle.parallel=false -Dkotlin.compiler.execution.strategy=in-process"
+                export NODE_OPTIONS="--max-old-space-size=1536"
 
-            command -v java >/dev/null 2>&1 || { echo "ERROR: JDK 17+ not found on agent."; exit 1; }
-            [ -d "$ANDROID_HOME" ] || { echo "ERROR: Android SDK not found at $ANDROID_HOME."; exit 1; }
+                command -v java >/dev/null 2>&1 || { echo "ERROR: JDK 17+ not found on agent."; exit 1; }
+                [ -d "$ANDROID_HOME" ] || { echo "ERROR: Android SDK not found at $ANDROID_HOME."; exit 1; }
 
-            # Accept SDK licenses automatically if prompted
-            yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null 2>&1 || true
+                # Accept SDK licenses automatically if prompted
+                yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null 2>&1 || true
 
-            npx expo prebuild --platform android --non-interactive
-            chmod +x android/gradlew
-            (cd android && ./gradlew assembleDebug --no-daemon --max-workers=1)
-          '''
-          archiveArtifacts artifacts: 'android/app/build/outputs/apk/debug/app-debug.apk'
-              }
+                npx expo prebuild --platform android --non-interactive
+                chmod +x android/gradlew
+                (cd android && ./gradlew assembleDebug --no-daemon --max-workers=1)
+              '''
+              archiveArtifacts artifacts: 'android/app/build/outputs/apk/debug/app-debug.apk'
+            } catch (e) {
+              env.MOBILE_OK = 'false'
+              unstable("Mobile APK failed: ${e.getMessage()}")
+            }
+          }
         }
       }
     }
@@ -435,9 +449,11 @@ stage('Prepare') {
 
 
     stage('Deploy') {
-      // Blocked on UNSTABLE: optional mobile bundle/APK failures (caught as
-      // UNSTABLE above) must not silently precede a production deployment.
-      when { expression { params.DEPLOY && currentBuild.currentResult == 'SUCCESS' } }
+      // Release gate: prior stages green AND no failed mobile check.
+      // MOBILE_OK is set explicitly by the mobile stages because
+      // catchError(buildResult:'SUCCESS') leaves the build result green.
+      // Unset (mobile not requested) counts as OK.
+      when { expression { params.DEPLOY && currentBuild.currentResult == 'SUCCESS' && env.MOBILE_OK != 'false' } }
       environment {
         POSTGRES_PASSWORD = credentials('serverhub-postgres-password')
         JWT_SECRET = credentials('serverhub-jwt-secret')
@@ -490,13 +506,30 @@ stage('Prepare') {
 
             if docker inspect serverhub-postgres >/dev/null 2>&1; then
               echo "Backing up production database..."
+              # Retention policy: one pre-deploy dump per build, archived as
+              # a build artifact; older workspace copies are removed.
               find "$WORKSPACE" -maxdepth 1 -name 'pg-backup-*.sql.gz' -delete 2>/dev/null || true
-              docker exec serverhub-postgres \
+              BACKUP="$WORKSPACE/pg-backup-${BUILD_NUMBER:-local}.sql.gz"
+              # pipefail scoped to this block: a pg_dump failure must not
+              # hide behind gzip's success, and an empty/corrupt dump must
+              # abort the deployment (no migration without a backup).
+              set -o pipefail
+              BACKUP_OK=false
+              if docker exec serverhub-postgres \
                 pg_dump -U serverhub serverhub 2>/dev/null | \
-                gzip > "$WORKSPACE/pg-backup-${BUILD_NUMBER:-local}.sql.gz" || \
-                echo "WARNING: database backup failed; continuing without a fresh dump."
+                gzip > "$BACKUP"; then
+                if [ -s "$BACKUP" ] && gzip -t "$BACKUP" 2>/dev/null; then
+                  BACKUP_OK=true
+                  echo "Database backup OK: $BACKUP ($(du -h "$BACKUP" | awk '{print $1}'))"
+                fi
+              fi
+              set +o pipefail
+              if [ "$BACKUP_OK" != "true" ]; then
+                echo "ERROR: database backup failed or is corrupt; aborting deployment."
+                exit 1
+              fi
             else
-              echo "No existing database container; skipping backup (first deploy?)."
+              echo "No existing database container; skipping backup (first deploy only)."
             fi
 
             # ---------------------------------------------------------
@@ -507,11 +540,28 @@ stage('Prepare') {
             if docker inspect serverhub >/dev/null 2>&1; then
               PREV_ID="$(docker inspect serverhub --format '{{.Image}}')"
               docker tag "$PREV_ID" "$PREV_TAG"
-              HAVE_PREV=true
-              echo "Rollback image pinned: $PREV_TAG ($PREV_ID)"
+              # Verify the pin actually exists before relying on it.
+              if docker inspect "$PREV_TAG" >/dev/null 2>&1; then
+                HAVE_PREV=true
+                echo "Rollback image pinned: $PREV_TAG ($PREV_ID)"
+              else
+                echo "WARNING: could not pin previous image; rollback unavailable."
+              fi
             else
               echo "No running serverhub container; nothing to roll back to."
             fi
+
+            # ready_ok parses /health/ready as JSON (key order independent).
+            ready_ok() {
+              python3 -c '
+import json, sys, urllib.request
+try:
+    with urllib.request.urlopen("http://localhost:4000/health/ready", timeout=5) as r:
+        b = json.load(r)
+    sys.exit(0 if b.get("status") == "ok" and b.get("checks", {}).get("db") == "up" else 1)
+except Exception:
+    sys.exit(1)'
+            }
 
             rollback() {
               if [ "$HAVE_PREV" != "true" ]; then
@@ -523,6 +573,22 @@ stage('Prepare') {
               # No teardown was run, so the stack (postgres, volumes, data)
               # is intact: recreating just the app service restores it.
               $COMPOSE up -d serverhub >/dev/null 2>&1 || true
+              echo "Waiting for rolled-back instance (60s budget)..."
+              RB_OK=false
+              for i in $(seq 1 20); do
+                if ready_ok 2>/dev/null; then
+                  RB_OK=true
+                  break
+                fi
+                sleep 3
+              done
+              if [ "$RB_OK" = "true" ]; then
+                echo "Rollback verified: previous image serving with DB up."
+              else
+                echo "ERROR: rollback did NOT recover a healthy instance."
+                echo "Manual recovery required: pg_restore the pre-deploy dump (see runbook)."
+                docker logs --tail 50 serverhub || true
+              fi
               echo "Rolled back to previous image. Build still fails to signal."
               exit 1
             }
@@ -593,13 +659,16 @@ stage('Prepare') {
             # config changed are recreated.
             # ---------------------------------------------------------
 
+            # Narrow scope: recreate only the app service. Dependencies
+            # (postgres/prometheus) start via depends_on on first deploy;
+            # monitoring config changes are picked up on full-stack runs.
             echo "Deploying ServerHub (${SERVERHUB_VERSION})..."
 
-            $COMPOSE up -d
+            $COMPOSE up -d serverhub
 
             # ---------------------------------------------------------
-            # Bounded readiness polling (replaces the fixed sleep):
-            # liveness, then readiness with DB proof, with diagnostics.
+            # Bounded readiness polling: liveness, then JSON-parsed
+            # readiness with DB proof, with diagnostics.
             # ---------------------------------------------------------
 
             echo "Waiting for readiness (120s budget)..."
@@ -607,16 +676,11 @@ stage('Prepare') {
             READY=false
             for i in $(seq 1 40); do
               if curl -s -f http://localhost:4000/health/live >/dev/null 2>&1; then
-                BODY="$(curl -s http://localhost:4000/health/ready 2>/dev/null || true)"
-                # NOTE: Go marshals maps with sorted keys, so "checks"
-                # (containing "db":"up") precedes "status" in the body.
-                case "$BODY" in
-                  *'"db":"up"'*'"status":"ok"'*)
-                    READY=true
-                    echo "ServerHub ready (liveness + readiness with DB up)."
-                    break
-                    ;;
-                esac
+                if ready_ok 2>/dev/null; then
+                  READY=true
+                  echo "ServerHub ready (liveness + readiness with DB up)."
+                  break
+                fi
               fi
               sleep 3
             done
@@ -757,10 +821,16 @@ stage('Prepare') {
       sh '''
         echo "Cleaning Jenkins test resources..."
 
-        # Per-build name (mirrors Start Test Database); best-effort removal —
-        # with unique names a leftover can never block a future run.
-        export TEST_PG_CONTAINER="${TEST_PG_CONTAINER_BASE}-${BUILD_NUMBER:-local}"
-        docker rm -f "$TEST_PG_CONTAINER" >/dev/null 2>&1 || true
+        # Per-build, per-job name (mirrors Start Test Database, including
+        # the sanitized job name). Best-effort removal — unique names mean
+        # a leftover can never block a future run.
+        SAFE_JOB="$(echo "${JOB_NAME:-local}" | tr -c 'a-zA-Z0-9' '-' | cut -c1-64)"
+        export TEST_PG_CONTAINER="${TEST_PG_CONTAINER_BASE}-${SAFE_JOB}-${BUILD_NUMBER:-local}"
+        if docker rm -f "$TEST_PG_CONTAINER" >/dev/null 2>&1; then
+          echo "Removed test container $TEST_PG_CONTAINER."
+        else
+          echo "Test container $TEST_PG_CONTAINER already absent."
+        fi
 
         # Remove the per-build Docker network (name persisted by Prepare;
         # never a shared fixed name another job may be using). Disconnect
@@ -770,8 +840,17 @@ stage('Prepare') {
         # one stale network per build).
         if [ -f "$WORKSPACE/.jenkins-test-net" ]; then
           TEST_NET="$(cat "$WORKSPACE/.jenkins-test-net")"
-          docker network disconnect "$TEST_NET" "$(hostname)" >/dev/null 2>&1 || true
-          docker network rm "$TEST_NET" >/dev/null 2>&1 || true
+          if docker network disconnect "$TEST_NET" "$(hostname)" >/dev/null 2>&1; then
+            echo "Disconnected agent from $TEST_NET."
+          else
+            echo "Agent was not attached to $TEST_NET (or already detached)."
+          fi
+          if docker network rm "$TEST_NET" >/dev/null 2>&1; then
+            echo "Removed test network $TEST_NET."
+          else
+            echo "WARNING: could not remove test network $TEST_NET; inspect manually:"
+            docker network inspect "$TEST_NET" 2>/dev/null || echo "(network already gone)"
+          fi
         fi
 
         # Remove temporary helper files.
