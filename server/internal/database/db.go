@@ -186,6 +186,9 @@ func (d *DB) ensureLogImmutability() error {
 	if err := exec(`DROP TRIGGER IF EXISTS app_logs_no_update_delete ON app_logs`); err != nil {
 		return err
 	}
+	if err := exec(`DROP TRIGGER IF EXISTS app_logs_guarded ON app_logs`); err != nil {
+		return err
+	}
 	if err := exec(`CREATE TRIGGER app_logs_guarded BEFORE UPDATE OR DELETE ON app_logs FOR EACH ROW EXECUTE FUNCTION serverhub_app_logs_guard()`); err != nil {
 		return fmt.Errorf("create trigger app_logs_guarded: %w", err)
 	}

@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../lib/api";
-import type { NotificationGroup, NotifySettings, ServerInfo } from "../../lib/types";
+import type { NotifySettings } from "../../lib/types";
 import { SettingsSkeleton } from "../../components/ui";
 import { Kicker } from "../../components/ui";
 import { SegmentedTabs } from "./components/SegmentedTabs";
@@ -11,54 +12,56 @@ import { DiagnosticsTab } from "./tabs/DiagnosticsTab";
 import { Activity, Bell, Users, Wrench } from "lucide-react";
 
 export function SettingsPage({ setOnline }: { setOnline: (v: boolean) => void }) {
-  const [info, setInfo] = useState<ServerInfo | null>(null);
-  const [notify, setNotify] = useState<NotifySettings | null>(null);
-  const [groups, setGroups] = useState<NotificationGroup[]>([]);
-  const [loading, setLoading] = useState(true);
+  const qc = useQueryClient();
   const [activeTab, setActiveTab] = useState("monitoring");
+
+  const { data: settingsData } = useQuery({
+    queryKey: ["settings-data"],
+    queryFn: async () => {
+      const [serverRes, notifyRes, groupsRes] = await Promise.allSettled([
+        api.server(),
+        api.notifySettings(),
+        api.notificationGroups(),
+      ]);
+
+      const isOnline = serverRes.status === "fulfilled";
+      setOnline(isOnline);
+
+      return {
+        info: serverRes.status === "fulfilled" ? serverRes.value : null,
+        notify: notifyRes.status === "fulfilled" ? notifyRes.value : null,
+        groups: groupsRes.status === "fulfilled" ? groupsRes.value : [],
+      };
+    },
+    staleTime: 60_000,
+  });
+
+  const [notify, setNotify] = useState<NotifySettings | null>(null);
+  // Tracks the last synced remote value so the draft resets when fresh
+  // settings arrive (e.g. after refreshGroups), without an effect: this is
+  // React's documented "adjust state during render" pattern for prop/state
+  // syncing, keeping the NotificationsTab draft editable in between.
+  const [prevRemoteNotify, setPrevRemoteNotify] = useState<NotifySettings | null>(null);
+
+  const info = settingsData?.info ?? null;
+  const groups = settingsData?.groups ?? [];
+  const remoteNotify = settingsData?.notify ?? null;
+  if (remoteNotify !== prevRemoteNotify) {
+    setPrevRemoteNotify(remoteNotify);
+    setNotify(remoteNotify);
+  }
 
   const refreshGroups = async () => {
     try {
-      const list = await api.notificationGroups();
-      setGroups(list);
+      await qc.invalidateQueries({ queryKey: ["settings-data"] });
     } catch {
       /* ignore */
     }
   };
 
-  useEffect(() => {
-    let mounted = true;
-    Promise.allSettled([
-      api.server(),
-      api.notifySettings(),
-      api.notificationGroups()
-    ]).then(([serverRes, notifyRes, groupsRes]) => {
-      if (!mounted) return;
-      
-      if (serverRes.status === "fulfilled") {
-        setInfo(serverRes.value);
-        setOnline(true);
-      } else {
-        setOnline(false);
-      }
-
-      if (notifyRes.status === "fulfilled") {
-        setNotify(notifyRes.value);
-      }
-
-      if (groupsRes.status === "fulfilled") {
-        setGroups(groupsRes.value);
-      }
-
-      setLoading(false);
-    });
-
-    return () => { mounted = false; };
-  }, [setOnline]);
-
   const apiUrl = (import.meta.env.VITE_API_URL as string | undefined) ?? "http://localhost:4000";
 
-  if (loading) {
+  if (!info || !notify) {
     return <SettingsSkeleton />;
   }
 

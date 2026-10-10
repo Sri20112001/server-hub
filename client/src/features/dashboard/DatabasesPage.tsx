@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Database, KeyRound, PlusCircle, RefreshCw, Server } from "lucide-react";
 import { api } from "../../lib/api";
 import { fmtBytes } from "../../lib/format";
@@ -27,8 +28,7 @@ function serverTarget(s: DbServerInfo): DbTarget {
 export function DatabasesPage({ setOnline }: { setOnline: (v: boolean) => void }) {
   const pushToast = useUi((s) => s.pushToast);
   const nav = useNavigate();
-  const [servers, setServers] = useState<DbServerInfo[] | null>(null);
-  const [dockerAvailable, setDockerAvailable] = useState(true);
+  const qc = useQueryClient();
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [dbs, setDbs] = useState<DbItem[] | null>(null);
   const [browsing, setBrowsing] = useState(false);
@@ -41,23 +41,31 @@ export function DatabasesPage({ setOnline }: { setOnline: (v: boolean) => void }
   const [projectId, setProjectId] = useState<string>("");
   const [registering, setRegistering] = useState(false);
 
+  const { data: dbData } = useQuery({
+    queryKey: ["db-servers"],
+    queryFn: async () => {
+      try {
+        const r = await api.dbServers();
+        setOnline(true);
+        return r;
+      } catch (err) {
+        setOnline(false);
+        throw err;
+      }
+    },
+    staleTime: 30_000,
+  });
+
+  const servers = dbData?.servers ?? null;
+  const dockerAvailable = dbData?.dockerAvailable ?? true;
+
   const loadServers = useCallback(async () => {
-    try {
-      const r = await api.dbServers();
-      setServers(r.servers);
-      setDockerAvailable(r.dockerAvailable);
-      setOnline(true);
-    } catch {
-      setServers([]);
-    }
-  }, [setOnline]);
+    await qc.invalidateQueries({ queryKey: ["db-servers"] });
+  }, [qc]);
 
   useEffect(() => {
-    // Intentional: fetch-on-mount effect.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void loadServers();
     api.projects().then(setProjects).catch(() => setProjects([]));
-  }, [loadServers]);
+  }, []);
 
   const selected = useMemo(
     () => servers?.find((s) => s.key === selectedKey) ?? null,
@@ -176,12 +184,12 @@ export function DatabasesPage({ setOnline }: { setOnline: (v: boolean) => void }
           <h1 className="font-head text-[32px] font-bold tracking-[-0.03em] leading-[1.2] max-md:text-[26px]">
             Databases
           </h1>
-          <p className="text-muted dark:text-fog mt-1.5">
+          <div className="text-muted dark:text-fog mt-1.5">
             <Kicker>
-              {servers.length} server{servers.length === 1 ? "" : "s"} detected
+              {(servers ?? []).length} server{(servers ?? []).length === 1 ? "" : "s"} detected
               {!dockerAvailable && " · Docker unreachable"}
             </Kicker>
-          </p>
+          </div>
         </div>
         <button className={btnGhost} onClick={() => void loadServers()}>
           <RefreshCw size={13} /> Re-scan

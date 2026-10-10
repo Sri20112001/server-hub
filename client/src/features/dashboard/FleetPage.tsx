@@ -1,12 +1,13 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { ArrowLeft, Play, Power, RotateCcw, Search, X } from "lucide-react";
-import { api, ApiError } from "../../lib/api";
-import type { DashboardData, Deployment, Project, Service } from "../../lib/types";
+import { api } from "../../lib/api";
+import type { Deployment, Project } from "../../lib/types";
 import { useUi } from "../../stores/store";
 import { ConfirmModal, DashboardSkeleton, EmptyState, Kicker } from "../../components/ui";
 import { ProjectDrawer } from "./ProjectDrawer";
 import { ShipCard } from "./DashboardPage";
+import { useDashboardData } from "../../lib/useDashboard";
 
 type BulkAction = "start" | "stop" | "restart";
 
@@ -17,46 +18,17 @@ export function FleetPage({ setOnline }: { setOnline: (v: boolean) => void }) {
   const pushToast = useUi((s) => s.pushToast);
   const [params, setParams] = useSearchParams();
   const nav = useNavigate();
-  const [data, setData] = useState<DashboardData | null>(null);
-  const [servicesByProject, setServicesByProject] = useState<Record<number, Service[]>>({});
-  const [loading, setLoading] = useState(true);
+  const { data: fullData, reload } = useDashboardData({ setOnline });
+  const data = fullData?.dash ?? null;
+  const servicesByProject = fullData?.servicesByProject ?? {};
   const [q, setQ] = useState("");
   const [picked, setPicked] = useState<Set<number>>(new Set());
   const [pendingBulk, setPendingBulk] = useState<BulkAction | null>(null);
   const [bulkBusy, setBulkBusy] = useState(false);
 
   const load = useCallback(async () => {
-    try {
-      const dash = await api.dashboard();
-      setData(dash);
-      setOnline(true);
-      const entries = await Promise.all(
-        dash.projects.map(async (p) => {
-          try {
-            const s = await api.services(p.id);
-            return [p.id, s] as const;
-          } catch {
-            return [p.id, []] as const;
-          }
-        }),
-      );
-      setServicesByProject(Object.fromEntries(entries));
-    } catch (e) {
-      if (e instanceof ApiError && e.status === 401) {
-        setOnline(true);
-      } else {
-        setOnline(false);
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [setOnline]);
-
-  useEffect(() => {
-    // Intentional: fetch-on-mount effect.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void load();
-  }, [load]);
+    await reload();
+  }, [reload]);
 
   const projectById = useMemo(() => {
     const m = new Map<number, Project>();
@@ -120,7 +92,7 @@ export function FleetPage({ setOnline }: { setOnline: (v: boolean) => void }) {
     }
   };
 
-  if (loading || !data) {
+  if (!data) {
     return <DashboardSkeleton />;
   }
 
@@ -137,11 +109,11 @@ export function FleetPage({ setOnline }: { setOnline: (v: boolean) => void }) {
           <h1 className="font-head text-[32px] font-bold tracking-[-0.03em] leading-[1.2] max-md:text-[26px] text-ink dark:text-bone">
             Projects & Applications
           </h1>
-          <p className="text-muted dark:text-fog mt-1.5">
+          <div className="text-muted dark:text-fog mt-1.5">
             <Kicker>
-              {filtered.length} of {data.projects.length} projects
+              {filtered.length} of {data?.projects.length ?? 0} projects
             </Kicker>
-          </p>
+          </div>
         </div>
         <label className="flex items-center gap-2 bg-white dark:bg-panel border border-line dark:border-edge rounded-input px-3 py-2 text-[13px] text-muted dark:text-fog focus-within:border-accent dark:focus-within:border-ember w-full sm:w-auto shadow-sm">
           <Search size={14} className="shrink-0" />
@@ -202,9 +174,9 @@ export function FleetPage({ setOnline }: { setOnline: (v: boolean) => void }) {
       <div className="mt-6">
         {filtered.length === 0 ? (
           <EmptyState
-            title={data.projects.length === 0 ? "No projects registered yet" : "No projects match"}
+            title={(data?.projects.length ?? 0) === 0 ? "No projects registered yet" : "No projects match"}
             hint={
-              data.projects.length === 0
+              (data?.projects.length ?? 0) === 0
                 ? "Discovered Docker containers will automatically register here."
                 : "Try a different search filter."
             }

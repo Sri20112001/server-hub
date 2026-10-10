@@ -14,7 +14,7 @@ import {
   Server,
   Ship,
 } from "lucide-react";
-import { api, ApiError } from "../../lib/api";
+import { api } from "../../lib/api";
 import {
   fleetLabel,
   toFleetStatus,
@@ -22,7 +22,6 @@ import {
   type Deployment,
   type DiscoveryResult,
   type FleetStatus,
-  type ManagedServer,
   type Project,
   type Service,
 } from "../../lib/types";
@@ -41,6 +40,7 @@ import type { BusEvent } from "../../lib/types";
 import { ConfirmModal, EmptyState, Field, Kicker, Meter, Modal, StatusPill, DashboardSkeleton } from "../../components/ui";
 import { ProjectDrawer } from "./ProjectDrawer";
 import { DiscoveryModal } from "./DiscoveryModal";
+import { useDashboardData } from "../../lib/useDashboard";
 
 /* ---------- small pieces ---------- */
 
@@ -182,11 +182,11 @@ export function DashboardPage({ setOnline }: { setOnline: (v: boolean) => void }
   const pushToast = useUi((s) => s.pushToast);
   const [params, setParams] = useSearchParams();
   const nav = useNavigate();
-  const [data, setData] = useState<DashboardData | null>(null);
-  const [servers, setServers] = useState<ManagedServer[]>([]);
-  const [servicesByProject, setServicesByProject] = useState<Record<number, Service[]>>({});
-  const [feed, setFeed] = useState<string[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data: fullData, reload } = useDashboardData({ setOnline });
+  const data = fullData?.dash ?? null;
+  const servers = fullData?.servers ?? [];
+  const servicesByProject = fullData?.servicesByProject ?? {};
+  const feed = fullData?.feed ?? [];
   const [showCreate, setShowCreate] = useState(false);
   const [showScan, setShowScan] = useState(false);
   const [confirmWipe, setConfirmWipe] = useState(false);
@@ -245,44 +245,13 @@ export function DashboardPage({ setOnline }: { setOnline: (v: boolean) => void }
     prevHot.current = hot;
   }, [pushToast]);
 
-  const load = useCallback(async () => {
-    try {
-      const [dash, audit, srvs] = await Promise.all([
-        api.dashboard(),
-        api.audit(9),
-        api.servers().catch(() => []),
-      ]);
-      setData(dash);
-      setServers(srvs);
-      setOnline(true);
-      setFeed(
-        audit.map(
-          (a) => `[${(a.timestamp ?? "").slice(11, 19) || "--:--:--"}] ${a.actor} ${a.action} ${a.resource}${a.resourceId ? ` #${a.resourceId}` : ""} → ${a.result}`,
-        ),
-      );
-      notifyTransitions(dash);
-      // service chips per ship (best-effort, personal scale)
-      const entries = await Promise.all(
-        dash.projects.map(async (p) => {
-          try {
-            const s = await api.services(p.id);
-            return [p.id, s] as const;
-          } catch {
-            return [p.id, []] as const;
-          }
-        }),
-      );
-      setServicesByProject(Object.fromEntries(entries));
-    } catch (e) {
-      if (e instanceof ApiError && e.status === 401) {
-        setOnline(true);
-      } else {
-        setOnline(false);
-      }
-    } finally {
-      setLoading(false);
+  useEffect(() => {
+    if (data) {
+      notifyTransitions(data);
     }
-  }, [setOnline, notifyTransitions]);
+  }, [data, notifyTransitions]);
+
+  const load = useCallback(() => reload(), [reload]);
 
   // Auto-sync on app load: scan the shipyard once and import everything
   // unregistered, so no Docker find is ever missed and nobody has to click
@@ -309,13 +278,8 @@ export function DashboardPage({ setOnline }: { setOnline: (v: boolean) => void }
   }, [load, pushToast]);
 
   useEffect(() => {
-    // Intentional: initial load + poll subscription in one mount effect.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void load();
     void autoSync();
-    const t = window.setInterval(() => void load(), 30000);
-    return () => window.clearInterval(t);
-  }, [load, autoSync]);
+  }, [autoSync]);
 
   // Live signals: refresh the workbench and toast on deployments,
   // container/project lifecycle, gateway reloads, backups, threshold
@@ -461,7 +425,7 @@ export function DashboardPage({ setOnline }: { setOnline: (v: boolean) => void }
     return "No ships reporting yet";
   }, [data]);
 
-  if (loading || !data) {
+  if (!data) {
     return <DashboardSkeleton />;
   }
 

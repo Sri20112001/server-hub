@@ -233,7 +233,14 @@ export function AppShell({ online }: { online: boolean }) {
   }, [paletteOpen, setPaletteOpen]);
 
   const onDock = (path: string) => {
-    if (loc.pathname !== path) nav(path);
+    if (loc.pathname !== path) {
+      if ("startViewTransition" in document) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (document as any).startViewTransition(() => nav(path));
+      } else {
+        nav(path);
+      }
+    }
   };
 
   const dockBtn = (active: boolean) =>
@@ -290,7 +297,9 @@ export function AppShell({ online }: { online: boolean }) {
         </div>
       </div>
 
-      <Outlet />
+      <div key={loc.pathname} className="page-transition min-h-screen">
+        <Outlet />
+      </div>
 
       <nav
         className="bg-white dark:bg-panel border border-line dark:border-edge rounded-full shadow-chrome fixed bottom-4 sm:bottom-6 left-1/2 -translate-x-1/2 z-40 flex items-center gap-0.5 sm:gap-1 px-2 sm:px-3 py-2 max-w-[calc(100vw-1rem)] overflow-x-auto [padding-bottom:calc(0.5rem+env(safe-area-inset-bottom,0px))]"
