@@ -69,12 +69,6 @@ function CommandPalette({ onClose }: { onClose: () => void }) {
         run: () => nav("/"),
       },
       {
-        icon: <FolderGit2 size={15} />,
-        title: "View all projects",
-        sub: "page",
-        run: () => nav("/fleet"),
-      },
-      {
         icon: <Database size={15} />,
         title: "Browse databases",
         sub: "page",
@@ -342,17 +336,6 @@ export function AppShell({ online }: { online: boolean }) {
         >
           <AlertTriangle size={19} />
           {loc.pathname === "/alerts" && (
-            <span className="absolute bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-accent dark:bg-ember" />
-          )}
-        </button>
-        <button
-          className={dockBtn(loc.pathname === "/fleet")}
-          title="Projects"
-          aria-label="Projects"
-          onClick={() => onDock("/fleet")}
-        >
-          <FolderGit2 size={19} />
-          {loc.pathname === "/fleet" && (
             <span className="absolute bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-accent dark:bg-ember" />
           )}
         </button>

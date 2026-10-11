@@ -4,8 +4,6 @@ import { View, Text } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   House,
-  Sailboat,
-  LayoutGrid,
   Rocket,
   Server,
   AlertTriangle,
@@ -109,24 +107,10 @@ export default function TabsLayout() {
           tabBarAccessibilityLabel: "Dashboard",
         }}
       />
-      <Tabs.Screen
-        name="fleet"
-        options={{
-          tabBarIcon: ({ focused }) => (
-            <TabIcon icon={Sailboat} label="Fleet" focused={focused} />
-          ),
-          tabBarAccessibilityLabel: "Fleet",
-        }}
-      />
-      <Tabs.Screen
-        name="projects"
-        options={{
-          tabBarIcon: ({ focused }) => (
-            <TabIcon icon={LayoutGrid} label="Projects" focused={focused} />
-          ),
-          tabBarAccessibilityLabel: "Projects",
-        }}
-      />
+      {/* Projects section temporarily hidden: the fleet + projects tabs
+          are removed while their screens, APIs, and data stay intact.
+          Direct visits redirect (see fleet.tsx / projects.tsx); project
+          details remain reachable for operations that need them. */}
       <Tabs.Screen
         name="deployments"
         options={{

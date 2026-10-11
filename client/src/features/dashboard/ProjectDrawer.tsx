@@ -1,6 +1,5 @@
 import { useEffect } from "react";
-import { useNavigate } from "react-router";
-import { ArrowRight, X } from "lucide-react";
+import { X } from "lucide-react";
 import type { Project } from "../../lib/types";
 import { Kicker, StatusPill } from "../../components/ui";
 import { useProjectDetails } from "./useProjectDetails";
@@ -17,7 +16,6 @@ export function ProjectDrawer({
   onClose: () => void;
   onChanged: () => void;
 }) {
-  const nav = useNavigate();
   const d = useProjectDetails(project, onChanged);
 
   useEffect(() => {
@@ -94,15 +92,6 @@ export function ProjectDrawer({
           </div>
         </div>
 
-        <button
-          className="inline-flex items-center justify-center gap-2 rounded-input text-[13px] font-medium px-4 py-2.5 cursor-pointer border border-transparent whitespace-nowrap transition-colors duration-150 bg-accent dark:bg-ember text-white dark:text-black hover:bg-accent-hover dark:hover:bg-ember-hover w-full mt-4 shadow-sm"
-          onClick={() => {
-            onClose();
-            nav(`/projects/${project.id}`);
-          }}
-        >
-          View details <ArrowRight size={14} />
-        </button>
       </aside>
     </div>
   );

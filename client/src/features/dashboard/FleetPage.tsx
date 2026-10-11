@@ -3,8 +3,9 @@ import { useNavigate, useSearchParams } from "react-router";
 import { ArrowLeft, Play, Power, RotateCcw, Search, X } from "lucide-react";
 import { api } from "../../lib/api";
 import type { Deployment, Project } from "../../lib/types";
+import { queryState } from "../../lib/types";
 import { useUi } from "../../stores/store";
-import { ConfirmModal, DashboardSkeleton, EmptyState, Kicker } from "../../components/ui";
+import { ConfirmModal, DashboardSkeleton, EmptyState, Kicker, PageError } from "../../components/ui";
 import { ProjectDrawer } from "./ProjectDrawer";
 import { ShipCard } from "./DashboardPage";
 import { useDashboardData } from "../../lib/useDashboard";
@@ -18,9 +19,10 @@ export function FleetPage({ setOnline }: { setOnline: (v: boolean) => void }) {
   const pushToast = useUi((s) => s.pushToast);
   const [params, setParams] = useSearchParams();
   const nav = useNavigate();
-  const { data: fullData, reload } = useDashboardData({ setOnline });
+  const { data: fullData, reload, isLoading, isError, error } = useDashboardData({ setOnline });
   const data = fullData?.dash ?? null;
   const servicesByProject = fullData?.servicesByProject ?? {};
+  const servicesFailedIds = fullData?.servicesFailedIds ?? [];
   const [q, setQ] = useState("");
   const [picked, setPicked] = useState<Set<number>>(new Set());
   const [pendingBulk, setPendingBulk] = useState<BulkAction | null>(null);
@@ -78,7 +80,7 @@ export function FleetPage({ setOnline }: { setOnline: (v: boolean) => void }) {
       const verb = action === "start" ? "started" : action === "stop" ? "stopped" : "restarted";
       pushToast(
         r.failed === 0
-          ? `${r.succeeded} ship${r.succeeded === 1 ? "" : "s"} ${verb}.`
+          ? `${r.succeeded} project${r.succeeded === 1 ? "" : "s"} ${verb}.`
           : `${r.succeeded}/${r.succeeded + r.failed} ${verb} — ${r.failed} failed.`,
         r.failed > 0,
       );
@@ -92,8 +94,20 @@ export function FleetPage({ setOnline }: { setOnline: (v: boolean) => void }) {
     }
   };
 
-  if (!data) {
+  // Same explicit states as the dashboard: a failed fetch is an error
+  // with retry, never an endless skeleton or a healthy-looking empty page.
+  const state = queryState({ hasData: fullData != null, isLoading, isError });
+  if (state === "loading") {
     return <DashboardSkeleton />;
+  }
+  if (state === "error" || !data) {
+    return (
+      <PageError
+        title="Couldn't load the fleet"
+        detail={error instanceof Error ? error.message : undefined}
+        onRetry={() => void load()}
+      />
+    );
   }
 
   return (
@@ -208,6 +222,7 @@ export function FleetPage({ setOnline }: { setOnline: (v: boolean) => void }) {
                   key={p.id}
                   project={p}
                   services={servicesByProject[p.id] ?? []}
+                  servicesUnknown={servicesFailedIds.includes(p.id)}
                   last={recentByProject.get(p.id)}
                   onOpen={() => setParams({ project: String(p.id) })}
                   selection={{ checked: picked.has(p.id), onToggle: () => togglePick(p.id) }}
@@ -228,9 +243,9 @@ export function FleetPage({ setOnline }: { setOnline: (v: boolean) => void }) {
 
       {pendingBulk && (
         <ConfirmModal
-          title={pendingBulk === "stop" ? `Nap ${picked.size} ships?` : `Restart ${picked.size} ships?`}
-          body={`This will ${pendingBulk} every picked ship: ${pickedShips.map((p) => p.name).join(", ")}. Expect blackouts on running traffic.`}
-          confirmLabel={pendingBulk === "stop" ? "Nap them" : "Restart them"}
+          title={pendingBulk === "stop" ? `Stop ${picked.size} projects?` : `Restart ${picked.size} projects?`}
+          body={`This will ${pendingBulk} every selected project: ${pickedShips.map((p) => p.name).join(", ")}. Running services will go offline until restarted.`}
+          confirmLabel={pendingBulk === "stop" ? "Stop them" : "Restart them"}
           busy={bulkBusy}
           onClose={() => setPendingBulk(null)}
           onConfirm={() => void runBulk(pendingBulk, true)}

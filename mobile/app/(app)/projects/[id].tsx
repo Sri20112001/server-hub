@@ -126,7 +126,7 @@ export default function ProjectDetailScreen() {
         >
           <View className="flex-row items-center gap-1">
             <ArrowLeft size={13} color={colors.ember} />
-            <Text className="text-ember text-[13px] font-mono">Fleet</Text>
+            <Text className="text-ember text-[13px] font-mono">Back</Text>
           </View>
         </TouchableOpacity>
         <View className="flex-row items-start justify-between">

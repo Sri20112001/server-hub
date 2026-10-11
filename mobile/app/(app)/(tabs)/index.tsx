@@ -13,7 +13,6 @@ import { RefreshCw, ArrowRight, ChevronRight, Check, X } from "lucide-react-nati
 import { dashboardApi } from "../../../src/api/dashboard";
 import { useAuthStore } from "../../../src/stores/authStore";
 import { Meter } from "../../../src/components/Meter";
-import { ShipCard } from "../../../src/components/ShipCard";
 import { DeploymentRow } from "../../../src/components/DeploymentRow";
 import { SkeletonCard } from "../../../src/components/SkeletonBox";
 import { ErrorState } from "../../../src/components/ErrorState";
@@ -31,9 +30,6 @@ export default function DashboardScreen() {
   });
 
   const projectMap = new Map(data?.projects.map((p) => [p.id, p]) ?? []);
-  const recentByProject = new Map(
-    data?.recentDeployments.map((d) => [d.projectId, d]) ?? [],
-  );
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.abyss }}>
@@ -179,43 +175,6 @@ export default function DashboardScreen() {
                 )}
               </View>
             </View>
-
-            {/* Fleet preview */}
-            <View className="flex-row items-center justify-between mb-3">
-              <Text className="font-head font-bold text-[18px] text-bone">
-                Fleet
-              </Text>
-              <TouchableOpacity
-                onPress={() => router.navigate("/(app)/(tabs)/fleet")}
-                accessibilityRole="button"
-                accessibilityLabel="View all ships"
-              >
-                <View className="flex-row items-center gap-0.5">
-                  <Text className="text-ember text-[13px] font-mono">
-                    All {data.projects.length}
-                  </Text>
-                  <ChevronRight size={14} color={colors.ember} />
-                </View>
-              </TouchableOpacity>
-            </View>
-
-            {data.projects.length === 0 ? (
-              <EmptyState
-                title="No ships in the fleet"
-                hint="Register a project from the web console."
-                dark
-              />
-            ) : (
-              data.projects.slice(0, 4).map((p) => (
-                <ShipCard
-                  key={p.id}
-                  project={p}
-                  lastDeployment={recentByProject.get(p.id)}
-                  onPress={() => router.push(`/(app)/projects/${p.id}`)}
-                  dark
-                />
-              ))
-            )}
 
             {/* Recent deployments */}
             <View className="flex-row items-center justify-between mt-4 mb-3">

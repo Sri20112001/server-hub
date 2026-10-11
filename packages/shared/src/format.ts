@@ -80,3 +80,20 @@ export function fmtGBFromMB(mb: number): string {
   if (mb < 1024) return `${mb.toFixed(0)} MB`;
   return `${(mb / 1024).toFixed(1)} GB`;
 }
+
+// Plain-language data age for freshness indicators ("Updated 20s ago").
+// Negative or non-finite input (clock skew) reads as "just now", never as
+// a confusing future age.
+export function formatAge(ageMs: number): string {
+  if (!Number.isFinite(ageMs) || ageMs < 10_000) return "just now";
+  const secs = Math.floor(ageMs / 1000);
+  if (secs < 60) return `${secs}s ago`;
+  const mins = Math.floor(secs / 60);
+  if (mins < 60) return `${mins} min ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs} hr ago`;
+  return `${Math.floor(hrs / 24)} days ago`;
+}
+
+/** Past this age a dashboard reading is flagged "may be outdated". */
+export const STALE_AFTER_MS = 90_000;

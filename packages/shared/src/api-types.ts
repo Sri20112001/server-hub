@@ -842,6 +842,25 @@ export interface TransferActivity {
   status?: number;
 }
 
+// ─── Honest remote states (Phase 1A) ─────────────────────────────────────
+// Every remote section must render exactly one query state. "Empty" is a
+// data-level fact (fetch succeeded and returned nothing) decided by the
+// component from the payload — this helper only separates the query
+// itself into loading / error / ready so a failed fetch can never render
+// as genuine empty content. Both dashboard pages share it so the branch
+// logic cannot drift between routes.
+export type QueryState = "loading" | "error" | "ready";
+
+export function queryState(args: {
+  hasData: boolean;
+  isLoading: boolean;
+  isError: boolean;
+}): QueryState {
+  if (args.hasData) return "ready";
+  if (args.isError && !args.isLoading) return "error";
+  return "loading";
+}
+
 export function toFleetStatus(raw: string | undefined): FleetStatus {
   const s = (raw ?? "").toLowerCase();
   if (s === "healthy" || s === "running" || s === "success" || s === "ok") return "sailing";
@@ -851,8 +870,125 @@ export function toFleetStatus(raw: string | undefined): FleetStatus {
 }
 
 export const fleetLabel: Record<FleetStatus, string> = {
-  sailing: "Sailing",
-  choppy: "Choppy",
-  lost: "Lost signal",
-  docked: "Docked",
+  sailing: "Working",
+  choppy: "Needs attention",
+  lost: "Down",
+  docked: "Stopped",
 };
+
+// ─── Plain-language business status (Phase 1B) ───────────────────────────
+// Single seam mapping every machine status word in the product (project,
+// service, server, deployment, alert, health-check states) onto five
+// owner-readable tones. Components render `label` verbatim — no nautical
+// or DevOps metaphors in user-facing copy. Unknown or unrecognized input
+// maps to "unknown", never to "working".
+export type BusinessTone = "working" | "attention" | "down" | "stopped" | "unknown";
+
+export interface BusinessStatus {
+  tone: BusinessTone;
+  label: string;
+}
+
+const BUSINESS_WORKING = new Set([
+  "sailing", "healthy", "ok", "success", "successful", "running",
+  "up", "online", "nominal", "resolved", "reachable", "passing", "pass", "good",
+]);
+
+const BUSINESS_ATTENTION = new Set([
+  "choppy", "degraded", "warning", "watch", "unstable", "flapping",
+]);
+
+const BUSINESS_DOWN = new Set([
+  "lost", "down", "failed", "failure", "error", "critical", "offline",
+  "disconnected", "alert", "firing", "triggered", "unreachable",
+]);
+
+const BUSINESS_STOPPED = new Set([
+  "docked", "stopped", "paused", "idle", "standby", "disabled",
+]);
+
+export function toBusinessStatus(raw: string | undefined): BusinessStatus {
+  const s = (raw ?? "").trim().toLowerCase();
+  if (BUSINESS_WORKING.has(s)) return { tone: "working", label: "Working" };
+  if (BUSINESS_ATTENTION.has(s)) return { tone: "attention", label: "Needs attention" };
+  if (BUSINESS_DOWN.has(s)) return { tone: "down", label: "Down" };
+  if (BUSINESS_STOPPED.has(s)) return { tone: "stopped", label: "Stopped" };
+  return { tone: "unknown", label: "Unknown" };
+}
+
+/** Sort rank for needs-attention lists: most severe first. */
+export function toneRank(tone: BusinessTone): number {
+  switch (tone) {
+    case "down": return 0;
+    case "attention": return 1;
+    case "unknown": return 2;
+    case "stopped": return 3;
+    case "working": return 4;
+  }
+}
+
+// ─── Actionable alert descriptions (Phase 1B) ────────────────────────────
+// Every alert carries a plain "what happened" + "what to do next". The
+// resolver UI renders both verbatim. Matching is keyword-based over the
+// alert condition/message so backend changes to exact strings cannot
+// silently drop an alert into the generic fallback without a test failing.
+export interface AlertDescription {
+  what: string;
+  next: string;
+}
+
+export function describeAlert(alert: {
+  condition: string;
+  message?: string;
+  severity?: string;
+  source?: string;
+  threshold?: number;
+}): AlertDescription {
+  const hay = `${alert.condition ?? ""} ${alert.message ?? ""}`.toLowerCase();
+  const limit = alert.threshold && alert.threshold > 0
+    ? ` (alert limit ${alert.threshold})`
+    : "";
+  const resolveNote =
+    "Resolving marks it handled, but doesn't fix the cause — act first, then resolve.";
+
+  if (/(offline|disconnected|heartbeat|agent)/.test(hay)) {
+    return {
+      what: "This server stopped reporting in.",
+      next: `Check that the machine is powered on and connected to the network, then make sure its monitoring agent is running. The alert clears on the next successful check-in. ${resolveNote}`,
+    };
+  }
+  if (/(cpu|processor|load)/.test(hay)) {
+    return {
+      what: `This machine is working very hard — processor use is above its normal range${limit}.`,
+      next: `Find the busiest app and restart it from its project page. If this happens during normal use, the machine may need more capacity. ${resolveNote}`,
+    };
+  }
+  if (/(mem|ram)/.test(hay)) {
+    return {
+      what: `This machine is running low on memory${limit}.`,
+      next: `Restart the busiest app to free memory. If it keeps happening, the machine may need more memory. ${resolveNote}`,
+    };
+  }
+  if (/(disk|storage|space)/.test(hay)) {
+    return {
+      what: `This machine is running low on disk space${limit}.`,
+      next: `Delete or move unneeded files, old backups, or old uploads, then watch for the all-clear. ${resolveNote}`,
+    };
+  }
+  if (/(http|tcp|ping|health ?check|website|url|endpoint)/.test(hay)) {
+    return {
+      what: "A website or service check failed — it didn't respond in time.",
+      next: `Open the site in a browser. If it's down, restart the related project, then re-run the check from Website checks. ${resolveNote}`,
+    };
+  }
+  if ((alert.source ?? "").toLowerCase() === "alertmanager") {
+    return {
+      what: "An external monitor raised this alert.",
+      next: `Open Monitoring for the full details and fix the underlying issue there. ${resolveNote}`,
+    };
+  }
+  return {
+    what: alert.message || "Something crossed an alert limit.",
+    next: `Open the related page to investigate. ${resolveNote}`,
+  };
+}

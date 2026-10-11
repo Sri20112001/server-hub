@@ -222,7 +222,8 @@ export const api = {
   deleteNotificationRule: (id: number) =>
     req<{ ok: boolean }>(ep.notificationRule(id), { method: "DELETE" }),
 
-  // services & deployments
+  // services & deployments (the Update history log: every deploy and
+  // rollback appends a row; rows are never edited or deleted server-side)
   services: (projectId: number) =>
     req<Service[]>(ep.projectServices(projectId)),
   deployments: (projectId: number) =>
@@ -235,8 +236,11 @@ export const api = {
         body: JSON.stringify({ commitSha: commitSha ?? "" }),
       },
     ),
+  // Asks the backend to delete update history; always refused (410,
+  // append-only log), so callers must expect an error, not deletion.
   wipeDeployments: () =>
     req<{ ok: boolean; deleted: number }>(ep.deploymentsAll(), { method: "DELETE" }),
+  // Re-runs a previous update and records it as a new history row.
   rollback: (projectId: number, depId: number) =>
     req<{ deployment: Deployment; operationId: string }>(
       ep.deploymentRollback(projectId, depId),

@@ -1,5 +1,6 @@
 import emptyDockImg from "../assets/empty-docking-bay.png";
 import { useEffect, type ReactNode } from "react";
+import { AlertTriangle, RefreshCw } from "lucide-react";
 import { fleetLabel, toFleetStatus, type FleetStatus } from "../lib/types";
 
 /* ---------- primitives following DESIGN.md §Components ---------- */
@@ -120,6 +121,29 @@ export function EmptyState({ title, hint }: { title: string; hint?: string }) {
       <div className="font-head font-semibold mb-1">{title}</div>
       {hint && <div className="text-muted dark:text-fog text-[13px]">{hint}</div>}
     </div>
+  );
+}
+
+/** Full-page query failure. Renders in the standard page shell so an
+    error never looks like an empty page and never shifts the layout.
+    `detail` is the backend message (safe: API errors carry no secrets). */
+export function PageError({ title, detail, onRetry }: { title: string; detail?: string; onRetry: () => void }) {
+  return (
+    <main className="w-full max-w-7xl mx-auto px-10 max-md:px-4 pt-24 pb-36">
+      <div className="rounded-card border border-brick/30 bg-brick/10 p-10 text-center">
+        <AlertTriangle size={22} className="mx-auto text-brick" />
+        <p className="mt-3 font-head font-bold text-[18px] text-ink dark:text-bone">{title}</p>
+        <p className="mt-1 text-sm text-muted dark:text-fog font-mono break-words">
+          {detail || "The server did not answer. Your data is intact — this is a connection problem, not an empty page."}
+        </p>
+        <button
+          onClick={onRetry}
+          className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium bg-white dark:bg-panel border border-line dark:border-edge rounded-lg cursor-pointer hover:text-ink dark:hover:text-bone text-muted dark:text-fog"
+        >
+          <RefreshCw size={14} /> Try again
+        </button>
+      </div>
+    </main>
   );
 }
 

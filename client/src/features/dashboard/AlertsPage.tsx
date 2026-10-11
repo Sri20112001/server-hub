@@ -2,7 +2,10 @@ import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, CheckCircle, RefreshCw } from "lucide-react";
 import { api } from "../../lib/api";
+import { describeAlert } from "../../lib/types";
 import type { Alert } from "../../lib/types";
+import { fmtDuration } from "../../lib/format";
+import { PageError } from "../../components/ui";
 import { useEvents } from "../../lib/useEvents";
 import { useUi } from "../../stores/store";
 
@@ -18,9 +21,24 @@ const SEVERITY_BADGE: Record<string, string> = {
   INFO: "border-line dark:border-edge bg-paper dark:bg-abyss text-stone",
 };
 
+function alertDuration(a: Alert): string | null {
+  if (!a.resolvedAt) return null;
+  const ms = new Date(a.resolvedAt).getTime() - new Date(a.triggeredAt).getTime();
+  if (!Number.isFinite(ms) || ms < 0) return null;
+  return fmtDuration(Math.round(ms / 1000));
+}
+
 function AlertRow({ alert, serverName, onResolve }: { alert: Alert; serverName?: string; onResolve: () => void }) {
   const { pushToast } = useUi();
   const [busy, setBusy] = useState(false);
+  const desc = describeAlert({
+    condition: alert.condition,
+    message: alert.message,
+    severity: alert.severity,
+    source: alert.source,
+    threshold: alert.threshold,
+  });
+  const lasted = alertDuration(alert);
 
   const resolve = async () => {
     setBusy(true);
@@ -49,10 +67,13 @@ function AlertRow({ alert, serverName, onResolve }: { alert: Alert; serverName?:
             </span>
           )}
         </div>
-        <p className="text-sm font-medium text-ink dark:text-bone">{alert.message}</p>
+        <p className="text-sm font-medium text-ink dark:text-bone">{desc.what}</p>
+        <p className="text-xs text-muted dark:text-fog mt-1">{desc.next}</p>
         <p className="text-xs text-muted dark:text-fog mt-1.5 font-mono">
-          Triggered {new Date(alert.triggeredAt).toLocaleString()}
+          Started {new Date(alert.triggeredAt).toLocaleString()}
           {alert.resolvedAt && ` · Resolved ${new Date(alert.resolvedAt).toLocaleString()}`}
+          {lasted && ` · Lasted ${lasted}`}
+          {alert.message && alert.message !== desc.what && ` · ${alert.message}`}
         </p>
       </div>
       {alert.status === "TRIGGERED" && (
@@ -72,7 +93,7 @@ export function AlertsPage() {
   const qc = useQueryClient();
   const [tab, setTab] = useState<"TRIGGERED" | "RESOLVED" | "">("TRIGGERED");
 
-  const { data: alerts = [], isLoading, refetch } = useQuery({
+  const { data: alerts = [], isLoading, isError, error, refetch } = useQuery({
     queryKey: ["alerts", tab],
     queryFn: () => api.alerts(tab || undefined),
     refetchInterval: 30_000,
@@ -100,6 +121,17 @@ export function AlertsPage() {
   const resolved = alerts.filter((a) => a.status === "RESOLVED");
   const shown = tab === "TRIGGERED" ? triggered : tab === "RESOLVED" ? resolved : alerts;
 
+  // A failed fetch is an error with retry — never an all-clear.
+  if (isError && !isLoading && alerts.length === 0) {
+    return (
+      <PageError
+        title="Couldn't load alerts"
+        detail={error instanceof Error ? error.message : undefined}
+        onRetry={() => void refetch()}
+      />
+    );
+  }
+
   return (
     <main className="w-full max-w-7xl mx-auto px-10 max-md:px-4 pt-24 pb-36">
       <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
@@ -109,12 +141,12 @@ export function AlertsPage() {
             <h1 className="font-head text-[24px] font-bold text-ink dark:text-bone tracking-[-0.02em]">Alerts</h1>
             {triggered.length > 0 && (
               <span className="bg-brick text-white text-xs font-bold px-2.5 py-0.5 rounded-full font-mono shadow-sm">
-                {triggered.length} firing
+                {triggered.length} active
               </span>
             )}
           </div>
           <p className="text-muted dark:text-fog text-xs mt-1 font-mono">
-            System thresholds & event notifications
+            Problems that need attention, plus what happened before
           </p>
         </div>
         <button
@@ -128,7 +160,7 @@ export function AlertsPage() {
 
       <div className="grid grid-cols-3 gap-1 p-1 rounded-card bg-paper dark:bg-abyss border border-line dark:border-edge mb-6 w-full sm:max-w-xs">
         {([
-          { key: "TRIGGERED", label: "Firing" },
+          { key: "TRIGGERED", label: "Active" },
           { key: "RESOLVED", label: "Resolved" },
           { key: "", label: "All" },
         ] as const).map((t) => (
@@ -155,8 +187,14 @@ export function AlertsPage() {
       {!isLoading && shown.length === 0 && (
         <div className="text-center py-16 bg-paper dark:bg-abyss border border-line dark:border-edge rounded-card px-4">
           <CheckCircle size={40} className="mx-auto mb-3 opacity-30 text-moss" />
-          <p className="text-sm font-medium text-ink dark:text-bone">No alerts{tab ? ` with status ${tab.toLowerCase()}` : ""}.</p>
-          <p className="text-xs text-muted dark:text-fog mt-1">All monitored metrics and infrastructure thresholds are nominal.</p>
+          <p className="text-sm font-medium text-ink dark:text-bone">
+            {tab === "TRIGGERED" ? "No active alerts." : tab === "RESOLVED" ? "No resolved alerts yet." : "No alerts at all."}
+          </p>
+          <p className="text-xs text-muted dark:text-fog mt-1">
+            {tab === "RESOLVED"
+              ? "Past problems will appear here with how long they lasted."
+              : "Everything being watched is working normally."}
+          </p>
         </div>
       )}
 

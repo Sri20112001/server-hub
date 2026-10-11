@@ -312,7 +312,7 @@ function AlertsTab() {
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between gap-4">
         <div className="font-mono text-[12px] text-muted dark:text-fog">
-          {firing.length} firing · {suppressed.length} suppressed · {alerts.length} total
+          {firing.length} active · {suppressed.length} silenced · {alerts.length} total
         </div>
         <button onClick={() => load()} className="inline-flex items-center gap-1.5 text-[12px] text-muted dark:text-fog hover:text-ink dark:hover:text-bone cursor-pointer bg-transparent border-0">
           <RefreshCw size={13} /> Refresh

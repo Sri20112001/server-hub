@@ -2,9 +2,7 @@ import { useEffect, useState } from "react";
 import { createBrowserRouter, Navigate, RouterProvider } from "react-router";
 import { AppShell } from "../components/chrome";
 import { DashboardPage } from "../features/dashboard/DashboardPage";
-import { FleetPage } from "../features/dashboard/FleetPage";
 import { DatabasesPage } from "../features/dashboard/DatabasesPage";
-import { ProjectDetailsPage } from "../features/dashboard/ProjectDetailsPage";
 import { TelemetryPage } from "../features/dashboard/TelemetryPage";
 import { ServersPage } from "../features/dashboard/ServersPage";
 import { ServerDetailPage } from "../features/dashboard/ServerDetailPage";
@@ -53,20 +51,16 @@ export function AppRouter() {
                 ),
               },
               {
+                // Projects section temporarily hidden from the UI (see
+                // FleetPage / ProjectDetailsPage, preserved on disk with
+                // their backend APIs intact). Direct visits bounce home
+                // instead of landing on an unlinked page.
                 path: "fleet",
-                element: (
-                  <Protected>
-                    <FleetPage setOnline={setOnline} />
-                  </Protected>
-                ),
+                element: <Navigate to="/" replace />,
               },
               {
                 path: "projects/:id",
-                element: (
-                  <Protected>
-                    <ProjectDetailsPage setOnline={setOnline} />
-                  </Protected>
-                ),
+                element: <Navigate to="/" replace />,
               },
               {
                 path: "databases",
