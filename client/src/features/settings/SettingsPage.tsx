@@ -73,7 +73,7 @@ export function SettingsPage({ setOnline }: { setOnline: (v: boolean) => void })
   ];
 
   return (
-    <main className="w-full max-w-[840px] mx-auto px-6 max-md:px-4 pt-24 pb-36">
+    <main className="w-full max-w-7xl mx-auto px-10 max-md:px-4 pt-24 pb-36">
       <Kicker>Appliance & System Preferences</Kicker>
       <h1 className="font-head text-[36px] font-bold tracking-[-0.03em] leading-[1.2] max-md:text-[28px] mt-2 mb-2 text-ink dark:text-bone">
         Settings

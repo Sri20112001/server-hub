@@ -317,7 +317,7 @@ export function ServerDetailPage({ setOnline }: { setOnline: (v: boolean) => voi
   };
 
   if (isLoading) return (
-    <main className="w-full max-w-5xl mx-auto px-4 sm:px-6 pt-24 pb-36">
+    <main className="w-full max-w-7xl mx-auto px-10 max-md:px-4 pt-24 pb-36">
       <div className="animate-pulse space-y-4">
         <div className="h-8 bg-white dark:bg-panel border border-line dark:border-edge rounded w-48" />
         <div className="h-40 bg-white dark:bg-panel border border-line dark:border-edge rounded-card" />
@@ -326,7 +326,7 @@ export function ServerDetailPage({ setOnline }: { setOnline: (v: boolean) => voi
   );
 
   if (!server) return (
-    <main className="w-full max-w-5xl mx-auto px-4 sm:px-6 pt-24 pb-36 text-muted dark:text-fog">
+    <main className="w-full max-w-7xl mx-auto px-10 max-md:px-4 pt-24 pb-36 text-muted dark:text-fog">
       Server not found.
     </main>
   );
@@ -345,7 +345,7 @@ export function ServerDetailPage({ setOnline }: { setOnline: (v: boolean) => voi
   ];
 
   return (
-    <main className="w-full max-w-5xl mx-auto px-4 sm:px-6 pt-24 pb-36">
+    <main className="w-full max-w-7xl mx-auto px-10 max-md:px-4 pt-24 pb-36">
       {/* Back */}
       <button onClick={() => nav("/servers")} className="flex items-center gap-1.5 text-muted dark:text-fog hover:text-ink dark:hover:text-bone text-sm mb-4 cursor-pointer">
         <ArrowLeft size={15} /> Servers

@@ -453,7 +453,7 @@ export function ServersPage({ setOnline }: { setOnline: (v: boolean) => void }) 
   });
 
   return (
-    <main className="w-full max-w-6xl mx-auto px-4 sm:px-6 pt-24 pb-36">
+    <main className="w-full max-w-7xl mx-auto px-10 max-md:px-4 pt-24 pb-36">
       {/* Header */}
       <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
         <div>

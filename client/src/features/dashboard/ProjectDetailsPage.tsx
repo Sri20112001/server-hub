@@ -105,7 +105,7 @@ function DetailsBody({
   ];
 
   return (
-    <main className="w-full max-w-5xl mx-auto px-10 max-md:px-4 pt-24 pb-36">
+    <main className="w-full max-w-7xl mx-auto px-10 max-md:px-4 pt-24 pb-36">
       <button
         className="inline-flex items-center gap-1.5 bg-transparent border-0 cursor-pointer text-muted dark:text-fog hover:text-ink dark:hover:text-bone text-[13px] mb-2 px-0"
         onClick={onBack}

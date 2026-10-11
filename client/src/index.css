@@ -51,6 +51,10 @@
 html {
   -webkit-text-size-adjust: 100%;
   scroll-behavior: smooth;
+  /* Reserve space for the vertical scrollbar on every page so switching
+     between short (no scrollbar) and tall (scrollbar) routes doesn't shift
+     the layout horizontally. */
+  scrollbar-gutter: stable;
 }
 
 /* Prevent stray wide children (tables, feeds, bars) from creating a

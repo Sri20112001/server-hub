@@ -316,7 +316,7 @@ function ShipSkel() {
 export function DashboardSkeleton() {
   return (
     <main
-      className="w-full max-w-[1240px] mx-auto px-10 max-md:px-4 pt-24 pb-36"
+      className="w-full max-w-7xl mx-auto px-10 max-md:px-4 pt-24 pb-36"
       aria-busy="true"
       role="status"
     >
@@ -403,7 +403,7 @@ export function DashboardSkeleton() {
 export function SettingsSkeleton() {
   return (
     <main
-      className="w-full max-w-[760px] mx-auto px-6 max-md:px-4 pt-24 pb-36"
+      className="w-full max-w-7xl mx-auto px-10 max-md:px-4 pt-24 pb-36"
       aria-busy="true"
       role="status"
     >
