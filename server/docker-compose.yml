@@ -151,6 +151,13 @@ services:
       ALERTMANAGER_URL: http://alertmanager:9093
       ALERTMANAGER_TIMEOUT_SEC: "10"
       ALERTMANAGER_WEBHOOK_SECRET: ${ALERTMANAGER_WEBHOOK_SECRET:-}
+      # File transfers (merged homelabs-upload module). Container path MUST
+      # live under /app/data: the base file mounts ./data:/app/data and the
+      # Jenkins override mounts the serverhub-data named volume there, so
+      # uploads, trash, and restores survive container recreation and
+      # redeploys either way. Empty disables /transfers entirely.
+      FILE_STORAGE_ROOT: ${FILE_STORAGE_ROOT:-/app/data/files}
+      FILE_MAX_UPLOAD_SIZE: ${FILE_MAX_UPLOAD_SIZE:-10737418240}
 
 volumes:
   pgdata:

@@ -89,7 +89,7 @@ func (h *Handler) Download(c *gin.Context) {
 	defer f.Close()
 
 	mimeType := detectMIMEFromName(info.Name())
-	c.Header("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, info.Name()))
+	c.Header("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, sanitizeHeaderName(info.Name())))
 	c.Header("Content-Length", strconv.FormatInt(info.Size(), 10))
 	h.record(c, ActionDownload, path, "", true)
 	c.DataFromReader(http.StatusOK, info.Size(), mimeType, f, nil)
@@ -256,7 +256,7 @@ func (h *Handler) Zip(c *gin.Context) {
 		respondError(c, NewError(ErrInvalidRequest, "paths array is required"))
 		return
 	}
-	name := req.Name
+	name := sanitizeHeaderName(req.Name)
 	if name == "" {
 		name = "download.zip"
 	}

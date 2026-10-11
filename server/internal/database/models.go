@@ -54,6 +54,12 @@ type Service struct {
 
 func (Service) TableName() string { return "services" }
 
+// Deployment is one row of the append-only update log behind the
+// dashboard's "Update history" / "Recent updates". Status moves
+// PENDING → RUNNING → SUCCESS/FAILED; DurationSec is filled in on
+// completion. Rollbacks insert a new row (trigger "rollback:<id>") rather
+// than touching the row they supersede; rows are never deleted (the wipe
+// endpoint answers 410).
 type Deployment struct {
 	ID          uint      `gorm:"primaryKey;autoIncrement" json:"id"`
 	ProjectID   uint      `gorm:"not null;index" json:"projectId"`

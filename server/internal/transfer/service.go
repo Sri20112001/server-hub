@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -36,6 +37,45 @@ func NewFileService(root string, maxUploadSize int64) *FileService {
 	}
 }
 
+// validUploadID constrains chunked-upload session IDs to a flat namespace:
+// no separators, no "..", bounded length. Upload IDs arrive from the
+// client and are interpolated into a temp-dir path, so anything looser is
+// a path-traversal primitive.
+var validUploadID = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
+
+// ValidateUploadID rejects malformed chunked-upload session identifiers.
+func ValidateUploadID(id string) error {
+	if !validUploadID.MatchString(id) {
+		return NewError(ErrInvalidRequest, "invalid upload_id")
+	}
+	return nil
+}
+
+// chunkBaseDir is the parent directory for in-progress chunked uploads.
+// Chunks live outside the storage root (they are not library content
+// until finalized) and are reaped as stale after a day.
+func chunkBaseDir() string { return filepath.Join(os.TempDir(), "sh-chunks") }
+
+// sweepStaleChunks removes abandoned chunk sessions older than a day so
+// crashed or never-finalized uploads cannot fill the temp filesystem.
+// Best-effort: errors are ignored and the sweep never fails the upload.
+func sweepStaleChunks() {
+	base := chunkBaseDir()
+	entries, err := os.ReadDir(base)
+	if err != nil {
+		return
+	}
+	cutoff := time.Now().Add(-24 * time.Hour)
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		if info, err := e.Info(); err == nil && info.ModTime().Before(cutoff) {
+			_ = os.RemoveAll(filepath.Join(base, e.Name()))
+		}
+	}
+}
+
 // ListDirectory returns the contents of the directory at clientPath.
 func (s *FileService) ListDirectory(clientPath string) (*ListResponse, error) {
 	abs, err := ResolveSafePath(s.root, clientPath)
@@ -52,6 +92,11 @@ func (s *FileService) ListDirectory(clientPath string) (*ListResponse, error) {
 
 	items := make([]FileItem, 0, len(entries))
 	for _, e := range entries {
+		// The trash area is managed through the trash endpoints only;
+		// never expose its payload blobs or metadata sidecars here.
+		if e.Name() == TrashDirName {
+			continue
+		}
 		info, err := e.Info()
 		if err != nil {
 			continue
@@ -76,6 +121,11 @@ func (s *FileService) ListDirectory(clientPath string) (*ListResponse, error) {
 
 // GetMetadata returns metadata for a single file or directory.
 func (s *FileService) GetMetadata(clientPath string) (*FileItem, error) {
+	if err := rejectTrash(clientPath); err != nil {
+		// Report as not-found so the trash area is not distinguishable
+		// from any other missing path.
+		return nil, NewError(ErrFileNotFound, "file not found")
+	}
 	abs, err := ResolveSafePath(s.root, clientPath)
 	if err != nil {
 		return nil, err
@@ -96,6 +146,9 @@ func (s *FileService) GetMetadata(clientPath string) (*FileItem, error) {
 
 // OpenForDownload returns an *os.File ready for streaming to the client.
 func (s *FileService) OpenForDownload(clientPath string) (*os.File, os.FileInfo, error) {
+	if err := rejectTrash(clientPath); err != nil {
+		return nil, nil, NewError(ErrFileNotFound, "file not found")
+	}
 	abs, err := ResolveSafePath(s.root, clientPath)
 	if err != nil {
 		return nil, nil, err
@@ -125,6 +178,12 @@ func (s *FileService) SaveUpload(ctx context.Context, destDir, filename string, 
 	if err := ValidateFileName(filename); err != nil {
 		return "", err
 	}
+	if filename == TrashDirName {
+		return "", NewError(ErrInvalidFileName, "name is reserved")
+	}
+	if err := rejectTrash(destDir); err != nil {
+		return "", err
+	}
 
 	absDir, err := ResolveSafePath(s.root, destDir)
 	if err != nil {
@@ -139,7 +198,9 @@ func (s *FileService) SaveUpload(ctx context.Context, destDir, filename string, 
 		return "", NewError(ErrFileExists, "file already exists")
 	}
 
-	tmp := destAbs + ".tmp"
+	// Unique temp name: concurrent uploads of the same filename must not
+	// share (and corrupt) one ".tmp" file.
+	tmp := fmt.Sprintf("%s.tmp-%d", destAbs, time.Now().UnixNano())
 	f, err := os.Create(tmp)
 	if err != nil {
 		return "", NewError(ErrInternal, "cannot create file")
@@ -166,6 +227,9 @@ func (s *FileService) SaveUpload(ctx context.Context, destDir, filename string, 
 
 // CreateDirectory creates a new directory.
 func (s *FileService) CreateDirectory(clientPath string) error {
+	if err := rejectTrash(clientPath); err != nil {
+		return err
+	}
 	abs, err := ResolveSafePath(s.root, clientPath)
 	if err != nil {
 		return err
@@ -182,6 +246,12 @@ func (s *FileService) CreateDirectory(clientPath string) error {
 // Rename renames a file or directory within the same parent.
 func (s *FileService) Rename(clientPath, newName string) error {
 	if err := ValidateFileName(newName); err != nil {
+		return err
+	}
+	if newName == TrashDirName {
+		return NewError(ErrInvalidFileName, "name is reserved")
+	}
+	if err := rejectTrash(clientPath); err != nil {
 		return err
 	}
 	abs, err := ResolveSafePath(s.root, clientPath)
@@ -203,6 +273,12 @@ func (s *FileService) Rename(clientPath, newName string) error {
 
 // Move moves src to dst.
 func (s *FileService) Move(srcPath, dstPath string) error {
+	if err := rejectTrash(srcPath); err != nil {
+		return err
+	}
+	if err := rejectTrash(dstPath); err != nil {
+		return err
+	}
 	srcAbs, err := ResolveSafePath(s.root, srcPath)
 	if err != nil {
 		return err
@@ -229,6 +305,12 @@ func (s *FileService) Move(srcPath, dstPath string) error {
 
 // Copy copies src to dst (files or directories).
 func (s *FileService) Copy(ctx context.Context, srcPath, dstPath string) error {
+	if err := rejectTrash(srcPath); err != nil {
+		return err
+	}
+	if err := rejectTrash(dstPath); err != nil {
+		return err
+	}
 	srcAbs, err := ResolveSafePath(s.root, srcPath)
 	if err != nil {
 		return err
@@ -251,10 +333,13 @@ func (s *FileService) Copy(ctx context.Context, srcPath, dstPath string) error {
 }
 
 // TrashDir returns the path to the .trash directory inside the storage root.
-func (s *FileService) trashDir() string { return filepath.Join(s.root, ".trash") }
+func (s *FileService) trashDir() string { return filepath.Join(s.root, TrashDirName) }
 
 // TrashMove moves a file/dir to .trash instead of deleting it.
 func (s *FileService) TrashMove(clientPath string) error {
+	if err := rejectTrash(clientPath); err != nil {
+		return err
+	}
 	abs, err := ResolveSafePath(s.root, clientPath)
 	if err != nil {
 		return err
@@ -340,6 +425,9 @@ func (s *FileService) TrashRestore(id string) error {
 	if err := json.Unmarshal(data, &item); err != nil {
 		return NewError(ErrInternal, "corrupt trash metadata")
 	}
+	if err := rejectTrash(item.OriginalPath); err != nil {
+		return NewError(ErrInvalidPath, "original location is inside the trash area")
+	}
 	destAbs, err := ResolveSafePath(s.root, item.OriginalPath)
 	if err != nil {
 		return err
@@ -389,6 +477,11 @@ func (s *FileService) StorageBreakdown() (*StorageBreakdownResult, error) {
 	folders := make([]FolderStat, 0, len(entries))
 	for _, e := range entries {
 		if !e.IsDir() {
+			continue
+		}
+		// The trash area is not library content; don't report it and
+		// don't leak the size of deleted data.
+		if e.Name() == TrashDirName {
 			continue
 		}
 		abs := filepath.Join(s.root, e.Name())
@@ -480,7 +573,14 @@ func zipFile(ctx context.Context, zw *zip.Writer, src, name string) error {
 
 // SaveChunk stores one chunk of a multi-part upload.
 func (s *FileService) SaveChunk(uploadID string, chunkIndex int, src io.Reader) error {
-	tmpDir := filepath.Join(os.TempDir(), "sh-chunks", uploadID)
+	if err := ValidateUploadID(uploadID); err != nil {
+		return err
+	}
+	if chunkIndex < 0 || chunkIndex > 99999 {
+		return NewError(ErrInvalidRequest, "index out of range")
+	}
+	sweepStaleChunks()
+	tmpDir := filepath.Join(chunkBaseDir(), uploadID)
 	if err := os.MkdirAll(tmpDir, 0700); err != nil {
 		return NewError(ErrInternal, "cannot create chunk dir")
 	}
@@ -489,9 +589,20 @@ func (s *FileService) SaveChunk(uploadID string, chunkIndex int, src io.Reader) 
 	if err != nil {
 		return NewError(ErrInternal, "cannot create chunk file")
 	}
-	defer f.Close()
-	if _, err := io.Copy(f, src); err != nil {
+	// Bound a single chunk by the whole-upload budget: a chunk larger
+	// than the final file could ever be is rejected up front; the
+	// assembled total is enforced again at finalization.
+	written, copyErr := io.Copy(f, io.LimitReader(src, s.maxUploadSize+1))
+	// Close before any removal: deleting an open file fails on Windows
+	// and would leave the rejected chunk behind.
+	closeErr := f.Close()
+	if copyErr != nil || closeErr != nil {
+		_ = os.Remove(chunkPath)
 		return NewError(ErrInternal, "chunk write failed")
+	}
+	if written > s.maxUploadSize {
+		_ = os.Remove(chunkPath)
+		return NewError(ErrFileTooLarge, "chunk exceeds maximum upload size")
 	}
 	s.chunkMu.Lock()
 	s.chunks[uploadID] = append(s.chunks[uploadID], chunkPath)
@@ -501,7 +612,16 @@ func (s *FileService) SaveChunk(uploadID string, chunkIndex int, src io.Reader) 
 
 // FinalizeChunk assembles all chunks into the final file.
 func (s *FileService) FinalizeChunk(ctx context.Context, uploadID, destDir, filename string) (string, error) {
+	if err := ValidateUploadID(uploadID); err != nil {
+		return "", err
+	}
 	if err := ValidateFileName(filename); err != nil {
+		return "", err
+	}
+	if filename == TrashDirName {
+		return "", NewError(ErrInvalidFileName, "name is reserved")
+	}
+	if err := rejectTrash(destDir); err != nil {
 		return "", err
 	}
 	absDir, err := ResolveSafePath(s.root, destDir)
@@ -513,14 +633,32 @@ func (s *FileService) FinalizeChunk(ctx context.Context, uploadID, destDir, file
 		return "", NewError(ErrFileExists, "file already exists")
 	}
 
-	tmpDir := filepath.Join(os.TempDir(), "sh-chunks", uploadID)
+	tmpDir := filepath.Join(chunkBaseDir(), uploadID)
 	entries, err := os.ReadDir(tmpDir)
 	if err != nil {
 		return "", NewError(ErrInternal, "chunk dir not found")
 	}
 
-	out, err := os.Create(destAbs)
+	// Enforce the upload budget on the assembled total BEFORE writing:
+	// without this, chunked uploads bypass FILE_MAX_UPLOAD_SIZE entirely.
+	var total int64
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		if info, err := e.Info(); err == nil {
+			total += info.Size()
+		}
+	}
+	if total > s.maxUploadSize {
+		return "", NewError(ErrFileTooLarge, "file exceeds maximum upload size")
+	}
+
+	out, err := os.OpenFile(destAbs, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0644)
 	if err != nil {
+		if os.IsExist(err) {
+			return "", NewError(ErrFileExists, "file already exists")
+		}
 		return "", NewError(ErrInternal, "cannot create output file")
 	}
 	for _, e := range entries {
@@ -544,6 +682,13 @@ func (s *FileService) FinalizeChunk(ctx context.Context, uploadID, destDir, file
 		}
 	}
 	out.Close()
+	// Post-assembly belt-and-suspenders: chunks could have changed between
+	// the pre-check and the copy. Never leave an over-budget file behind.
+	if info, err := os.Stat(destAbs); err != nil || info.Size() > s.maxUploadSize {
+		_ = os.Remove(destAbs)
+		_ = os.RemoveAll(tmpDir)
+		return "", NewError(ErrFileTooLarge, "file exceeds maximum upload size")
+	}
 	_ = os.RemoveAll(tmpDir)
 	s.chunkMu.Lock()
 	delete(s.chunks, uploadID)
@@ -553,6 +698,9 @@ func (s *FileService) FinalizeChunk(ctx context.Context, uploadID, destDir, file
 
 // Delete removes a file or directory.
 func (s *FileService) Delete(clientPath string, recursive bool) error {
+	if err := rejectTrash(clientPath); err != nil {
+		return err
+	}
 	abs, err := ResolveSafePath(s.root, clientPath)
 	if err != nil {
 		return err
@@ -580,6 +728,9 @@ func (s *FileService) Delete(clientPath string, recursive bool) error {
 // Search walks the directory tree looking for entries whose names contain query.
 // Results are capped at 200 to avoid unbounded responses on large trees.
 func (s *FileService) Search(query, basePath string) ([]FileItem, error) {
+	if err := rejectTrash(basePath); err != nil {
+		return nil, err
+	}
 	abs, err := ResolveSafePath(s.root, basePath)
 	if err != nil {
 		return nil, err
@@ -600,6 +751,16 @@ func (s *FileService) Search(query, basePath string) ([]FileItem, error) {
 			return nil
 		}
 		if path == abs {
+			return nil
+		}
+		// Never surface the trash area (payloads + metadata sidecars).
+		if path == s.trashDir() {
+			return filepath.SkipDir
+		}
+		if strings.HasPrefix(path, s.trashDir()+string(filepath.Separator)) {
+			if d.IsDir() {
+				return filepath.SkipDir
+			}
 			return nil
 		}
 		if strings.Contains(strings.ToLower(d.Name()), lower) {

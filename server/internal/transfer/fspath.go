@@ -7,13 +7,15 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 )
 
 // ResolveSafePath resolves requestedPath relative to root and ensures the
 // result stays inside root. It rejects path traversal and symlinks that
-// escape root.
+// escape root — including symlinks in parent directories of paths that do
+// not exist yet (e.g. an upload destination under a symlinked folder).
 func ResolveSafePath(root, requestedPath string) (string, error) {
 	rootClean := filepath.Clean(root)
 
@@ -32,24 +34,70 @@ func ResolveSafePath(root, requestedPath string) (string, error) {
 	abs := filepath.Join(rootClean, cleaned)
 
 	// Belt-and-suspenders: ensure the joined path is still inside root.
-	if !strings.HasPrefix(abs, rootClean+string(filepath.Separator)) && abs != rootClean {
+	if !withinRoot(rootClean, abs) {
 		return "", NewError(ErrPathTraversal, "path escapes storage root")
 	}
 
-	// Resolve symlinks and re-check.
-	resolved, err := filepath.EvalSymlinks(abs)
-	if err != nil {
-		if errors.Is(err, fs.ErrNotExist) {
-			// Path doesn't exist yet (e.g. upload destination) – return the
-			// unresolved path after the prefix check already passed.
-			return abs, nil
+	// Resolve symlinks and re-check. Non-existent trailing components
+	// cannot be symlinks themselves, but every existing ancestor is
+	// resolved: otherwise a symlinked parent directory would let a
+	// not-yet-existing path escape root undetected.
+	if err := assertResolvedWithinRoot(rootClean, abs); err != nil {
+		return "", err
+	}
+	return abs, nil
+}
+
+// withinRoot reports whether abs is root itself or nested inside it.
+func withinRoot(rootClean, abs string) bool {
+	return abs == rootClean || strings.HasPrefix(abs, rootClean+string(filepath.Separator))
+}
+
+// assertResolvedWithinRoot resolves the nearest existing ancestor of abs
+// (plus root itself) and verifies the resolved location stays inside root.
+// The unresolved abs is still returned to callers: filesystem operations
+// through a permitted symlink land inside the real root, while
+// ToClientPath keeps working on the client-visible spelling.
+func assertResolvedWithinRoot(rootClean, abs string) error {
+	cur := abs
+	var suffix []string
+	for {
+		if fi, err := os.Lstat(cur); err == nil {
+			_ = fi
+			break
+		} else if !errors.Is(err, fs.ErrNotExist) {
+			return NewError(ErrInvalidPath, "cannot resolve path")
+		} else {
+			parent := filepath.Dir(cur)
+			if parent == cur {
+				return NewError(ErrInvalidPath, "cannot resolve path")
+			}
+			suffix = append([]string{filepath.Base(cur)}, suffix...)
+			cur = parent
 		}
-		return "", NewError(ErrInvalidPath, "cannot resolve path")
 	}
-	if !strings.HasPrefix(resolved, rootClean+string(filepath.Separator)) && resolved != rootClean {
-		return "", NewError(ErrPathTraversal, "symlink escapes storage root")
+	resolved, err := filepath.EvalSymlinks(cur)
+	if err != nil {
+		return NewError(ErrInvalidPath, "cannot resolve path")
 	}
-	return resolved, nil
+	full := resolved
+	for _, s := range suffix {
+		full = filepath.Join(full, s)
+	}
+	// Compare fully-resolved forms: resolve root the same way so bind
+	// mounts or /tmp symlinks (e.g. macOS /var → /private/var) cannot
+	// cause false rejections or false acceptances.
+	rootReal, err := filepath.EvalSymlinks(rootClean)
+	if err != nil {
+		return NewError(ErrInvalidPath, "cannot resolve path")
+	}
+	if !withinRoot(rootReal, full) {
+		if len(suffix) > 0 {
+			return NewError(ErrPathTraversal, "path escapes storage root")
+		}
+		return NewError(ErrPathTraversal, "symlink escapes storage root")
+	}
+	return nil
 }
 
 // ToClientPath converts an absolute filesystem path back to a client-visible
@@ -67,7 +115,8 @@ func ToClientPath(root, absPath string) string {
 }
 
 // CopyFile streams src to dst without loading the whole file into memory.
-// It respects ctx cancellation.
+// It respects ctx cancellation. O_EXCL guarantees a concurrent create of
+// the same destination fails instead of interleaving two copies.
 func CopyFile(ctx context.Context, src, dst string) error {
 	in, err := os.Open(src)
 	if err != nil {
@@ -75,8 +124,11 @@ func CopyFile(ctx context.Context, src, dst string) error {
 	}
 	defer in.Close()
 
-	out, err := os.Create(dst)
+	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0644)
 	if err != nil {
+		if os.IsExist(err) {
+			return NewError(ErrFileExists, "destination already exists")
+		}
 		return err
 	}
 
@@ -99,6 +151,15 @@ func CopyDir(ctx context.Context, src, dst string) error {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
+		// Never follow or reproduce symlinks: a planted link could
+		// otherwise pull outside files into the copy (read-outside) or
+		// recreate an escape in the destination tree.
+		if d.Type()&fs.ModeSymlink != 0 {
+			if d.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
 		rel, _ := filepath.Rel(src, path)
 		target := filepath.Join(dst, rel)
 
@@ -113,6 +174,50 @@ func CopyDir(ctx context.Context, src, dst string) error {
 // containing path. Implemented per-OS in disk_*.go files.
 func DiskUsage(path string) (total, used, available uint64, err error) {
 	return diskUsage(path)
+}
+
+// TrashDirName is the reserved trash directory inside the storage root.
+// It is hidden from the file browser (list/search/metadata/download) and
+// managed only through the dedicated trash endpoints: without this,
+// "deleted" files would stay readable and downloadable by any viewer
+// until the trash is purged.
+const TrashDirName = ".trash"
+
+// isTrashPath reports whether a client-visible path addresses the trash
+// area itself. Client paths use slash spelling on every OS, so the
+// slash-only path package (not filepath) normalizes here: doubling the
+// leading slash must collapse, otherwise Windows keeps a UNC-style `\\`
+// prefix and the comparison below misses.
+func isTrashPath(clientPath string) bool {
+	p := filepath.ToSlash(clientPath)
+	if !strings.HasPrefix(p, "/") {
+		p = "/" + p
+	}
+	c := path.Clean(p)
+	return c == "/"+TrashDirName || strings.HasPrefix(c, "/"+TrashDirName+"/")
+}
+
+// rejectTrash refuses file operations that target the trash area outside
+// the dedicated trash endpoints. Trash payloads are addressed by opaque
+// IDs through those endpoints instead.
+func rejectTrash(clientPath string) error {
+	if isTrashPath(clientPath) {
+		return NewError(ErrInvalidPath, "path is inside the trash area")
+	}
+	return nil
+}
+
+// sanitizeHeaderName strips characters that would malform a
+// Content-Disposition header value (quotes, backslashes, control codes).
+// Go's http stack rejects such values with a failed response; sanitizing
+// keeps downloads working for odd-but-legal uploaded filenames.
+func sanitizeHeaderName(name string) string {
+	return strings.Map(func(r rune) rune {
+		if r < 0x20 || r == 0x7f || r == '"' || r == '\\' {
+			return -1
+		}
+		return r
+	}, name)
 }
 
 // ValidateFileName ensures a name component contains no path separators.

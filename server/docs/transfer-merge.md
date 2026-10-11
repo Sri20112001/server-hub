@@ -13,7 +13,11 @@ repo is untouched and still builds/runs standalone.
 - API: `/server-hub/api/transfers/*` (reads → viewer, mutations →
   operator). Identity is ServerHub JWT only; there is no file-service login.
 - UI: `/transfers` route + Dock item (full file browser, ported).
-- Config: `FILE_STORAGE_ROOT` (empty = endpoints off), `FILE_MAX_UPLOAD_SIZE`.
+- Config: `FILE_STORAGE_ROOT` (empty = endpoints off for `go run`;
+  `docker-compose.yml` defaults it to `/app/data/files`, persistent via
+  the `/app/data` mount), `FILE_MAX_UPLOAD_SIZE` (default 10 GiB). An
+  unusable path logs an error and leaves `/transfers` disabled instead of
+  crash-looping the backend.
 
 ## Migration (one time, operator-run)
 

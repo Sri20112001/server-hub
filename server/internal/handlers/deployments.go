@@ -25,6 +25,11 @@ import (
 	"serverhub/internal/safehttp"
 )
 
+// DeploymentHandler serves the deployments log — the "Update history" /
+// "Recent updates" surface on the dashboard. Every project update (manual
+// deploy, webhook deploy, or rollback) appends one row; rows are never
+// edited or deleted, so the log doubles as the audit trail of what
+// changed, when, and whether it worked.
 type DeploymentHandler struct {
 	DB     *database.DB
 	Broker *events.Broker
@@ -46,6 +51,9 @@ func (h *DeploymentHandler) policy() ExecPolicy {
 
 var deployStages = []string{"Pull images", "Start services", "Health check"}
 
+// ListAll returns the newest-first page of the deployments log (the raw
+// feed behind "Recent updates"; the dashboard summary tiles are computed
+// server-side in SystemHandler.Dashboard from the same table).
 func (h *DeploymentHandler) ListAll(c *gin.Context) {
 	limit := 50
 	if v, err := strconv.Atoi(c.DefaultQuery("limit", "50")); err == nil && v > 0 && v <= 200 {
@@ -60,6 +68,8 @@ func (h *DeploymentHandler) ListAll(c *gin.Context) {
 	c.JSON(http.StatusOK, scanDeployments(rows))
 }
 
+// ListByProject returns one project's update history, newest first
+// (per-project "launch log" on the project details page).
 func (h *DeploymentHandler) ListByProject(c *gin.Context) {
 	pid, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -111,6 +121,9 @@ func scanDeploymentRow(row interface {
 // deployments table is delete-protected (DB trigger rejects DELETE).
 // The attempt itself is audit-logged (append-only) and a 410 is returned
 // so old clients fail closed instead of silently deleting history.
+// Wipe is intentionally a dead end: the deployments log is append-only,
+// so "clear history" requests are rejected with 410 and audit-logged as
+// blocked. Callers must treat wipe as unsupported, not as deletion.
 func (h *DeploymentHandler) Wipe(c *gin.Context) {
 	u, _ := middleware.CurrentUser(c)
 	audit.Write(h.DB, u, "wipe-blocked", "deployments", "", "blocked",
@@ -119,7 +132,8 @@ func (h *DeploymentHandler) Wipe(c *gin.Context) {
 }
 
 func (h *DeploymentHandler) Create(c *gin.Context) {
-	// Manual record: POST /api/projects/:id/deployments
+	// Manual record: POST /api/projects/:id/deployments appends one history
+	// row without running anything (used to log externally-triggered updates).
 	pid, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid project id"})
@@ -154,7 +168,8 @@ func (h *DeploymentHandler) Create(c *gin.Context) {
 
 // Deploy triggers a staged `docker compose pull && up -d` in the project's
 // deployment path and returns the deployment row plus an operation id the
-// frontend polls for stage progress.
+// frontend polls for stage progress. The run appends a row to the
+// deployments log, which is what the dashboard's Update history displays.
 func (h *DeploymentHandler) Deploy(c *gin.Context) {
 	pid, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -206,6 +221,9 @@ func (h *DeploymentHandler) runDeploy(opID string, deployID, projectID int64, pr
 
 // Rollback re-runs `docker compose up` for a previous deployment record:
 // POST /server-hub/api/projects/:id/deployments/:depId/rollback
+// Rollback re-runs `compose up` for a previous commit and records it as a
+// NEW deployments row (trigger "rollback:<id>"): history is append-only,
+// so rolling back never rewrites or deletes the rows it supersedes.
 func (h *DeploymentHandler) Rollback(c *gin.Context) {
 	pid, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {

@@ -202,6 +202,11 @@ func main() {
 		viewer.GET("/dashboard", sysH.Dashboard)
 		viewer.GET("/audit", sysH.Audit)
 
+		// Update history (deployments log): every project update appends a
+		// row; the dashboard's Recent updates table and summary tiles read
+		// this table. Reads → viewer; recording/running a deploy →
+		// operator; wipe-all and restore are admin-only. There is no
+		// delete: history is append-only by design.
 		depH := &handlers.DeploymentHandler{DB: db, Broker: broker, DeployRoots: cfg.DeployRoots, StrictEgress: cfg.EgressStrict}
 		viewer.GET("/deployments", depH.ListAll)
 		admin.DELETE("/deployments", depH.Wipe)
@@ -254,38 +259,41 @@ func main() {
 		viewer.GET("/logs", logsH.List)
 
 		// File transfers (merged homelabs-upload module). Registered only
-		// when FILE_STORAGE_ROOT is configured; reads → viewer, every
-		// mutation → operator. Identity comes from ServerHub JWT alone —
-		// there is no separate file-service login.
+		// when FILE_STORAGE_ROOT is configured and usable; reads → viewer,
+		// every mutation → operator. Identity comes from ServerHub JWT
+		// alone — there is no separate file-service login. An unusable
+		// path disables the feature with a loud log line instead of
+		// crash-looping the whole backend (fail explicit, stay up).
 		if cfg.FileStorageRoot != "" {
 			if err := os.MkdirAll(cfg.FileStorageRoot, 0755); err != nil {
-				log.Fatalf("file storage root %q: %v", cfg.FileStorageRoot, err)
+				log.Printf("ERROR: file storage root %q unusable: %v — /transfers disabled", cfg.FileStorageRoot, err)
+			} else {
+				xferSvc := transfer.NewFileService(cfg.FileStorageRoot, cfg.FileMaxUploadSize)
+				xferH := transfer.NewHandler(xferSvc, db)
+				viewer.GET("/transfers/files", xferH.List)
+				viewer.GET("/transfers/files/metadata", xferH.Metadata)
+				viewer.GET("/transfers/files/download", xferH.Download)
+				viewer.GET("/transfers/files/size", xferH.FolderSize)
+				viewer.GET("/transfers/search", xferH.Search)
+				viewer.GET("/transfers/storage", xferH.Storage)
+				viewer.GET("/transfers/storage/breakdown", xferH.StorageBreakdown)
+				viewer.GET("/transfers/trash", xferH.TrashList)
+				viewer.GET("/transfers/activity", xferH.Activity)
+				operator.POST("/transfers/files/upload", xferH.Upload)
+				operator.POST("/transfers/files/move", xferH.Move)
+				operator.POST("/transfers/files/copy", xferH.Copy)
+				operator.POST("/transfers/files/zip", xferH.Zip)
+				operator.POST("/transfers/files/chunk", xferH.UploadChunk)
+				operator.POST("/transfers/files/chunk/finalize", xferH.FinalizeChunk)
+				operator.POST("/transfers/files/bulk-rename", xferH.BulkRename)
+				operator.PATCH("/transfers/files", xferH.Rename)
+				operator.DELETE("/transfers/files", xferH.Delete)
+				operator.POST("/transfers/directories", xferH.Mkdir)
+				operator.POST("/transfers/trash", xferH.TrashMove)
+				operator.POST("/transfers/trash/restore", xferH.TrashRestore)
+				operator.DELETE("/transfers/trash", xferH.TrashPurge)
+				log.Printf("file transfers enabled at %s", cfg.FileStorageRoot)
 			}
-			xferSvc := transfer.NewFileService(cfg.FileStorageRoot, cfg.FileMaxUploadSize)
-			xferH := transfer.NewHandler(xferSvc, db)
-			viewer.GET("/transfers/files", xferH.List)
-			viewer.GET("/transfers/files/metadata", xferH.Metadata)
-			viewer.GET("/transfers/files/download", xferH.Download)
-			viewer.GET("/transfers/files/size", xferH.FolderSize)
-			viewer.GET("/transfers/search", xferH.Search)
-			viewer.GET("/transfers/storage", xferH.Storage)
-			viewer.GET("/transfers/storage/breakdown", xferH.StorageBreakdown)
-			viewer.GET("/transfers/trash", xferH.TrashList)
-			viewer.GET("/transfers/activity", xferH.Activity)
-			operator.POST("/transfers/files/upload", xferH.Upload)
-			operator.POST("/transfers/files/move", xferH.Move)
-			operator.POST("/transfers/files/copy", xferH.Copy)
-			operator.POST("/transfers/files/zip", xferH.Zip)
-			operator.POST("/transfers/files/chunk", xferH.UploadChunk)
-			operator.POST("/transfers/files/chunk/finalize", xferH.FinalizeChunk)
-			operator.POST("/transfers/files/bulk-rename", xferH.BulkRename)
-			operator.PATCH("/transfers/files", xferH.Rename)
-			operator.DELETE("/transfers/files", xferH.Delete)
-			operator.POST("/transfers/directories", xferH.Mkdir)
-			operator.POST("/transfers/trash", xferH.TrashMove)
-			operator.POST("/transfers/trash/restore", xferH.TrashRestore)
-			operator.DELETE("/transfers/trash", xferH.TrashPurge)
-			log.Printf("file transfers enabled at %s", cfg.FileStorageRoot)
 		} else {
 			log.Printf("file transfers disabled (FILE_STORAGE_ROOT unset)")
 		}

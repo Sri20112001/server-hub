@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -59,6 +60,8 @@ func transferRouter(t *testing.T, root string) (*database.DB, *gin.Engine) {
 	operator.POST("/transfers/trash", xferH.TrashMove)
 	operator.POST("/transfers/trash/restore", xferH.TrashRestore)
 	operator.DELETE("/transfers/trash", xferH.TrashPurge)
+	operator.POST("/transfers/files/chunk", xferH.UploadChunk)
+	operator.POST("/transfers/files/chunk/finalize", xferH.FinalizeChunk)
 	return db, r
 }
 
@@ -150,5 +153,52 @@ func TestTransferUploadDownloadRoundTrip(t *testing.T) {
 	var acts []map[string]any
 	if err := json.Unmarshal(w2.Body.Bytes(), &acts); err != nil || len(acts) == 0 {
 		t.Fatalf("activity should list the upload: %v %s", err, w2.Body.String())
+	}
+}
+
+func TestTransferChunkRBACAndValidation(t *testing.T) {
+	_, r := transferRouter(t, t.TempDir())
+	opC := loginAs(t, r, "op", "testpass123")
+	viewC := loginAs(t, r, "view", "testpass123")
+
+	chunk := func(uploadID, index string, cookies []*http.Cookie, body string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest("POST",
+			"/api/transfers/files/chunk?upload_id="+uploadID+"&index="+index,
+			strings.NewReader(body))
+		for _, ck := range cookies {
+			req.AddCookie(ck)
+		}
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+		return w
+	}
+
+	// Viewer chunk upload is denied (mutations are operator+).
+	if w := chunk("sess-1", "0", viewC, "data"); w.Code != http.StatusForbidden {
+		t.Fatalf("viewer chunk: want 403, got %d", w.Code)
+	}
+	// Traversal upload_id is rejected even for operators.
+	if w := chunk("../../evil", "0", opC, "data"); w.Code != http.StatusBadRequest {
+		t.Fatalf("traversal upload_id: want 400, got %d %s", w.Code, w.Body.String())
+	}
+	// Negative index is rejected.
+	if w := chunk("sess-1", "-1", opC, "data"); w.Code != http.StatusBadRequest {
+		t.Fatalf("negative index: want 400, got %d %s", w.Code, w.Body.String())
+	}
+	// Valid chunk round-trip: chunk → finalize → file exists.
+	if w := chunk("sess-1", "0", opC, "chunked-bytes"); w.Code != http.StatusOK {
+		t.Fatalf("chunk: want 200, got %d %s", w.Code, w.Body.String())
+	}
+	if w := doReq(t, r, "POST", "/api/transfers/files/chunk/finalize",
+		map[string]any{"upload_id": "sess-1", "dest_dir": "/", "filename": "assembled.txt"}, opC); w.Code != http.StatusCreated {
+		t.Fatalf("finalize: want 201, got %d %s", w.Code, w.Body.String())
+	}
+	// Finalize into the trash area is rejected.
+	if w := chunk("sess-2", "0", opC, "x"); w.Code != http.StatusOK {
+		t.Fatalf("chunk sess-2: want 200, got %d", w.Code)
+	}
+	if w := doReq(t, r, "POST", "/api/transfers/files/chunk/finalize",
+		map[string]any{"upload_id": "sess-2", "dest_dir": "/.trash", "filename": "x.txt"}, opC); w.Code != http.StatusBadRequest {
+		t.Fatalf("finalize into trash: want 400, got %d %s", w.Code, w.Body.String())
 	}
 }
