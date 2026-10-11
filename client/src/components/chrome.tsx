@@ -5,6 +5,7 @@ import {
   AlertTriangle,
   ClipboardList,
   Database,
+  Files,
   FolderGit2,
   LayoutGrid,
   LogOut,
@@ -90,6 +91,12 @@ function CommandPalette({ onClose }: { onClose: () => void }) {
         title: "Monitoring",
         sub: "page",
         run: () => nav("/monitoring"),
+      },
+      {
+        icon: <Files size={15} />,
+        title: "File Transfers",
+        sub: "page",
+        run: () => nav("/transfers"),
       },
       {
         icon: <Server size={15} />,
@@ -379,6 +386,17 @@ export function AppShell({ online }: { online: boolean }) {
         >
           <BarChart2 size={19} />
           {loc.pathname === "/monitoring" && (
+            <span className="absolute bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-accent dark:bg-ember" />
+          )}
+        </button>
+        <button
+          className={dockBtn(loc.pathname === "/transfers")}
+          title="File Transfers"
+          aria-label="File Transfers"
+          onClick={() => onDock("/transfers")}
+        >
+          <Files size={19} />
+          {loc.pathname === "/transfers" && (
             <span className="absolute bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-accent dark:bg-ember" />
           )}
         </button>

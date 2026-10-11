@@ -356,6 +356,68 @@ export function monitoringSilence(id: string): string {
   return `${API}/monitoring/silences/${encodeURIComponent(id)}`;
 }
 
+// ─── File transfers (merged homelabs-upload module) ───────────────────────
+export function transfersFiles(path = "/"): string {
+  return `${API}/transfers/files?path=${encodeURIComponent(path)}`;
+}
+export function transfersFileMetadata(path: string): string {
+  return `${API}/transfers/files/metadata?path=${encodeURIComponent(path)}`;
+}
+export function transfersDownload(path: string): string {
+  return `${API}/transfers/files/download?path=${encodeURIComponent(path)}`;
+}
+export function transfersFolderSize(path: string): string {
+  return `${API}/transfers/files/size?path=${encodeURIComponent(path)}`;
+}
+export function transfersUpload(destDir = "/"): string {
+  return `${API}/transfers/files/upload?path=${encodeURIComponent(destDir)}`;
+}
+export function transfersRename(): string {
+  return `${API}/transfers/files`;
+}
+export function transfersDelete(): string {
+  return `${API}/transfers/files`;
+}
+export function transfersMove(): string {
+  return `${API}/transfers/files/move`;
+}
+export function transfersCopy(): string {
+  return `${API}/transfers/files/copy`;
+}
+export function transfersZip(): string {
+  return `${API}/transfers/files/zip`;
+}
+export function transfersChunk(uploadId: string, index: number): string {
+  return `${API}/transfers/files/chunk?upload_id=${encodeURIComponent(uploadId)}&index=${index}`;
+}
+export function transfersChunkFinalize(): string {
+  return `${API}/transfers/files/chunk/finalize`;
+}
+export function transfersBulkRename(): string {
+  return `${API}/transfers/files/bulk-rename`;
+}
+export function transfersMkdir(): string {
+  return `${API}/transfers/directories`;
+}
+export function transfersSearch(query: string, path = "/"): string {
+  return `${API}/transfers/search?q=${encodeURIComponent(query)}&path=${encodeURIComponent(path)}`;
+}
+export function transfersStorage(): string {
+  return `${API}/transfers/storage`;
+}
+export function transfersStorageBreakdown(): string {
+  return `${API}/transfers/storage/breakdown`;
+}
+export function transfersTrash(): string {
+  return `${API}/transfers/trash`;
+}
+export function transfersTrashRestore(): string {
+  return `${API}/transfers/trash/restore`;
+}
+export function transfersActivity(limit = 100): string {
+  return `${API}/transfers/activity?limit=${limit}`;
+}
+
 // ─── Webhooks / exec ─────────────────────────────────────────────────────────
 export function webhookGithub(): string {
   return `${API}/webhooks/github`;

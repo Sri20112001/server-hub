@@ -35,6 +35,7 @@ import (
 	"serverhub/internal/retention"
 	"serverhub/internal/rules"
 	"serverhub/internal/telemetry"
+	"serverhub/internal/transfer"
 )
 
 func main() {
@@ -251,6 +252,43 @@ func main() {
 		// Central log store: single place for all activity + future aggregator.
 		logsH := &handlers.LogsHandler{GDB: gdb}
 		viewer.GET("/logs", logsH.List)
+
+		// File transfers (merged homelabs-upload module). Registered only
+		// when FILE_STORAGE_ROOT is configured; reads → viewer, every
+		// mutation → operator. Identity comes from ServerHub JWT alone —
+		// there is no separate file-service login.
+		if cfg.FileStorageRoot != "" {
+			if err := os.MkdirAll(cfg.FileStorageRoot, 0755); err != nil {
+				log.Fatalf("file storage root %q: %v", cfg.FileStorageRoot, err)
+			}
+			xferSvc := transfer.NewFileService(cfg.FileStorageRoot, cfg.FileMaxUploadSize)
+			xferH := transfer.NewHandler(xferSvc, db)
+			viewer.GET("/transfers/files", xferH.List)
+			viewer.GET("/transfers/files/metadata", xferH.Metadata)
+			viewer.GET("/transfers/files/download", xferH.Download)
+			viewer.GET("/transfers/files/size", xferH.FolderSize)
+			viewer.GET("/transfers/search", xferH.Search)
+			viewer.GET("/transfers/storage", xferH.Storage)
+			viewer.GET("/transfers/storage/breakdown", xferH.StorageBreakdown)
+			viewer.GET("/transfers/trash", xferH.TrashList)
+			viewer.GET("/transfers/activity", xferH.Activity)
+			operator.POST("/transfers/files/upload", xferH.Upload)
+			operator.POST("/transfers/files/move", xferH.Move)
+			operator.POST("/transfers/files/copy", xferH.Copy)
+			operator.POST("/transfers/files/zip", xferH.Zip)
+			operator.POST("/transfers/files/chunk", xferH.UploadChunk)
+			operator.POST("/transfers/files/chunk/finalize", xferH.FinalizeChunk)
+			operator.POST("/transfers/files/bulk-rename", xferH.BulkRename)
+			operator.PATCH("/transfers/files", xferH.Rename)
+			operator.DELETE("/transfers/files", xferH.Delete)
+			operator.POST("/transfers/directories", xferH.Mkdir)
+			operator.POST("/transfers/trash", xferH.TrashMove)
+			operator.POST("/transfers/trash/restore", xferH.TrashRestore)
+			operator.DELETE("/transfers/trash", xferH.TrashPurge)
+			log.Printf("file transfers enabled at %s", cfg.FileStorageRoot)
+		} else {
+			log.Printf("file transfers disabled (FILE_STORAGE_ROOT unset)")
+		}
 
 		// Databases: auto-detect servers, browse, save connections, register.
 		dbH := &handlers.DatabasesHandler{DB: db, Docker: dockerClient, Cfg: cfg}

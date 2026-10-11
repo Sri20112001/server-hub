@@ -68,6 +68,10 @@ func OpenDatabase(databaseURL string) (*DB, error) {
 		&ProviderState{},
 		&DigestBatch{},
 		&MaintenanceWindow{},
+		&NvUser{},
+		&NvSession{},
+		&NvActivity{},
+		&NvAppLog{},
 	} {
 		if gdb.Migrator().HasTable(m) {
 			continue

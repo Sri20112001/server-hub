@@ -543,3 +543,72 @@ type MaintenanceWindow struct {
 }
 
 func (MaintenanceWindow) TableName() string { return "maintenance_windows" }
+
+// ─── File transfers (merged homelabs-upload module) ───────────────────────
+// Legacy homelabs-upload tables, namespaced nv_* to avoid colliding with
+// ServerHub's own users/app_logs tables in the merged database. Column
+// shapes mirror the homelabs-upload models exactly so the documented
+// migration (INSERT INTO nv_* SELECT * FROM <scratch>.*) needs no mapping.
+// Sessions are intentionally NOT migrated (30-day ephemeral tokens).
+// Identity in the merged app comes from ServerHub JWTs; nv_users rows are
+// retained for history attribution and standalone-mode parity.
+
+// NvUser is a migrated homelabs-upload local account.
+type NvUser struct {
+	ID           string `gorm:"primaryKey" json:"id"`
+	Username     string `gorm:"uniqueIndex;not null" json:"username"`
+	DisplayName  string `json:"display_name"`
+	Role         string `json:"role"`
+	PasswordHash string `json:"password_hash,omitempty"`
+	CreatedAt    string `json:"created_at"`
+}
+
+func (NvUser) TableName() string { return "nv_users" }
+
+// NvSession is a migrated opaque session row (schema parity only; the
+// merged app authenticates via ServerHub JWT, not these rows).
+type NvSession struct {
+	Token     string `gorm:"primaryKey" json:"token"`
+	UserID    string `gorm:"index;not null" json:"user_id"`
+	Username  string `json:"username"`
+	CreatedAt string `json:"created_at"`
+	ExpiresAt string `json:"expires_at"`
+	IP        string `json:"ip,omitempty"`
+}
+
+func (NvSession) TableName() string { return "nv_sessions" }
+
+// NvActivity is one file-activity record. New file operations in the
+// merged app append here too, so transfer history survives the merge.
+type NvActivity struct {
+	ID     uint   `gorm:"primaryKey;autoIncrement" json:"-"`
+	Time   string `json:"time"`
+	User   string `json:"user"`
+	Role   string `json:"role,omitempty"`
+	Action string `gorm:"index:idx_nv_activity_action" json:"action"`
+	Path   string `json:"path,omitempty"`
+	Detail string `json:"detail,omitempty"`
+	IP     string `json:"ip,omitempty"`
+	Status int    `json:"status,omitempty"`
+}
+
+func (NvActivity) TableName() string { return "nv_activity" }
+
+// NvAppLog is a migrated homelabs-upload structured log row.
+type NvAppLog struct {
+	ID         uint   `gorm:"primaryKey;autoIncrement" json:"id"`
+	Time       string `json:"time"`
+	Level      string `gorm:"index:idx_nv_app_logs_level" json:"level"`
+	Service    string `json:"service"`
+	Message    string `json:"message"`
+	RequestID  string `gorm:"index:idx_nv_app_logs_request" json:"request_id"`
+	Method     string `json:"method"`
+	Path       string `gorm:"index:idx_nv_app_logs_path" json:"path"`
+	Status     int    `json:"status"`
+	DurationMs int64  `json:"duration_ms"`
+	Username   string `json:"username"`
+	IP         string `json:"ip"`
+	Fields     string `json:"fields,omitempty"`
+}
+
+func (NvAppLog) TableName() string { return "nv_app_logs" }

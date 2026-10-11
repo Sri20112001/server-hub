@@ -79,6 +79,13 @@ type Config struct {
 	// and flushed digests (default 90). Firing incident states are never
 	// pruned; audit_logs are never touched.
 	DeliveryRetentionDays int
+	// FileStorageRoot is the merged file-transfer storage root (absolute
+	// host/container path). Empty disables the transfers endpoints: the
+	// handler refuses to serve rather than touching an unintended tree.
+	FileStorageRoot string
+	// FileMaxUploadSize caps single uploads in bytes (default 10 GiB,
+	// matching the standalone file service).
+	FileMaxUploadSize int64
 }
 
 func getenv(key, def string) string {
@@ -96,6 +103,16 @@ func splitRoots(s string) []string {
 		}
 	}
 	return out
+}
+
+func getenvInt64(key string, def int64) int64 {
+	if v := os.Getenv(key); v != "" {
+		var n int64
+		if _, err := fmt.Sscanf(v, "%d", &n); err == nil && n > 0 {
+			return n
+		}
+	}
+	return def
 }
 
 func getenvFloat(key string, def float64) float64 {
@@ -325,6 +342,8 @@ func Load() *Config {
 		AppLogRetentionDays:     appLogDays,
 		HealthResultRetentionDays: healthResDays,
 		DeliveryRetentionDays:   deliveryDays,
+		FileStorageRoot:         strings.TrimSpace(os.Getenv("FILE_STORAGE_ROOT")),
+		FileMaxUploadSize:       getenvInt64("FILE_MAX_UPLOAD_SIZE", 10<<30),
 		AlertmanagerWebhookSecret: os.Getenv("ALERTMANAGER_WEBHOOK_SECRET"),
 	}
 }

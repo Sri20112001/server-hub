@@ -41,6 +41,13 @@ import type {
   Service,
   StorageInfo,
   TelemetryHistory,
+  TransferActivity,
+  TransferFileItem,
+  TransferFolderSize,
+  TransferListResponse,
+  TransferStorageBreakdown,
+  TransferStorageInfo,
+  TransferTrashItem,
   DashboardData,
 } from "@serverhub/shared";
 
@@ -453,3 +460,95 @@ export const api = {
   deleteSilence: (id: string) =>
     req<{ ok: boolean }>(ep.monitoringSilence(id), { method: "DELETE" }),
 };
+
+// ─── File Transfers (merged homelabs-upload module) ─────────────────────
+// Served by the ServerHub backend itself at /server-hub/api/transfers/*.
+// Auth rides the ambient ServerHub session cookie via req() (with the same
+// transparent refresh rotation as every other endpoint). Reads → viewer,
+// mutations → operator; a 403 here means the current role is viewer.
+async function uploadReq(path: string, form: FormData): Promise<{ message: string; path: string }> {
+  const doFetch = () =>
+    fetch(`${API_BASE}${path}`, { method: "POST", credentials: "include", body: form });
+  let res = await doFetch();
+  if (res.status === 401) {
+    const ok = await refreshSession();
+    if (ok) res = await doFetch();
+  }
+  if (res.status === 204) return { message: "ok", path: "" };
+  let body: unknown;
+  try {
+    body = await res.json();
+  } catch {
+    body = null;
+  }
+  if (!res.ok) {
+    const msg =
+      body && typeof body === "object" && "error" in body
+        ? String((body as { error: unknown }).error)
+        : `Upload failed (${res.status})`;
+    throw new ApiError(res.status, msg);
+  }
+  return body as { message: string; path: string };
+}
+
+export const transfersApi = {
+  list: (path = "/") => req<TransferListResponse>(ep.transfersFiles(path)),
+  metadata: (path: string) => req<TransferFileItem>(ep.transfersFileMetadata(path)),
+  folderSize: (path: string) => req<TransferFolderSize>(ep.transfersFolderSize(path)),
+  search: (q: string, path = "/") =>
+    req<{ query: string; results: TransferFileItem[] }>(ep.transfersSearch(q, path)),
+  storage: () => req<TransferStorageInfo>(ep.transfersStorage()),
+  breakdown: () => req<TransferStorageBreakdown>(ep.transfersStorageBreakdown()),
+  trash: () => req<{ items: TransferTrashItem[] }>(ep.transfersTrash()),
+  activity: (limit = 100) => req<TransferActivity[]>(ep.transfersActivity(limit)),
+  downloadUrl: (path: string) => `${API_BASE}${ep.transfersDownload(path)}`,
+  upload: (destDir: string, file: File) => {
+    const form = new FormData();
+    form.append("file", file, file.name);
+    return uploadReq(ep.transfersUpload(destDir), form);
+  },
+  mkdir: (path: string) =>
+    req<{ message: string; path: string }>(ep.transfersMkdir(), {
+      method: "POST",
+      body: JSON.stringify({ path }),
+    }),
+  rename: (path: string, newName: string) =>
+    req<{ message: string }>(ep.transfersRename(), {
+      method: "PATCH",
+      body: JSON.stringify({ path, new_name: newName }),
+    }),
+  move: (source: string, destination: string) =>
+    req<{ message: string }>(ep.transfersMove(), {
+      method: "POST",
+      body: JSON.stringify({ source, destination }),
+    }),
+  copy: (source: string, destination: string) =>
+    req<{ message: string }>(ep.transfersCopy(), {
+      method: "POST",
+      body: JSON.stringify({ source, destination }),
+    }),
+  remove: (path: string, recursive = false) =>
+    req<{ message: string }>(ep.transfersDelete(), {
+      method: "DELETE",
+      body: JSON.stringify({ path, recursive }),
+    }),
+  trashMove: (path: string) =>
+    req<{ message: string }>(ep.transfersTrash(), {
+      method: "POST",
+      body: JSON.stringify({ path }),
+    }),
+  trashRestore: (id: string) =>
+    req<{ message: string }>(ep.transfersTrashRestore(), {
+      method: "POST",
+      body: JSON.stringify({ id }),
+    }),
+  trashPurge: () => req<{ message: string }>(ep.transfersTrash(), { method: "DELETE" }),
+};
+
+// Back-compat alias for the earlier stub page (storage + activity only).
+export const fmApi = {
+  storage: transfersApi.storage,
+  activity: (limit = 20) => transfersApi.activity(limit),
+};
+export type FmStorage = TransferStorageInfo;
+export type FmActivity = TransferActivity;

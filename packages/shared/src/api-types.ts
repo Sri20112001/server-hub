@@ -781,6 +781,67 @@ export interface MaintenanceWindow {
   updatedAt: string;
 }
 
+// ─── File transfers (merged homelabs-upload module) ───────────────────────
+// Field names mirror server/internal/transfer/models.go exactly.
+
+export interface TransferFileItem {
+  name: string;
+  path: string;
+  type: "file" | "directory";
+  size: number;
+  extension?: string;
+  mime_type?: string;
+  modified_at: string;
+}
+
+export interface TransferListResponse {
+  path: string;
+  items: TransferFileItem[];
+}
+
+export interface TransferStorageInfo {
+  storage_root: string;
+  total_bytes: number;
+  used_bytes: number;
+  available_bytes: number;
+}
+
+export interface TransferTrashItem {
+  id: string;
+  original_path: string;
+  name: string;
+  is_dir: boolean;
+  size: number;
+  deleted_at: string;
+}
+
+export interface TransferFolderSize {
+  path: string;
+  size_bytes: number;
+  file_count: number;
+}
+
+export interface TransferFolderStat {
+  name: string;
+  path: string;
+  bytes: number;
+  files: number;
+}
+
+export interface TransferStorageBreakdown {
+  folders: TransferFolderStat[];
+}
+
+export interface TransferActivity {
+  time: string;
+  user: string;
+  role?: string;
+  action: string;
+  path?: string;
+  detail?: string;
+  status?: number;
+}
+
 export function toFleetStatus(raw: string | undefined): FleetStatus {
   const s = (raw ?? "").toLowerCase();
   if (s === "healthy" || s === "running" || s === "success" || s === "ok") return "sailing";

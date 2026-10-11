@@ -11,6 +11,7 @@ import { ServerDetailPage } from "../features/dashboard/ServerDetailPage";
 import { AlertsPage } from "../features/dashboard/AlertsPage";
 import { HealthChecksPage } from "../features/dashboard/HealthChecksPage";
 import { MonitoringPage } from "../features/dashboard/MonitoringPage";
+import { FileTransfersPage } from "../features/transfers/FileTransfersPage";
 import { AuditLogPage } from "../features/dashboard/AuditLogPage";
 import { SettingsPage } from "../features/settings/SettingsPage";
 import { LoginPage } from "../features/auth/LoginPage";
@@ -136,6 +137,14 @@ export function AppRouter() {
                 element: (
                   <Protected>
                     <MonitoringPage />
+                  </Protected>
+                ),
+              },
+              {
+                path: "transfers",
+                element: (
+                  <Protected>
+                    <FileTransfersPage />
                   </Protected>
                 ),
               },
