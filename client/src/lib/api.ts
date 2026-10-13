@@ -48,6 +48,28 @@ import type {
   TransferStorageBreakdown,
   TransferStorageInfo,
   TransferTrashItem,
+  VgAgent,
+  VgBackupArtifact,
+  VgBackupJob,
+  VgBackupPolicy,
+  VgBackupRun,
+  VgConnection,
+  VgConnectionInput,
+  VgConnectionTest,
+  VgDashboard,
+  VgEnrollMint,
+  VgEnrollTokenRow,
+  VgJobInput,
+  VgMachine,
+  VgPolicyDetail,
+  VgPolicyInput,
+  VgPreflight,
+  VgRestoreInput,
+  VgRestoreJob,
+  VgRunsPage,
+  VgStorageInput,
+  VgStorageTarget,
+  VgStorageTest,
   DashboardData,
 } from "@serverhub/shared";
 
@@ -556,3 +578,84 @@ export const fmApi = {
 };
 export type FmStorage = TransferStorageInfo;
 export type FmActivity = TransferActivity;
+
+// ─── Database Backups (VaultGuard integration) ────────────────────────
+// Served by the ServerHub backend at /server-hub/api/db-backups/* through
+// the same session-cookie req() as every other endpoint (reads → viewer,
+// mutations → operator, destructive/token ops → admin; the server owns all
+// authorization). Secret-bearing responses (enrollment/registration tokens)
+// are returned once by the server and never stored client-side.
+export const dbBackupsApi = {
+  dashboard: () => req<VgDashboard>(ep.dbBackupsDashboard()),
+  targets: () => req<VgStorageTarget[]>(ep.dbBackupsTargets()),
+  target: (id: string) => req<VgStorageTarget>(ep.dbBackupsTarget(id)),
+  createTarget: (body: VgStorageInput) =>
+    req<VgStorageTarget>(ep.dbBackupsTargets(), { method: "POST", body: JSON.stringify(body) }),
+  updateTarget: (id: string, body: Partial<VgStorageInput>) =>
+    req<VgStorageTarget>(ep.dbBackupsTarget(id), { method: "PUT", body: JSON.stringify(body) }),
+  testTarget: (id: string) =>
+    req<VgStorageTest>(ep.dbBackupsTargetTest(), { method: "POST", body: JSON.stringify({ id }) }),
+  deleteTarget: (id: string) =>
+    req<void>(ep.dbBackupsTarget(id), { method: "DELETE" }),
+  connections: () => req<VgConnection[]>(ep.dbBackupsConnections()),
+  connection: (id: string) => req<VgConnection>(ep.dbBackupsConnection(id)),
+  createConnection: (body: VgConnectionInput) =>
+    req<VgConnection>(ep.dbBackupsConnections(), { method: "POST", body: JSON.stringify(body) }),
+  updateConnection: (id: string, body: Partial<VgConnectionInput>) =>
+    req<VgConnection>(ep.dbBackupsConnection(id), { method: "PUT", body: JSON.stringify(body) }),
+  testConnection: (id: string) =>
+    req<VgConnectionTest>(ep.dbBackupsConnectionTest(), { method: "POST", body: JSON.stringify({ id }) }),
+  deleteConnection: (id: string) =>
+    req<void>(ep.dbBackupsConnection(id), { method: "DELETE" }),
+  policies: () => req<VgBackupPolicy[]>(ep.dbBackupsPolicies()),
+  policy: (id: string) => req<VgPolicyDetail>(ep.dbBackupsPolicy(id)),
+  createPolicy: (body: VgPolicyInput) =>
+    req<VgBackupPolicy>(ep.dbBackupsPolicies(), { method: "POST", body: JSON.stringify(body) }),
+  updatePolicy: (id: string, body: VgPolicyInput) =>
+    req<VgBackupPolicy>(ep.dbBackupsPolicy(id), { method: "PUT", body: JSON.stringify(body) }),
+  deletePolicy: (id: string) =>
+    req<void>(ep.dbBackupsPolicy(id), { method: "DELETE" }),
+  jobs: () => req<VgBackupJob[]>(ep.dbBackupsJobs()),
+  job: (id: string) => req<VgBackupJob>(ep.dbBackupsJob(id)),
+  createJob: (body: VgJobInput) =>
+    req<VgBackupJob>(ep.dbBackupsJobs(), { method: "POST", body: JSON.stringify(body) }),
+  updateJob: (id: string, body: Partial<VgJobInput>) =>
+    req<VgBackupJob>(ep.dbBackupsJob(id), { method: "PUT", body: JSON.stringify(body) }),
+  deleteJob: (id: string) =>
+    req<void>(ep.dbBackupsJob(id), { method: "DELETE" }),
+  enableJob: (id: string) =>
+    req<{ enabled: boolean }>(ep.dbBackupsJobEnable(id), { method: "POST" }),
+  disableJob: (id: string) =>
+    req<{ enabled: boolean }>(ep.dbBackupsJobDisable(id), { method: "POST" }),
+  runJob: (id: string) =>
+    req<VgBackupRun>(ep.dbBackupsJobRun(id), { method: "POST" }),
+  preflight: (id: string) =>
+    req<VgPreflight>(ep.dbBackupsJobPreflight(id), { method: "POST" }),
+  runs: (params?: { job_id?: string; status?: string; search?: string; page?: number; limit?: number; sort?: string; order?: string }) =>
+    req<VgRunsPage>(ep.dbBackupsRuns(params)),
+  run: (id: string) => req<VgBackupRun>(ep.dbBackupsRun(id)),
+  runArtifacts: (id: string) => req<VgBackupArtifact[]>(ep.dbBackupsRunArtifacts(id)),
+  cancelRun: (id: string) =>
+    req<{ status: string }>(ep.dbBackupsRunCancel(id), { method: "POST" }),
+  verifyRun: (id: string) =>
+    req<{ match: boolean; checksum?: string; expected?: string; actual?: string }>(ep.dbBackupsRunVerify(id), { method: "POST" }),
+  restores: () => req<VgRestoreJob[]>(ep.dbBackupsRestores()),
+  restore: (id: string) => req<VgRestoreJob>(ep.dbBackupsRestore(id)),
+  createRestore: (body: VgRestoreInput) =>
+    req<VgRestoreJob>(ep.dbBackupsRestores(), { method: "POST", body: JSON.stringify(body) }),
+  agents: () => req<VgAgent[]>(ep.dbBackupsAgents()),
+  agent: (id: string) => req<VgAgent>(ep.dbBackupsAgent(id)),
+  mintRegistrationToken: () =>
+    req<{ agent_id: string; registration_key: string }>(ep.dbBackupsAgentToken(), { method: "POST" }),
+  rotateAgentToken: (id: string) =>
+    req<{ agent_id: string; agent_token: string }>(ep.dbBackupsAgentRotate(id), { method: "POST" }),
+  revokeAgent: (id: string) =>
+    req<{ revoked: boolean }>(ep.dbBackupsAgentRevoke(id), { method: "POST" }),
+  enrollTokens: () => req<VgEnrollTokenRow[]>(ep.dbBackupsEnrollTokens()),
+  mintEnrollToken: (body?: { name?: string; expires_minutes?: number }) =>
+    req<VgEnrollMint>(ep.dbBackupsEnrollTokens(), { method: "POST", body: JSON.stringify(body ?? {}) }),
+  revokeEnrollToken: (id: string) =>
+    req<void>(ep.dbBackupsEnrollToken(id), { method: "DELETE" }),
+  machines: () => req<VgMachine[]>(ep.dbBackupsMachines()),
+  machine: (id: string) => req<VgMachine>(ep.dbBackupsMachine(id)),
+};

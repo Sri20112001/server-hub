@@ -418,6 +418,121 @@ export function transfersActivity(limit = 100): string {
   return `${API}/transfers/activity?limit=${limit}`;
 }
 
+// ─── Database backups (VaultGuard integration) ─────────────────────────
+// Paths mirror server/cmd/server/main.go (/server-hub/api/db-backups).
+// Reads → viewer, mutations → operator, destructive/token ops → admin.
+
+export function dbBackupsDashboard(): string {
+  return `${API}/db-backups/dashboard`;
+}
+export function dbBackupsTargets(): string {
+  return `${API}/db-backups/storage-targets`;
+}
+export function dbBackupsTarget(id: string): string {
+  return `${API}/db-backups/storage-targets/${encodeURIComponent(id)}`;
+}
+export function dbBackupsTargetTest(): string {
+  return `${API}/db-backups/storage-targets/test`;
+}
+export function dbBackupsConnections(): string {
+  return `${API}/db-backups/connections`;
+}
+export function dbBackupsConnection(id: string): string {
+  return `${API}/db-backups/connections/${encodeURIComponent(id)}`;
+}
+export function dbBackupsConnectionTest(): string {
+  return `${API}/db-backups/connections/test`;
+}
+export function dbBackupsPolicies(): string {
+  return `${API}/db-backups/policies`;
+}
+export function dbBackupsPolicy(id: string): string {
+  return `${API}/db-backups/policies/${encodeURIComponent(id)}`;
+}
+export function dbBackupsJobs(): string {
+  return `${API}/db-backups/jobs`;
+}
+export function dbBackupsJob(id: string): string {
+  return `${API}/db-backups/jobs/${encodeURIComponent(id)}`;
+}
+export function dbBackupsJobEnable(id: string): string {
+  return `${API}/db-backups/jobs/${encodeURIComponent(id)}/enable`;
+}
+export function dbBackupsJobDisable(id: string): string {
+  return `${API}/db-backups/jobs/${encodeURIComponent(id)}/disable`;
+}
+export function dbBackupsJobRun(id: string): string {
+  return `${API}/db-backups/jobs/${encodeURIComponent(id)}/run`;
+}
+export function dbBackupsJobPreflight(id: string): string {
+  return `${API}/db-backups/jobs/${encodeURIComponent(id)}/preflight`;
+}
+export function dbBackupsRuns(params?: {
+  job_id?: string;
+  status?: string;
+  search?: string;
+  page?: number;
+  limit?: number;
+  sort?: string;
+  order?: string;
+}): string {
+  const q = new URLSearchParams();
+  if (params?.job_id) q.set("job_id", params.job_id);
+  if (params?.status) q.set("status", params.status);
+  if (params?.search) q.set("search", params.search);
+  if (params?.page !== undefined) q.set("page", String(params.page));
+  if (params?.limit !== undefined) q.set("limit", String(params.limit));
+  if (params?.sort) q.set("sort", params.sort);
+  if (params?.order) q.set("order", params.order);
+  const suffix = q.toString() ? `?${q.toString()}` : "";
+  return `${API}/db-backups/runs${suffix}`;
+}
+export function dbBackupsRun(id: string): string {
+  return `${API}/db-backups/runs/${encodeURIComponent(id)}`;
+}
+export function dbBackupsRunArtifacts(id: string): string {
+  return `${API}/db-backups/runs/${encodeURIComponent(id)}/artifacts`;
+}
+export function dbBackupsRunCancel(id: string): string {
+  return `${API}/db-backups/runs/${encodeURIComponent(id)}/cancel`;
+}
+export function dbBackupsRunVerify(id: string): string {
+  return `${API}/db-backups/runs/${encodeURIComponent(id)}/verify`;
+}
+export function dbBackupsRestores(): string {
+  return `${API}/db-backups/restores`;
+}
+export function dbBackupsRestore(id: string): string {
+  return `${API}/db-backups/restores/${encodeURIComponent(id)}`;
+}
+export function dbBackupsAgents(): string {
+  return `${API}/db-backups/agents`;
+}
+export function dbBackupsAgent(id: string): string {
+  return `${API}/db-backups/agents/${encodeURIComponent(id)}`;
+}
+export function dbBackupsAgentToken(): string {
+  return `${API}/db-backups/agents/token`;
+}
+export function dbBackupsAgentRotate(id: string): string {
+  return `${API}/db-backups/agents/${encodeURIComponent(id)}/rotate-token`;
+}
+export function dbBackupsAgentRevoke(id: string): string {
+  return `${API}/db-backups/agents/${encodeURIComponent(id)}/revoke`;
+}
+export function dbBackupsEnrollTokens(): string {
+  return `${API}/db-backups/enrollment-tokens`;
+}
+export function dbBackupsEnrollToken(id: string): string {
+  return `${API}/db-backups/enrollment-tokens/${encodeURIComponent(id)}`;
+}
+export function dbBackupsMachines(): string {
+  return `${API}/db-backups/machines`;
+}
+export function dbBackupsMachine(id: string): string {
+  return `${API}/db-backups/machines/${encodeURIComponent(id)}`;
+}
+
 // ─── Webhooks / exec ─────────────────────────────────────────────────────────
 export function webhookGithub(): string {
   return `${API}/webhooks/github`;

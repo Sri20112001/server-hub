@@ -27,10 +27,10 @@ type Config struct {
 	// never a path) derived from FRONTEND_ORIGIN, falling back to
 	// FRONTEND_URL for backward compatibility.
 	FrontendOrigins []string
-	AdminUser     string
-	AdminPass     string
-	WebhookSecret string
-	ScanRoots     []string
+	AdminUser       string
+	AdminPass       string
+	WebhookSecret   string
+	ScanRoots       []string
 	// DeployRoots bounds operator-controlled deployment_path values:
 	// deploy, rollback, lifecycle and restore resolve the configured path
 	// (symlinks included) and refuse anything outside these roots.
@@ -41,9 +41,9 @@ type Config struct {
 	// + no-redirect guardrails are always on, but private targets stay
 	// allowed because monitoring internal services is the feature's job.
 	EgressStrict bool
-	AlertCPU      float64
-	AlertRAM      float64
-	AlertDisk     float64
+	AlertCPU     float64
+	AlertRAM     float64
+	AlertDisk    float64
 	// OfflineTimeoutSec marks a managed server OFFLINE/DISCONNECTED when
 	// no heartbeat was received within this many seconds.
 	OfflineTimeoutSec int
@@ -52,13 +52,13 @@ type Config struct {
 	// append-only and retained forever (DB triggers reject DELETE/UPDATE).
 	LogRetentionDays int
 	// Prometheus / Alertmanager integration (optional).
-	PrometheusURL              string
-	PrometheusTimeoutSec       int
-	PrometheusEnabled          bool
-	AlertmanagerURL            string
-	AlertmanagerTimeoutSec     int
-	AlertmanagerEnabled        bool
-	AlertmanagerWebhookSecret  string
+	PrometheusURL             string
+	PrometheusTimeoutSec      int
+	PrometheusEnabled         bool
+	AlertmanagerURL           string
+	AlertmanagerTimeoutSec    int
+	AlertmanagerEnabled       bool
+	AlertmanagerWebhookSecret string
 	// NotificationRulesEnabled gates the Phase 2 rules engine. Default
 	// false: with no (or disabled) rules the legacy notification pipeline
 	// runs exactly as before.
@@ -86,6 +86,15 @@ type Config struct {
 	// FileMaxUploadSize caps single uploads in bytes (default 10 GiB,
 	// matching the standalone file service).
 	FileMaxUploadSize int64
+	// VgBackupSchedIntervalSec bounds the database-backup scheduler tick
+	// (default 30, clamped 5..3600 at startup).
+	VgBackupSchedIntervalSec int
+	// VgBackupLocalDeleteRoot optionally enables artifact FILE deletion
+	// during retention, confined to this absolute server-local path. Empty
+	// (default) prunes database rows only and never touches the filesystem:
+	// agent-local paths cannot be told apart from server-local ones without
+	// an explicit allowlist, so deletion stays opt-in.
+	VgBackupLocalDeleteRoot string
 }
 
 func getenv(key, def string) string {
@@ -309,41 +318,43 @@ func Load() *Config {
 	deployRoots := splitRoots(getenv("DEPLOY_ROOTS", getenv("SCAN_ROOTS", "/srv/apps")))
 	strictEgress := getenv("HEALTHCHECK_EGRESS_STRICT", "false")
 	return &Config{
-		Port:        getenv("PORT", "4000"),
-		DatabaseURL: os.Getenv("DATABASE_URL"),
-		Env:           env,
-		IsProduction:  isProd,
-		JWTSecret:       jwtSecret,
-		EncryptionKey:   encKey,
-		CookieSecure:    secure,
-		CookieDomain:    os.Getenv("COOKIE_DOMAIN"),
-		FrontendURL:     getenv("FRONTEND_URL", "http://localhost:5173"),
-		FrontendOrigins: resolveFrontendOrigins(),
-		AdminUser:       getenv("ADMIN_USERNAME", "admin"),
-		AdminPass:       adminPass,
-		WebhookSecret:   os.Getenv("GITHUB_WEBHOOK_SECRET"),
-		ScanRoots:       scanRoots,
-		DeployRoots:     deployRoots,
-		EgressStrict:    strictEgress == "true" || strictEgress == "1",
-		AlertCPU:        getenvFloat("ALERT_CPU_PCT", 85),
-		AlertRAM:        getenvFloat("ALERT_RAM_PCT", 90),
-		AlertDisk:       getenvFloat("ALERT_DISK_PCT", 80),
-		OfflineTimeoutSec: offlineTimeout,
-		HealthIntervalSec: interval,
-		LogRetentionDays:  retention,
+		Port:                      getenv("PORT", "4000"),
+		DatabaseURL:               os.Getenv("DATABASE_URL"),
+		Env:                       env,
+		IsProduction:              isProd,
+		JWTSecret:                 jwtSecret,
+		EncryptionKey:             encKey,
+		CookieSecure:              secure,
+		CookieDomain:              os.Getenv("COOKIE_DOMAIN"),
+		FrontendURL:               getenv("FRONTEND_URL", "http://localhost:5173"),
+		FrontendOrigins:           resolveFrontendOrigins(),
+		AdminUser:                 getenv("ADMIN_USERNAME", "admin"),
+		AdminPass:                 adminPass,
+		WebhookSecret:             os.Getenv("GITHUB_WEBHOOK_SECRET"),
+		ScanRoots:                 scanRoots,
+		DeployRoots:               deployRoots,
+		EgressStrict:              strictEgress == "true" || strictEgress == "1",
+		AlertCPU:                  getenvFloat("ALERT_CPU_PCT", 85),
+		AlertRAM:                  getenvFloat("ALERT_RAM_PCT", 90),
+		AlertDisk:                 getenvFloat("ALERT_DISK_PCT", 80),
+		OfflineTimeoutSec:         offlineTimeout,
+		HealthIntervalSec:         interval,
+		LogRetentionDays:          retention,
 		PrometheusURL:             os.Getenv("PROMETHEUS_URL"),
 		PrometheusTimeoutSec:      promTimeout,
 		PrometheusEnabled:         promEnabled != "false" && promEnabled != "0",
 		AlertmanagerURL:           os.Getenv("ALERTMANAGER_URL"),
 		AlertmanagerTimeoutSec:    amTimeout,
 		AlertmanagerEnabled:       amEnabled != "false" && amEnabled != "0",
-		NotificationRulesEnabled: rulesEnabled == "true" || rulesEnabled == "1",
-		MetricsRetentionDays:    retentionDays,
-		AppLogRetentionDays:     appLogDays,
+		NotificationRulesEnabled:  rulesEnabled == "true" || rulesEnabled == "1",
+		MetricsRetentionDays:      retentionDays,
+		AppLogRetentionDays:       appLogDays,
 		HealthResultRetentionDays: healthResDays,
-		DeliveryRetentionDays:   deliveryDays,
-		FileStorageRoot:         strings.TrimSpace(os.Getenv("FILE_STORAGE_ROOT")),
-		FileMaxUploadSize:       getenvInt64("FILE_MAX_UPLOAD_SIZE", 10<<30),
+		DeliveryRetentionDays:     deliveryDays,
+		FileStorageRoot:           strings.TrimSpace(os.Getenv("FILE_STORAGE_ROOT")),
+		FileMaxUploadSize:         getenvInt64("FILE_MAX_UPLOAD_SIZE", 10<<30),
+		VgBackupSchedIntervalSec:  int(getenvInt64("VG_SCHED_INTERVAL_SEC", 30)),
+		VgBackupLocalDeleteRoot:   strings.TrimSpace(os.Getenv("VG_LOCAL_DELETE_ROOT")),
 		AlertmanagerWebhookSecret: os.Getenv("ALERTMANAGER_WEBHOOK_SECRET"),
 	}
 }

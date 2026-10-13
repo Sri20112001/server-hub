@@ -8,6 +8,8 @@ import (
 
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
+
+	"serverhub/internal/vgbackup"
 )
 
 // DB is the Postgres handle used across ServerHub. GORM is the ORM
@@ -85,6 +87,13 @@ func OpenDatabase(databaseURL string) (*DB, error) {
 		return nil, err
 	}
 	db := &DB{GDB: gdb, SQL: sqldb}
+	// Integrated database-backup tables (vg_*): additive only, same
+	// HasTable/CreateTable strategy as above — never touches existing
+	// ServerHub tables. See vgbackup.EnsureSchema for the documented
+	// no-ALTER limitation.
+	if err := vgbackup.EnsureSchema(gdb); err != nil {
+		return nil, fmt.Errorf("backup schema: %w", err)
+	}
 	// Idempotent schema upgrades for pre-existing installs (CreateTable
 	// above only creates missing tables, never alters them).
 	if err := db.ensureNotificationSchema(); err != nil {

@@ -992,3 +992,334 @@ export function describeAlert(alert: {
     next: `Open the related page to investigate. ${resolveNote}`,
   };
 }
+
+// ─── Database backups (VaultGuard integration) ─────────────────────────
+// Field names mirror server/internal/vgbackup/models.go and the DTO shapes
+// in server/internal/handlers/vgbackup_mgmt.go exactly. Secrets are NEVER
+// part of these contracts: passwords, token hashes, bearer tokens, and data
+// keys are absent by backend design (shown once at creation, if at all).
+
+export interface VgAgent {
+  id: string;
+  name: string;
+  platform: string;
+  architecture: string;
+  machine_name: string;
+  status: string;
+  lifecycle: string;
+  version: string;
+  last_seen_at: string | null;
+  installed_at: string | null;
+  revoked_at: string | null;
+  created_at: string;
+}
+
+export interface VgMachine {
+  id: string;
+  agent_id: string;
+  hostname: string;
+  os: string;
+  ip_address: string;
+  agent?: VgAgent;
+  created_at: string;
+}
+
+export interface VgStorageTarget {
+  id: string;
+  created_at: string;
+  updated_at: string;
+  name: string;
+  type: string;
+  bucket: string;
+  region: string;
+  endpoint: string;
+  use_path_style: boolean;
+  path: string;
+  has_credentials: boolean;
+}
+
+export interface VgDatabaseInfo {
+  name: string;
+  size_bytes: number;
+  table_count: number;
+}
+
+export interface VgConnection {
+  id: string;
+  agent_id: string;
+  name: string;
+  type: string;
+  host: string;
+  port: number;
+  username: string;
+  status: string;
+  last_checked_at: string | null;
+  databases: VgDatabaseInfo[];
+  database_count: number;
+  agent?: VgAgent;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface VgBackupSchedule {
+  backup_job_id: string;
+  cron_expr: string;
+  timezone: string;
+}
+
+export interface VgBackupPolicy {
+  id: string;
+  name: string;
+  strategy: string;
+  cron_expr: string;
+  timezone: string;
+  enabled: boolean;
+  mode: string;
+  encrypted: boolean;
+  retention_days: number;
+  verification_enabled: boolean;
+  max_retries: number;
+  retry_delay_seconds: number;
+  sla_target_minutes: number;
+  rpo_target_minutes: number;
+  rto_target_minutes: number;
+}
+
+export interface VgPolicyDetail {
+  policy: VgBackupPolicy;
+  attached_jobs: number;
+}
+
+export interface VgBackupJob {
+  id: string;
+  agent_id: string;
+  storage_target_id: string;
+  policy_id?: string | null;
+  name: string;
+  source_type: string;
+  connection_id?: string | null;
+  source_path: string;
+  source_database: string;
+  include_patterns: string;
+  exclude_patterns: string;
+  export_format: string;
+  mode: string;
+  encrypted: boolean;
+  retention_days: number;
+  enabled: boolean;
+  sla_target_minutes: number;
+  rpo_target_minutes: number;
+  rto_target_minutes: number;
+  schedule?: VgBackupSchedule | null;
+  policy?: VgBackupPolicy | null;
+  agent?: VgAgent;
+  storage_target?: VgStorageTarget;
+  connection?: VgDatabaseConnection | null;
+}
+
+// VgDatabaseConnection mirrors the storage model for nested preloads.
+export interface VgDatabaseConnection {
+  id: string;
+  name: string;
+}
+
+export interface VgBackupRun {
+  id: string;
+  backup_job_id: string;
+  agent_id: string;
+  storage_target_id: string;
+  status: string;
+  scheduled_for?: string | null;
+  cancel_requested: boolean;
+  retry_of_run_id?: string | null;
+  retry_attempt: number;
+  started_at: string | null;
+  completed_at: string | null;
+  bytes_read: number;
+  bytes_compressed: number;
+  bytes_uploaded: number;
+  duration_seconds: number;
+  source_type: string;
+  error_message: string;
+  failure_category: string;
+  storage_path: string;
+  checksum: string;
+  backup_job?: VgBackupJob;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface VgRunsPage {
+  data: VgBackupRun[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export interface VgBackupArtifact {
+  id: string;
+  backup_run_id: string;
+  name: string;
+  size: number;
+  checksum: string;
+  storage_path: string;
+  storage_target_id: string;
+  verified_at: string | null;
+  verification_status: string;
+}
+
+export interface VgRestoreJob {
+  id: string;
+  backup_run_id: string;
+  agent_id: string;
+  connection_id?: string | null;
+  status: string;
+  destination_path: string;
+  target_database: string;
+  started_at: string | null;
+  completed_at: string | null;
+  duration_seconds: number;
+  error_message: string;
+  backup_run?: VgBackupRun;
+  connection?: VgConnection | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface VgDashboard {
+  total_jobs: number;
+  enabled_jobs: number;
+  agents_online: number;
+  agents_offline: number;
+  successful_runs: number;
+  failed_runs: number;
+  total_bytes: number;
+  recent_runs: VgBackupRun[];
+  sla_breaches: VgSlaBreach[];
+  rpo_breaches: VgRpoBreach[];
+}
+
+export interface VgSlaBreach {
+  job_id: string;
+  job_name: string;
+  sla_target_minutes: number;
+  duration_seconds: number;
+}
+
+export interface VgRpoBreach {
+  job_id: string;
+  job_name: string;
+  rpo_target_minutes: number;
+  minutes_since_success: number | null;
+}
+
+export interface VgPreflightCheck {
+  name: string;
+  status: string;
+  detail?: string;
+}
+
+export interface VgPreflight {
+  overall: string;
+  checks: VgPreflightCheck[];
+}
+
+export interface VgEnrollMint {
+  agent_id: string;
+  enrollment_token: string;
+  expires_at: string;
+}
+
+export interface VgEnrollTokenRow {
+  id: string;
+  agent_id: string;
+  expires_at: string;
+  used_at: string | null;
+  revoked_at: string | null;
+  created_at: string;
+}
+
+export interface VgConnectionTest {
+  status: string;
+  latency_ms?: number;
+  databases?: VgDatabaseInfo[];
+  agent_status?: string;
+  error?: string;
+}
+
+export interface VgStorageTest {
+  status: string;
+  latency_ms?: number;
+  path?: string;
+  error?: string;
+}
+
+// ─── Job/policy/connection/storage/restore form inputs ────────────────
+// Keys match the backend request DTOs exactly; see
+// server/internal/handlers/vgbackup_mgmt.go request structs.
+
+export interface VgJobInput {
+  name: string;
+  agent_id: string;
+  storage_target_id: string;
+  source_type: string;
+  connection_id?: string;
+  source_path?: string;
+  source_database?: string;
+  include_patterns?: string;
+  exclude_patterns?: string;
+  mode?: string;
+  encrypted?: boolean;
+  retention_days?: number;
+  export_format?: string;
+  cron_expr?: string;
+  timezone?: string;
+  policy_id?: string;
+  sla_target_minutes?: number;
+  rpo_target_minutes?: number;
+  rto_target_minutes?: number;
+}
+
+export interface VgPolicyInput {
+  name: string;
+  strategy?: string;
+  cron_expr?: string;
+  timezone?: string;
+  enabled?: boolean;
+  mode?: string;
+  encrypted?: boolean;
+  retention_days?: number;
+  verification_enabled?: boolean;
+  max_retries?: number;
+  retry_delay_seconds?: number;
+  sla_target_minutes?: number;
+  rpo_target_minutes?: number;
+  rto_target_minutes?: number;
+}
+
+export interface VgConnectionInput {
+  name: string;
+  type: string;
+  agent_id: string;
+  host: string;
+  port?: number;
+  username?: string;
+  /** Write-only: sent on create, or when rotating. Never read back. */
+  password?: string;
+  databases?: string[];
+}
+
+export interface VgStorageInput {
+  name: string;
+  /** LOCAL only until the backend verifies S3 support. */
+  type: string;
+  path?: string;
+}
+
+export interface VgRestoreInput {
+  backup_run_id: string;
+  agent_id: string;
+  destination_path?: string;
+  target_database?: string;
+  confirmed: boolean;
+}

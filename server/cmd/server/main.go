@@ -21,6 +21,7 @@ import (
 	"serverhub/internal/alerting"
 	"serverhub/internal/applog"
 	"serverhub/internal/config"
+	"serverhub/internal/crypto"
 	"serverhub/internal/database"
 	"serverhub/internal/delivery"
 	"serverhub/internal/dockerx"
@@ -36,6 +37,7 @@ import (
 	"serverhub/internal/rules"
 	"serverhub/internal/telemetry"
 	"serverhub/internal/transfer"
+	"serverhub/internal/vgbackup"
 )
 
 func main() {
@@ -232,8 +234,6 @@ func main() {
 		admin.DELETE("/secrets/:id", secH.Delete)
 		admin.POST("/secrets/:id/reveal", secH.Reveal)
 
-
-
 		viewer.GET("/events", broker.Stream)
 
 		opH := &handlers.OperationsHandler{DB: db}
@@ -265,7 +265,13 @@ func main() {
 		// path disables the feature with a loud log line instead of
 		// crash-looping the whole backend (fail explicit, stay up).
 		if cfg.FileStorageRoot != "" {
-			if err := os.MkdirAll(cfg.FileStorageRoot, 0755); err != nil {
+			// A relative root would silently resolve against the process
+			// working directory, which differs between `go run`, systemd,
+			// and Docker — so it could expose or create an unintended host
+			// tree. Require absolute, fail explicit, stay up.
+			if !filepath.IsAbs(cfg.FileStorageRoot) {
+				log.Printf("ERROR: FILE_STORAGE_ROOT %q is not absolute — /transfers disabled", cfg.FileStorageRoot)
+			} else if err := os.MkdirAll(cfg.FileStorageRoot, 0755); err != nil {
 				log.Printf("ERROR: file storage root %q unusable: %v — /transfers disabled", cfg.FileStorageRoot, err)
 			} else {
 				xferSvc := transfer.NewFileService(cfg.FileStorageRoot, cfg.FileMaxUploadSize)
@@ -297,6 +303,109 @@ func main() {
 		} else {
 			log.Printf("file transfers disabled (FILE_STORAGE_ROOT unset)")
 		}
+
+		// Database backups (integrated VaultGuard agent protocol). Agents
+		// are separate host binaries (like ServerHub's own agent); they talk
+		// to THESE routes with X-Agent-ID + Bearer agent tokens — never with
+		// browser-user JWTs. Unmodified agents work by pointing AGENT_SERVER
+		// at this prefix (their base URL is fully configurable). No user
+		// backup-management API yet (Phase 3); enrollment tokens are seeded
+		// by operators until the UI mints them.
+		vgEncKey, vgKeyErr := crypto.KeyFromHex(cfg.EncryptionKey)
+		if vgKeyErr != nil {
+			// Fail closed per request: credential decrypts error out, so
+			// claims carry no secrets rather than wrong ones. Production
+			// refuses to boot without a valid key; dev may use ephemeral.
+			log.Printf("WARNING: backup agent credential envelope unavailable (%v)", vgKeyErr)
+			vgEncKey = nil
+		}
+		vgH := &handlers.VgAgentHandler{DB: db, EncKey: vgEncKey, Broker: broker}
+		vgPub := r.Group("/server-hub/api/db-backups/agent")
+		vgPub.Use(handlers.VgLimitBody(1 << 20))
+		vgPub.POST("/agents/register", middleware.LoginRateLimit(gdb, loginLimiter), vgH.VgRegister)
+		vgPub.POST("/agents/enroll", middleware.LoginRateLimit(gdb, loginLimiter), vgH.VgEnroll)
+		vgAg := vgPub.Group("", handlers.VgAgentAuth(db), handlers.VgLimitBody(1<<20))
+		vgAg.POST("/agent/heartbeat", vgH.VgHeartbeat)
+		vgAg.GET("/agent/runs", vgH.VgPendingRuns)
+		vgAg.POST("/agent/runs/:id/claim", vgH.VgClaimRun)
+		vgAg.PUT("/backup-runs/:id/status", vgH.VgUpdateRunStatus)
+		vgAg.POST("/backup-runs/:id/artifacts", vgH.VgRegisterArtifact)
+		vgAg.POST("/artifacts/:artifact_id/chunks", vgH.VgRegisterChunk)
+		vgAg.GET("/agent/restores", vgH.VgPendingRestores)
+		vgAg.POST("/agent/restores/:id/claim", vgH.VgClaimRestore)
+		vgAg.PUT("/restores/:id/status", vgH.VgUpdateRestoreStatus)
+		log.Printf("database-backup agent API at /server-hub/api/db-backups/agent")
+
+		// Database backups authenticated management API (Phase 3A).
+		// Mounted under /server-hub/api/db-backups/, separate from the agent API.
+		// Authenticates browser/API users via ServerHub middleware and enforces
+		// viewer/operator/admin roles + resource ownership.
+		vgMgmtH := &handlers.VgMgmtHandler{DB: db, EncKey: vgEncKey, Broker: broker}
+		dbbViewer := r.Group("/server-hub/api/db-backups", authd, middleware.RequireRole(middleware.RoleViewer))
+		dbbOperator := r.Group("/server-hub/api/db-backups", authd, middleware.RequireRole(middleware.RoleOperator))
+		dbbAdmin := r.Group("/server-hub/api/db-backups", authd, middleware.RequireRole(middleware.RoleAdmin))
+
+		// Dashboard summary
+		dbbViewer.GET("/dashboard", vgMgmtH.Dashboard)
+
+		// Storage targets
+		dbbViewer.GET("/storage-targets", vgMgmtH.ListStorageTargets)
+		dbbViewer.GET("/storage-targets/:id", vgMgmtH.GetStorageTarget)
+		dbbOperator.POST("/storage-targets", vgMgmtH.CreateStorageTarget)
+		dbbOperator.PUT("/storage-targets/:id", vgMgmtH.UpdateStorageTarget)
+		dbbOperator.POST("/storage-targets/test", vgMgmtH.TestStorageTarget)
+		dbbAdmin.DELETE("/storage-targets/:id", vgMgmtH.DeleteStorageTarget)
+
+		// Database connections
+		dbbViewer.GET("/connections", vgMgmtH.ListConnections)
+		dbbViewer.GET("/connections/:id", vgMgmtH.GetConnection)
+		dbbOperator.POST("/connections", vgMgmtH.CreateConnection)
+		dbbOperator.PUT("/connections/:id", vgMgmtH.UpdateConnection)
+		dbbOperator.POST("/connections/test", vgMgmtH.TestConnection)
+		dbbAdmin.DELETE("/connections/:id", vgMgmtH.DeleteConnection)
+
+		// Policies
+		dbbViewer.GET("/policies", vgMgmtH.ListPolicies)
+		dbbViewer.GET("/policies/:id", vgMgmtH.GetPolicy)
+		dbbOperator.POST("/policies", vgMgmtH.CreatePolicy)
+		dbbOperator.PUT("/policies/:id", vgMgmtH.UpdatePolicy)
+		dbbAdmin.DELETE("/policies/:id", vgMgmtH.DeletePolicy)
+
+		// Backup jobs
+		dbbViewer.GET("/jobs", vgMgmtH.ListBackupJobs)
+		dbbViewer.GET("/jobs/:id", vgMgmtH.GetBackupJob)
+		dbbOperator.POST("/jobs", vgMgmtH.CreateBackupJob)
+		dbbOperator.PUT("/jobs/:id", vgMgmtH.UpdateBackupJob)
+		dbbOperator.POST("/jobs/:id/enable", vgMgmtH.EnableBackupJob)
+		dbbOperator.POST("/jobs/:id/disable", vgMgmtH.DisableBackupJob)
+		dbbOperator.POST("/jobs/:id/run", vgMgmtH.RunNow)
+		dbbOperator.POST("/jobs/:id/preflight", vgMgmtH.Preflight)
+		dbbAdmin.DELETE("/jobs/:id", vgMgmtH.DeleteBackupJob)
+
+		// Backup runs & artifacts
+		dbbViewer.GET("/runs", vgMgmtH.ListBackupRuns)
+		dbbViewer.GET("/runs/:id", vgMgmtH.GetBackupRun)
+		dbbViewer.GET("/runs/:id/artifacts", vgMgmtH.ListArtifacts)
+		dbbOperator.POST("/runs/:id/cancel", vgMgmtH.CancelBackupRun)
+		dbbOperator.POST("/runs/:id/verify", vgMgmtH.VerifyRun)
+
+		// Restore jobs
+		dbbViewer.GET("/restores", vgMgmtH.ListRestores)
+		dbbViewer.GET("/restores/:id", vgMgmtH.GetRestore)
+		dbbOperator.POST("/restores", vgMgmtH.CreateRestore)
+
+		// Agent inventory & enrollment tokens
+		dbbViewer.GET("/agents", vgMgmtH.ListAgents)
+		dbbViewer.GET("/agents/:id", vgMgmtH.GetAgent)
+		dbbAdmin.POST("/agents/token", vgMgmtH.GenerateRegistrationToken)
+		dbbAdmin.POST("/agents/:id/rotate-token", vgMgmtH.RotateAgentToken)
+		dbbAdmin.POST("/agents/:id/revoke", vgMgmtH.RevokeAgent)
+		dbbViewer.GET("/enrollment-tokens", vgMgmtH.ListEnrollmentTokens)
+		dbbAdmin.POST("/enrollment-tokens", vgMgmtH.GenerateEnrollmentToken)
+		dbbAdmin.DELETE("/enrollment-tokens/:id", vgMgmtH.RevokeEnrollmentToken)
+		dbbViewer.GET("/machines", vgMgmtH.ListMachines)
+		dbbViewer.GET("/machines/:id", vgMgmtH.GetMachine)
+		log.Printf("database-backup management API at /server-hub/api/db-backups")
 
 		// Databases: auto-detect servers, browse, save connections, register.
 		dbH := &handlers.DatabasesHandler{DB: db, Docker: dockerClient, Cfg: cfg}
@@ -454,7 +563,7 @@ func main() {
 		// Map Vite's base path /server-hub/assets to the physical assets folder
 		r.Static("/server-hub/assets", filepath.Join(frontendDir, "assets"))
 		r.StaticFile("/server-hub/favicon.png", filepath.Join(frontendDir, "favicon.png"))
-		
+
 		// All other routes fallback to index.html (SPA)
 		r.NoRoute(func(c *gin.Context) {
 			// Only fallback to index.html if it's under /server-hub or / (to prevent shadowing API)
@@ -490,12 +599,25 @@ func main() {
 		HealthResultDays: cfg.HealthResultRetentionDays,
 		DeliveryDays:     cfg.DeliveryRetentionDays,
 	}, retention.DefaultInterval)
-	log.Printf("retention: metrics=%dd app_logs=%dd health_check_results=%dd delivery=%dd",
-		cfg.MetricsRetentionDays, cfg.AppLogRetentionDays, cfg.HealthResultRetentionDays, cfg.DeliveryRetentionDays)
+	// Database backup scheduler (Phase 3A): claims due jobs, stale run detection,
+	// local-storage retention sweeps, and rolling size baselines.
+	vgSchedInterval := time.Duration(cfg.VgBackupSchedIntervalSec) * time.Second
+	if vgSchedInterval < 5*time.Second || vgSchedInterval > time.Hour {
+		log.Printf("WARNING: VG_SCHED_INTERVAL_SEC=%d out of range, using 30s", cfg.VgBackupSchedIntervalSec)
+		vgSchedInterval = 30 * time.Second
+	}
+	vgScheduler := vgbackup.NewScheduler(gdb, vgbackup.SchedulerConfig{
+		Interval:        vgSchedInterval,
+		LocalDeleteRoot: cfg.VgBackupLocalDeleteRoot,
+	})
+	if err := vgScheduler.Start(ctx); err != nil {
+		log.Printf("ERROR starting database backup scheduler: %v", err)
+	}
 
 	srv := &http.Server{Addr: ":" + cfg.Port, Handler: r}
 	go func() {
 		<-ctx.Done()
+		vgScheduler.Stop()
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
 		if err := srv.Shutdown(shutdownCtx); err != nil {
@@ -535,7 +657,7 @@ func rulesEngine(db *database.DB, cfg *config.Config) *rules.Engine {
 				Title: req.Title, Body: req.Body, Channels: req.Channels,
 				GroupID: req.GroupID, ServerID: req.ServerID, RuleID: req.RuleID,
 				Labels: req.Labels, Resource: req.Resource,
-				IsRecovery: req.IsRecovery,
+				IsRecovery:  req.IsRecovery,
 				CooldownSec: req.CooldownSec, RepeatSec: req.RepeatSec,
 				MaxRepeats: req.MaxRepeats, NotifyRecovery: req.NotifyRecovery,
 				DigestMode: req.DigestMode, DigestIntervalMin: req.DigestIntervalMin,
@@ -568,7 +690,8 @@ func backupDir() string {
 	return "./data/backups"
 }
 
-func ensureAdmin(db *database.DB, username, password string) error {	var count int
+func ensureAdmin(db *database.DB, username, password string) error {
+	var count int
 	if err := db.QueryRow(`SELECT COUNT(*) FROM users WHERE username=?`, username).Scan(&count); err != nil {
 		return err
 	}
