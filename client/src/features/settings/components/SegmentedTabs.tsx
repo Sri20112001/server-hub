@@ -8,19 +8,20 @@ export interface Tab {
 
 export function SegmentedTabs({ tabs, activeId, onChange }: { tabs: Tab[]; activeId: string; onChange: (id: string) => void }) {
   return (
-    <div className="flex p-1 space-x-1 bg-paper dark:bg-abyss rounded-xl border border-line dark:border-edge w-full">
+    <div className="flex items-center overflow-x-auto p-1 bg-surface-container rounded-full max-w-fit shadow-inner">
       {tabs.map((tab) => (
         <button
           key={tab.id}
           onClick={() => onChange(tab.id)}
-          className={`flex-1 flex items-center justify-center gap-2 py-2 px-4 text-sm font-semibold rounded-lg transition-colors duration-150 ${
+          className={`flex items-center justify-center gap-2 py-1.5 px-4 text-[13px] font-medium rounded-full transition-all cursor-pointer border-0 whitespace-nowrap ${
             activeId === tab.id
-              ? 'bg-white dark:bg-panel text-ink dark:text-bone shadow-sm border border-line dark:border-edge'
-              : 'text-muted dark:text-fog hover:text-ink dark:hover:text-bone hover:bg-white/40 dark:hover:bg-emboss/40 border border-transparent'
+              ? 'bg-surface-container-lowest text-primary font-semibold shadow-sm'
+              : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high'
           }`}
+          type="button"
         >
           {tab.icon}
-          {tab.label}
+          <span>{tab.label}</span>
         </button>
       ))}
     </div>

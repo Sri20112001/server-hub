@@ -13,44 +13,63 @@ export function AuditLogPage() {
   });
 
   return (
-    <main className="w-full max-w-7xl mx-auto px-10 max-md:px-4 pt-24 pb-36">
-      <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
+    <main className="w-full max-w-5xl mx-auto px-6 pt-12 pb-28">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-8">
         <div>
-          <div className="flex items-center gap-3">
-            <ClipboardList size={22} className="text-accent dark:text-ember" />
-            <h1 className="text-ink dark:text-bone font-head font-bold text-[24px] tracking-[-0.02em]">Audit Log</h1>
-            <span className="text-muted dark:text-fog text-xs font-mono">{logs.length} records</span>
+          <div className="flex items-center gap-2 mb-1.5">
+            <span className="inline-flex items-center justify-center w-6 h-6 rounded-md bg-primary/10 text-primary">
+              <ClipboardList size={15} />
+            </span>
+            <span className="text-[11px] font-semibold text-outline uppercase tracking-wider">Activity & Governance</span>
           </div>
-          <p className="text-muted dark:text-fog text-xs mt-1 font-mono">
-            Security & operational audit trail
+          <div className="flex items-center gap-3">
+            <h1 className="text-[32px] sm:text-[36px] font-bold text-on-surface tracking-tight leading-tight">Activity Log</h1>
+            <span className="text-on-surface-variant text-[13px] font-mono font-medium bg-surface-container-low px-2.5 py-0.5 rounded-full">
+              {logs.length} events
+            </span>
+          </div>
+          <p className="text-[15px] text-on-surface-variant max-w-xl mt-1">
+            Immutable security, authentication, and operational execution trail.
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <select
-            className="bg-white dark:bg-panel border border-line dark:border-edge rounded-lg px-3 py-1.5 text-ink dark:text-bone text-xs font-mono outline-none focus:border-accent dark:focus:border-ember shadow-sm cursor-pointer"
-            value={limit}
-            onChange={(e) => setLimit(Number(e.target.value))}
-          >
-            {[50, 100, 200, 500].map((n) => (
-              <option key={n} value={n}>Last {n}</option>
+          {/* Limit pill segment */}
+          <div className="flex items-center gap-1 p-1 bg-surface-container rounded-full shadow-inner">
+            {[50, 100, 200].map((n) => (
+              <button
+                key={n}
+                onClick={() => setLimit(n)}
+                className={`px-3 py-1 rounded-full text-[12px] font-medium transition-all cursor-pointer border-0 ${
+                  limit === n
+                    ? "bg-surface-container-lowest text-primary font-semibold shadow-sm"
+                    : "text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high"
+                }`}
+                type="button"
+              >
+                {n}
+              </button>
             ))}
-          </select>
-          <button onClick={() => void refetch()}
-            className="w-9 h-9 rounded-full bg-white dark:bg-panel border border-line dark:border-edge flex items-center justify-center text-muted dark:text-fog hover:text-ink dark:hover:text-bone transition-colors shadow-sm cursor-pointer"
+          </div>
+
+          <button
+            onClick={() => void refetch()}
+            className="w-10 h-10 rounded-full bg-surface-container-lowest border border-outline-variant/30 flex items-center justify-center text-on-surface-variant hover:text-on-surface shadow-sm cursor-pointer transition-colors"
             aria-label="Refresh"
+            type="button"
           >
             <RefreshCw size={15} />
           </button>
         </div>
       </div>
 
-      <div className="bg-white dark:bg-panel border border-line dark:border-edge rounded-card overflow-hidden shadow-sm">
+      <div className="bg-surface-container-lowest border border-outline-variant/20 rounded-2xl overflow-hidden shadow-sm">
         <div className="overflow-x-auto">
-          <table className="w-full text-sm border-collapse">
+          <table className="w-full text-[13px] border-collapse">
             <thead>
-              <tr className="bg-paper dark:bg-abyss border-b border-line dark:border-edge">
-                {["Time", "Actor", "Action", "Resource", "Result"].map((h) => (
-                  <th key={h} className="text-left text-muted dark:text-fog text-[11px] px-4 py-2.5 font-semibold uppercase tracking-wider">
+              <tr className="bg-surface-container-low/60 border-b border-outline-variant/20 text-on-surface-variant">
+                {["Timestamp", "Actor", "Action", "Target Resource", "Result"].map((h) => (
+                  <th key={h} className="text-left text-[11px] px-5 py-3 font-semibold uppercase tracking-wider">
                     {h}
                   </th>
                 ))}
@@ -58,30 +77,40 @@ export function AuditLogPage() {
             </thead>
             <tbody>
               {isLoading ? (
-                <tr><td colSpan={5} className="px-4 py-8 text-center text-muted dark:text-fog text-sm">Loading…</td></tr>
-              ) : logs.length === 0 ? (
-                <tr><td colSpan={5} className="px-4 py-8 text-center text-muted dark:text-fog text-sm">No audit records.</td></tr>
-              ) : logs.map((log) => (
-                <tr key={log.id} className="border-t border-line dark:border-edge hover:bg-paper/50 dark:hover:bg-abyss/50 transition-colors">
-                  <td className="px-4 py-2.5 font-mono text-xs text-muted dark:text-fog whitespace-nowrap">
-                    {new Date(log.timestamp).toLocaleString()}
-                  </td>
-                  <td className="px-4 py-2.5 font-mono text-xs text-ink dark:text-bone font-medium">{log.actor}</td>
-                  <td className="px-4 py-2.5 font-mono text-xs text-ink dark:text-bone">{log.action}</td>
-                  <td className="px-4 py-2.5 font-mono text-xs text-muted dark:text-fog">
-                    {log.resource}{log.resourceId ? ` #${log.resourceId}` : ""}
-                  </td>
-                  <td className="px-4 py-2.5 font-mono text-xs">
-                    <span className={`px-2 py-0.5 rounded text-[11px] font-semibold border ${
-                      log.result === "ok"
-                        ? "bg-moss/10 border-moss/30 text-moss"
-                        : "bg-brick/10 border-brick/30 text-brick"
-                    }`}>
-                      {log.result}
-                    </span>
+                <tr>
+                  <td colSpan={5} className="px-5 py-12 text-center text-on-surface-variant text-[14px]">
+                    Loading activity stream…
                   </td>
                 </tr>
-              ))}
+              ) : logs.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="px-5 py-12 text-center text-on-surface-variant text-[14px]">
+                    No activity records found.
+                  </td>
+                </tr>
+              ) : (
+                logs.map((log) => (
+                  <tr key={log.id} className="border-t border-outline-variant/15 hover:bg-surface-container-low/40 transition-colors">
+                    <td className="px-5 py-3 font-mono text-[12px] text-on-surface-variant whitespace-nowrap">
+                      {new Date(log.timestamp).toLocaleString()}
+                    </td>
+                    <td className="px-5 py-3 font-mono text-[12px] text-on-surface font-semibold">{log.actor}</td>
+                    <td className="px-5 py-3 font-mono text-[12px] text-on-surface">{log.action}</td>
+                    <td className="px-5 py-3 font-mono text-[12px] text-on-surface-variant">
+                      {log.resource}{log.resourceId ? ` #${log.resourceId}` : ""}
+                    </td>
+                    <td className="px-5 py-3 font-mono text-[12px]">
+                      <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-semibold border ${
+                        log.result === "ok"
+                          ? "bg-secondary-container/30 border-secondary/30 text-secondary"
+                          : "bg-error-container/30 border-error/30 text-error"
+                      }`}>
+                        {log.result}
+                      </span>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>

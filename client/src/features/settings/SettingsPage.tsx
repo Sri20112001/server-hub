@@ -3,7 +3,6 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../lib/api";
 import type { NotifySettings } from "../../lib/types";
 import { SettingsSkeleton } from "../../components/ui";
-import { Kicker } from "../../components/ui";
 import { SegmentedTabs } from "./components/SegmentedTabs";
 import { MonitoringTab } from "./tabs/MonitoringTab";
 import { NotificationsTab } from "./tabs/NotificationsTab";
@@ -73,14 +72,24 @@ export function SettingsPage({ setOnline }: { setOnline: (v: boolean) => void })
   ];
 
   return (
-    <main className="w-full max-w-7xl mx-auto px-10 max-md:px-4 pt-24 pb-36">
-      <Kicker>Appliance & System Preferences</Kicker>
-      <h1 className="font-head text-[36px] font-bold tracking-[-0.03em] leading-[1.2] max-md:text-[28px] mt-2 mb-2 text-ink dark:text-bone">
-        Settings
-      </h1>
-      <p className="text-muted dark:text-fog mb-8 text-base">
-        Manage health check thresholds, alert dispatch channels, team access levels, and host diagnostics.
-      </p>
+    <main className="w-full max-w-5xl mx-auto px-6 pt-12 pb-28">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-8">
+        <div>
+          <div className="flex items-center gap-2 mb-1.5">
+            <span className="inline-flex items-center justify-center w-6 h-6 rounded-md bg-primary/10 text-primary">
+              <Wrench size={15} />
+            </span>
+            <span className="text-[11px] font-semibold text-outline uppercase tracking-wider">Workspace & Controls</span>
+          </div>
+          <h1 className="text-[32px] sm:text-[36px] font-bold text-on-surface tracking-tight leading-tight">
+            Settings
+          </h1>
+          <p className="text-[15px] text-on-surface-variant max-w-xl mt-1">
+            Manage operational parameters, alert dispatch channels, team access levels, and host diagnostics.
+          </p>
+        </div>
+      </div>
 
       <div className="mb-8 relative z-20">
         <SegmentedTabs tabs={tabs} activeId={activeTab} onChange={setActiveTab} />

@@ -345,42 +345,50 @@ export function ServerDetailPage({ setOnline }: { setOnline: (v: boolean) => voi
   ];
 
   return (
-    <main className="w-full max-w-7xl mx-auto px-10 max-md:px-4 pt-24 pb-36">
-      {/* Back */}
-      <button onClick={() => nav("/servers")} className="flex items-center gap-1.5 text-muted dark:text-fog hover:text-ink dark:hover:text-bone text-sm mb-4 cursor-pointer">
-        <ArrowLeft size={15} /> Servers
+    <main className="w-full max-w-5xl mx-auto px-6 pt-12 pb-28">
+      {/* Back button */}
+      <button
+        onClick={() => nav("/servers")}
+        className="inline-flex items-center gap-1.5 text-on-surface-variant hover:text-on-surface text-[13px] font-medium mb-6 cursor-pointer border-0 bg-transparent"
+        type="button"
+      >
+        <ArrowLeft size={16} />
+        <span>Back to Servers</span>
       </button>
 
-      {/* Header */}
-      <div className="flex items-start justify-between mb-4 flex-wrap gap-3">
+      {/* In-Canvas Title Area */}
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-6">
         <div>
-          <div className="flex items-center gap-2.5 mb-1 flex-wrap">
+          <div className="flex items-center gap-2 mb-1.5 flex-wrap">
             <span className={`w-2.5 h-2.5 rounded-full ${STATUS_DOT[server.status] ?? "bg-stone"}`} />
-            <h1 className="text-ink dark:text-bone font-head font-bold text-xl">{server.name}</h1>
-            <span className={`text-[11px] font-mono uppercase tracking-wider font-semibold px-2 py-0.5 rounded border ${
+            <span className="text-[11px] font-semibold text-outline uppercase tracking-wider">Node Telemetry</span>
+            <span className={`text-[11px] font-mono uppercase tracking-wider font-semibold px-2.5 py-0.5 rounded-full border ${
               server.status === "ONLINE"
-                ? "border-moss/30 bg-moss/10 text-moss"
+                ? "border-secondary/30 bg-secondary/10 text-secondary"
                 : server.status === "OFFLINE"
-                ? "border-brick/30 bg-brick/10 text-brick"
+                ? "border-error/30 bg-error/10 text-error"
                 : server.status === "WARNING"
-                ? "border-status-amber/30 bg-status-amber/10 text-status-amber"
-                : "border-line dark:border-edge bg-paper dark:bg-abyss text-stone"
+                ? "border-tertiary/30 bg-tertiary/10 text-tertiary"
+                : "border-outline-variant/30 bg-surface-container-low text-outline"
             }`}>
               {server.status}
             </span>
           </div>
-          <div className="flex items-center gap-2 text-muted dark:text-fog text-sm flex-wrap font-mono text-xs">
+          <h1 className="text-[32px] sm:text-[36px] font-bold text-on-surface tracking-tight leading-tight">{server.name}</h1>
+          <div className="flex items-center gap-2 text-on-surface-variant font-mono text-[13px] mt-1 flex-wrap">
             {server.hostname && <span>{server.hostname}</span>}
             {server.ipAddress && <span>· {server.ipAddress}</span>}
             {server.os && <span>· {server.os} {server.osVersion}</span>}
           </div>
         </div>
-        <button onClick={() => {
-          void qc.invalidateQueries({ queryKey: ["server", serverId] });
-          void qc.invalidateQueries({ queryKey: ["server-prometheus", serverId] });
-        }}
-          className="w-9 h-9 rounded-full bg-white dark:bg-panel border border-line dark:border-edge flex items-center justify-center text-muted dark:text-fog hover:text-ink dark:hover:text-bone shadow-sm cursor-pointer"
+        <button
+          onClick={() => {
+            void qc.invalidateQueries({ queryKey: ["server", serverId] });
+            void qc.invalidateQueries({ queryKey: ["server-prometheus", serverId] });
+          }}
+          className="w-10 h-10 rounded-full bg-surface-container-lowest border border-outline-variant/30 flex items-center justify-center text-on-surface-variant hover:text-on-surface shadow-sm cursor-pointer transition-colors"
           aria-label="Refresh"
+          type="button"
         >
           <RefreshCw size={15} />
         </button>
@@ -388,27 +396,48 @@ export function ServerDetailPage({ setOnline }: { setOnline: (v: boolean) => voi
 
       {/* Active alerts banner */}
       {serverAlerts.length > 0 && (
-        <div className="mb-4 space-y-2">
+        <div className="mb-6 space-y-2">
           {serverAlerts.map((a) => (
-            <div key={a.id} className={`flex items-center justify-between px-4 py-2.5 rounded-card border text-sm ${
-              a.severity === "CRITICAL" ? "border-brick/30 bg-brick/10 text-brick" : "border-status-amber/30 bg-status-amber/10 text-status-amber"
-            }`}>
-              <span className="font-medium">{a.message}</span>
-              <button onClick={async () => { await api.resolveAlert(a.id); void qc.invalidateQueries({ queryKey: ["alerts"] }); }}
-                className="text-xs underline opacity-80 hover:opacity-100 ml-4 cursor-pointer font-mono">Resolve</button>
+            <div
+              key={a.id}
+              className={`flex items-center justify-between px-5 py-3 rounded-2xl border text-[13px] shadow-sm ${
+                a.severity === "CRITICAL"
+                  ? "border-error/30 bg-error-container/20 text-error"
+                  : "border-tertiary/30 bg-tertiary-container/20 text-tertiary"
+              }`}
+            >
+              <span className="font-semibold">{a.message}</span>
+              <button
+                onClick={async () => {
+                  await api.resolveAlert(a.id);
+                  void qc.invalidateQueries({ queryKey: ["alerts"] });
+                }}
+                className="text-[12px] underline hover:no-underline ml-4 cursor-pointer font-medium border-0 bg-transparent"
+                type="button"
+              >
+                Resolve
+              </button>
             </div>
           ))}
         </div>
       )}
 
-      {/* Tabs */}
-      <div className="flex gap-1 mb-6 bg-paper dark:bg-abyss border border-line dark:border-edge rounded-card p-1 w-fit">
+      {/* Contextual In-Page Navigation Pills */}
+      <div className="flex items-center overflow-x-auto pb-1 gap-1 p-1 bg-surface-container rounded-full max-w-fit shadow-inner mb-6" role="tablist">
         {TABS.map((t) => (
-          <button key={t.key} onClick={() => setTab(t.key)}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-mono transition-colors cursor-pointer ${
-              tab === t.key ? "bg-white dark:bg-panel border border-line dark:border-edge text-ink dark:text-bone font-semibold shadow-sm" : "text-muted dark:text-fog hover:text-ink dark:hover:text-bone"
-            }`}>
-            {t.icon}{t.label}
+          <button
+            key={t.key}
+            role="tab"
+            aria-selected={tab === t.key}
+            onClick={() => setTab(t.key)}
+            className={`flex items-center gap-1.5 px-4 py-1.5 rounded-full text-[13px] font-medium transition-all cursor-pointer border-0 whitespace-nowrap ${
+              tab === t.key
+                ? "bg-surface-container-lowest text-primary font-semibold shadow-sm"
+                : "text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high"
+            }`}
+          >
+            {t.icon}
+            <span>{t.label}</span>
           </button>
         ))}
       </div>
@@ -424,19 +453,19 @@ export function ServerDetailPage({ setOnline }: { setOnline: (v: boolean) => voi
               { label: "CPU", value: server.cpuCores > 0 ? `${server.cpuCores} cores` : "—" },
               { label: "RAM", value: server.ramTotal > 0 ? `${Math.round(server.ramTotal / 1024 / 1024 / 1024)}GB` : "—" },
             ].map((item) => (
-              <div key={item.label} className="bg-white dark:bg-panel border border-line dark:border-edge rounded-card p-4 shadow-sm">
-                <div className="text-muted dark:text-fog text-[10px] uppercase tracking-wider font-medium">{item.label}</div>
-                <div className="text-ink dark:text-bone font-mono text-sm font-semibold mt-1 truncate">{item.value}</div>
+              <div key={item.label} className="bg-surface-container-lowest rounded-2xl p-4 shadow-sm border border-outline-variant/20">
+                <div className="text-on-surface-variant text-[11px] uppercase tracking-wider font-semibold">{item.label}</div>
+                <div className="text-on-surface font-mono text-[14px] font-semibold mt-1 truncate">{item.value}</div>
               </div>
             ))}
           </div>
 
           {/* Live metrics */}
           {latest ? (
-            <div className="bg-white dark:bg-panel border border-line dark:border-edge rounded-card p-5 shadow-sm">
+            <div className="bg-surface-container-lowest rounded-2xl p-6 shadow-sm border border-outline-variant/20">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-ink dark:text-bone font-semibold text-sm">Live Metrics</h2>
-                <span className="text-muted dark:text-fog text-xs font-mono">{new Date(latest.timestamp).toLocaleTimeString()}</span>
+                <h2 className="text-on-surface font-semibold text-[15px]">Live Metrics</h2>
+                <span className="text-on-surface-variant text-[12px] font-mono">{new Date(latest.timestamp).toLocaleTimeString()}</span>
               </div>
               <MetricBar label="CPU" pct={latest.cpuUsage} value={`${latest.cpuUsage.toFixed(1)}%`} />
               <MetricBar label="Memory" pct={latest.memoryUsage} value={`${latest.memoryUsage.toFixed(1)}% · ${latest.memoryUsedMB.toFixed(0)}MB`} />
@@ -447,36 +476,36 @@ export function ServerDetailPage({ setOnline }: { setOnline: (v: boolean) => voi
                   { label: "Uptime", value: fmtUptime(latest.uptimeSec) },
                   { label: "Agent", value: server.agentStatus },
                 ].map((s) => (
-                  <div key={s.label} className="bg-paper dark:bg-abyss border border-line dark:border-edge rounded-lg p-2.5">
-                    <div className="text-muted dark:text-fog text-[10px] uppercase tracking-wider">{s.label}</div>
-                    <div className="text-ink dark:text-bone font-mono font-medium mt-0.5">{s.value}</div>
+                  <div key={s.label} className="bg-surface-container-low border border-outline-variant/20 rounded-xl p-3">
+                    <div className="text-on-surface-variant text-[10px] uppercase tracking-wider font-semibold">{s.label}</div>
+                    <div className="text-on-surface font-mono font-semibold mt-0.5">{s.value}</div>
                   </div>
                 ))}
               </div>
             </div>
           ) : (
-            <div className="bg-white dark:bg-panel border border-line dark:border-edge rounded-card p-8 text-center text-muted dark:text-fog text-sm shadow-sm">
+            <div className="bg-surface-container-lowest border border-outline-variant/20 rounded-2xl p-8 text-center text-on-surface-variant text-sm shadow-sm">
               No metrics yet. Install and start the agent to begin monitoring.
             </div>
           )}
 
           {/* Last heartbeat */}
-          <div className="bg-white dark:bg-panel border border-line dark:border-edge rounded-card p-5 text-sm shadow-sm space-y-2.5">
+          <div className="bg-surface-container-lowest border border-outline-variant/20 rounded-2xl p-5 text-sm shadow-sm space-y-3">
             <div className="flex justify-between items-center">
-              <span className="text-muted dark:text-fog">Last heartbeat</span>
-              <span className="text-ink dark:text-bone font-mono">
+              <span className="text-on-surface-variant">Last heartbeat</span>
+              <span className="text-on-surface font-mono font-medium">
                 {server.lastHeartbeat ? new Date(server.lastHeartbeat).toLocaleString() : "Never"}
               </span>
             </div>
-            <div className="flex justify-between items-center border-t border-line dark:border-edge pt-2">
-              <span className="text-muted dark:text-fog">Agent status</span>
-              <span className={`font-mono font-medium ${server.agentStatus === "CONNECTED" ? "text-moss" : "text-stone"}`}>
+            <div className="flex justify-between items-center border-t border-outline-variant/10 pt-2.5">
+              <span className="text-on-surface-variant">Agent status</span>
+              <span className={`font-mono font-semibold ${server.agentStatus === "CONNECTED" ? "text-primary" : "text-outline"}`}>
                 {server.agentStatus}
               </span>
             </div>
-            <div className="flex justify-between items-center border-t border-line dark:border-edge pt-2">
-              <span className="text-muted dark:text-fog">Registered</span>
-              <span className="text-ink dark:text-bone font-mono">{new Date(server.createdAt).toLocaleDateString()}</span>
+            <div className="flex justify-between items-center border-t border-outline-variant/10 pt-2.5">
+              <span className="text-on-surface-variant">Registered</span>
+              <span className="text-on-surface font-mono">{new Date(server.createdAt).toLocaleDateString()}</span>
             </div>
           </div>
         </div>
@@ -485,13 +514,13 @@ export function ServerDetailPage({ setOnline }: { setOnline: (v: boolean) => voi
       {/* ── Monitoring tab ── */}
       {tab === "monitoring" && (
         <div className="space-y-6">
-          <div className="grid grid-cols-5 gap-1 p-1 rounded-card bg-paper dark:bg-abyss border border-line dark:border-edge w-full sm:max-w-xs">
+          <div className="flex items-center gap-1 p-1 rounded-full bg-surface-container w-full sm:max-w-fit shadow-inner">
             {RANGES.map((r) => (
               <button key={r} onClick={() => setRange(r)}
-                className={`px-2.5 py-1.5 rounded-lg text-xs font-mono transition-colors cursor-pointer border ${
+                className={`px-3.5 py-1.5 rounded-full text-xs font-mono transition-all cursor-pointer border-0 ${
                   range === r
-                    ? "bg-white dark:bg-panel border-line dark:border-edge text-ink dark:text-bone font-semibold shadow-sm"
-                    : "bg-transparent border-transparent text-muted dark:text-fog hover:text-ink dark:hover:text-bone"
+                    ? "bg-surface-container-lowest text-primary font-semibold shadow-sm"
+                    : "text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high"
                 }`}>
                 {r}
               </button>
@@ -499,11 +528,11 @@ export function ServerDetailPage({ setOnline }: { setOnline: (v: boolean) => voi
           </div>
 
           {points.length === 0 ? (
-            <div className="bg-white dark:bg-panel border border-line dark:border-edge rounded-card p-8 text-center text-muted dark:text-fog text-sm shadow-sm">
+            <div className="bg-surface-container-lowest border border-outline-variant/20 rounded-2xl p-8 text-center text-on-surface-variant text-sm shadow-sm">
               No metrics for this range. The agent must be running to collect data.
             </div>
           ) : (
-            <div className="bg-white dark:bg-panel border border-line dark:border-edge rounded-card p-5 shadow-sm space-y-5">
+            <div className="bg-surface-container-lowest border border-outline-variant/20 rounded-2xl p-6 shadow-sm space-y-6">
               <MetricChart title="CPU Usage" points={points} value={(p) => p.cpuUsage} stroke="#EA580C" fill="#EA580C" unit="%" />
               <MetricChart title="Memory Usage" points={points} value={(p) => p.memoryUsage} stroke="#16A34A" fill="#16A34A" unit="%" />
               <MetricChart title="Disk Usage" points={points} value={(p) => p.diskUsage} stroke="#D97706" fill="#D97706" unit="%" />
@@ -515,14 +544,14 @@ export function ServerDetailPage({ setOnline }: { setOnline: (v: boolean) => voi
           <div className="pt-2">
             <div className="flex items-center justify-between mb-3">
               <Kicker>Prometheus History</Kicker>
-              <span className="font-mono text-[11px] text-muted dark:text-fog">via Prometheus</span>
+              <span className="font-mono text-[11px] text-on-surface-variant">via Prometheus</span>
             </div>
             {!promSupported ? (
-              <div className="bg-white dark:bg-panel border border-line dark:border-edge rounded-card p-6 text-center text-muted dark:text-fog text-sm shadow-sm">
+              <div className="bg-surface-container-lowest border border-outline-variant/20 rounded-2xl p-6 text-center text-on-surface-variant text-sm shadow-sm">
                 Prometheus history supports ranges up to 7d — switch range for Prometheus charts.
               </div>
             ) : (
-              <div className="bg-white dark:bg-panel border border-line dark:border-edge rounded-card p-5 shadow-sm space-y-5">
+              <div className="bg-surface-container-lowest border border-outline-variant/20 rounded-2xl p-6 shadow-sm space-y-6">
                 {PROM_METRICS.map((m, i) => {
                   const q = promQueries[i];
                   if (q.isError) {
@@ -531,7 +560,7 @@ export function ServerDetailPage({ setOnline }: { setOnline: (v: boolean) => voi
                         <div className="flex items-center justify-between mb-1.5">
                           <Kicker>{m.label}</Kicker>
                         </div>
-                        <div className="w-full bg-paper dark:bg-abyss border border-line dark:border-edge rounded-card px-4 py-6 text-center text-muted dark:text-fog text-xs">
+                        <div className="w-full bg-surface-container-low border border-outline-variant/20 rounded-2xl px-4 py-6 text-center text-on-surface-variant text-xs">
                           {promErrorMessage(q.error)}
                         </div>
                       </div>
@@ -543,7 +572,7 @@ export function ServerDetailPage({ setOnline }: { setOnline: (v: boolean) => voi
                         <div className="flex items-center justify-between mb-1.5">
                           <Kicker>{m.label}</Kicker>
                         </div>
-                        <div className="w-full h-28 bg-paper dark:bg-abyss border border-line dark:border-edge rounded-card animate-pulse" role="status" aria-label={`${m.label} loading`} />
+                        <div className="w-full h-28 bg-surface-container-low border border-outline-variant/20 rounded-2xl animate-pulse" role="status" aria-label={`${m.label} loading`} />
                       </div>
                     );
                   }
@@ -569,28 +598,28 @@ export function ServerDetailPage({ setOnline }: { setOnline: (v: boolean) => voi
 
       {/* ── Audit tab ── */}
       {tab === "audit" && (
-        <div className="bg-white dark:bg-panel border border-line dark:border-edge rounded-card overflow-hidden shadow-sm">
+        <div className="bg-surface-container-lowest border border-outline-variant/20 rounded-2xl overflow-hidden shadow-sm">
           <div className="overflow-x-auto">
             <table className="w-full text-sm border-collapse">
               <thead>
-                <tr className="bg-paper dark:bg-abyss border-b border-line dark:border-edge">
-                  <th className="text-left text-muted dark:text-fog text-[11px] px-4 py-2.5 font-semibold uppercase tracking-wider">Time</th>
-                  <th className="text-left text-muted dark:text-fog text-[11px] px-4 py-2.5 font-semibold uppercase tracking-wider">Actor</th>
-                  <th className="text-left text-muted dark:text-fog text-[11px] px-4 py-2.5 font-semibold uppercase tracking-wider">Action</th>
-                  <th className="text-left text-muted dark:text-fog text-[11px] px-4 py-2.5 font-semibold uppercase tracking-wider hidden sm:table-cell">Result</th>
+                <tr className="bg-surface-container-low/50 border-b border-outline-variant/20">
+                  <th className="text-left text-on-surface-variant text-[11px] px-4 py-3 font-semibold uppercase tracking-wider">Time</th>
+                  <th className="text-left text-on-surface-variant text-[11px] px-4 py-3 font-semibold uppercase tracking-wider">Actor</th>
+                  <th className="text-left text-on-surface-variant text-[11px] px-4 py-3 font-semibold uppercase tracking-wider">Action</th>
+                  <th className="text-left text-on-surface-variant text-[11px] px-4 py-3 font-semibold uppercase tracking-wider hidden sm:table-cell">Result</th>
                 </tr>
               </thead>
               <tbody>
                 {auditLogs.length === 0 ? (
-                  <tr><td colSpan={4} className="px-4 py-8 text-center text-muted dark:text-fog text-sm">No audit records.</td></tr>
+                  <tr><td colSpan={4} className="px-4 py-8 text-center text-on-surface-variant text-sm">No audit records.</td></tr>
                 ) : auditLogs.map((log) => (
-                  <tr key={log.id} className="border-t border-line dark:border-edge hover:bg-paper/50 dark:hover:bg-abyss/50 transition-colors">
-                    <td className="px-4 py-2.5 font-mono text-xs text-muted dark:text-fog whitespace-nowrap">
+                  <tr key={log.id} className="border-t border-outline-variant/10 hover:bg-surface-container-low/40 transition-colors">
+                    <td className="px-4 py-3 font-mono text-xs text-on-surface-variant whitespace-nowrap">
                       {new Date(log.timestamp).toLocaleString()}
                     </td>
-                    <td className="px-4 py-2.5 font-mono text-xs text-ink dark:text-bone">{log.actor}</td>
-                    <td className="px-4 py-2.5 font-mono text-xs text-ink dark:text-bone">{log.action} {log.resource}</td>
-                    <td className={`px-4 py-2.5 font-mono text-xs hidden sm:table-cell font-medium ${log.result === "ok" ? "text-moss" : "text-brick"}`}>
+                    <td className="px-4 py-3 font-mono text-xs text-on-surface font-semibold">{log.actor}</td>
+                    <td className="px-4 py-3 font-mono text-xs text-on-surface">{log.action} {log.resource}</td>
+                    <td className={`px-4 py-3 font-mono text-xs hidden sm:table-cell font-semibold ${log.result === "ok" ? "text-primary" : "text-error"}`}>
                       {log.result}
                     </td>
                   </tr>
@@ -603,49 +632,49 @@ export function ServerDetailPage({ setOnline }: { setOnline: (v: boolean) => voi
 
       {/* ── Tokens tab ── */}
       {tab === "tokens" && (
-        <div className="bg-white dark:bg-panel border border-line dark:border-edge rounded-card p-5 shadow-sm">
+        <div className="bg-surface-container-lowest border border-outline-variant/20 rounded-2xl p-6 shadow-sm">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
-              <Key size={15} className="text-accent dark:text-ember" />
-              <h2 className="text-ink dark:text-bone font-semibold text-sm">Agent Tokens</h2>
+              <Key size={16} className="text-primary" />
+              <h2 className="text-on-surface font-semibold text-base">Agent Tokens</h2>
             </div>
-            <button onClick={() => setShowTokenForm(!showTokenForm)} className="text-xs text-accent dark:text-ember hover:underline font-semibold cursor-pointer">
+            <button onClick={() => setShowTokenForm(!showTokenForm)} className="text-xs text-primary hover:underline font-semibold cursor-pointer">
               + Generate Token
             </button>
           </div>
 
           {showTokenForm && (
-            <div className="mb-4 p-3 bg-paper dark:bg-abyss border border-line dark:border-edge rounded-lg flex gap-2">
-              <input className="flex-1 bg-white dark:bg-panel border border-line dark:border-edge rounded-lg px-3 py-1.5 text-ink dark:text-bone text-sm outline-none focus:border-accent dark:focus:border-ember font-mono placeholder:text-stone dark:placeholder:text-fog"
+            <div className="mb-4 p-4 bg-surface-container-low border border-outline-variant/20 rounded-2xl flex gap-2.5">
+              <input className="flex-1 bg-surface-container-lowest border border-outline-variant/30 rounded-xl px-3.5 py-2 text-on-surface text-sm outline-none focus:border-primary font-mono placeholder:text-on-surface-variant/40 transition-colors"
                 placeholder="Token label (e.g. prod-primary-agent)" value={tokenLabel} onChange={(e) => setTokenLabel(e.target.value)} />
               <button onClick={createToken} disabled={creatingToken}
-                className="px-3.5 py-1.5 bg-accent dark:bg-ember text-white dark:text-black text-sm font-semibold rounded-lg hover:bg-accent-hover dark:hover:bg-ember-hover disabled:opacity-50 cursor-pointer shadow-sm">
+                className="px-5 py-2 bg-primary text-on-primary text-sm font-semibold rounded-full hover:bg-primary/90 disabled:opacity-50 cursor-pointer shadow-sm transition-all">
                 {creatingToken ? "…" : "Create"}
               </button>
             </div>
           )}
 
           {newToken && (
-            <div className="mb-4 p-4 bg-status-amber/10 border border-status-amber/30 rounded-card">
-              <p className="text-status-amber text-xs mb-2 font-semibold">Copy this token now — it will not be shown again.</p>
+            <div className="mb-4 p-4 bg-tertiary-container/15 border border-tertiary/30 rounded-2xl shadow-sm">
+              <p className="text-tertiary text-xs mb-2 font-semibold">Copy this token now — it will not be shown again.</p>
               <div className="flex items-center gap-2">
-                <code className="text-ink dark:text-bone text-xs font-mono flex-1 break-all bg-white dark:bg-panel px-3 py-1.5 rounded-lg border border-line dark:border-edge">{newToken}</code>
-                <button onClick={copyToken} className="text-muted dark:text-fog hover:text-ink dark:hover:text-bone shrink-0 cursor-pointer p-1.5 rounded bg-white dark:bg-panel border border-line dark:border-edge shadow-sm"><Copy size={14} /></button>
+                <code className="text-on-surface text-xs font-mono flex-1 break-all bg-surface-container-lowest px-3.5 py-2 rounded-xl border border-outline-variant/30">{newToken}</code>
+                <button onClick={copyToken} className="text-on-surface-variant hover:text-on-surface shrink-0 cursor-pointer p-2 rounded-full bg-surface-container-lowest border border-outline-variant/30 shadow-sm transition-colors"><Copy size={14} /></button>
               </div>
-              <button onClick={() => setNewToken(null)} className="text-xs text-muted dark:text-fog hover:text-ink dark:hover:text-bone mt-2 underline cursor-pointer">Dismiss</button>
+              <button onClick={() => setNewToken(null)} className="text-xs text-on-surface-variant hover:text-on-surface mt-2 underline cursor-pointer">Dismiss</button>
             </div>
           )}
 
-          <div className="divide-y divide-line dark:divide-edge">
+          <div className="divide-y divide-outline-variant/10">
             {tokens.length === 0
-              ? <p className="text-muted dark:text-fog text-xs py-4 text-center">No tokens yet. Generate one to connect an agent.</p>
+              ? <p className="text-on-surface-variant text-xs py-6 text-center">No tokens yet. Generate one to connect an agent.</p>
               : tokens.map((t) => <TokenRow key={t.id} token={t} serverId={serverId} onRevoked={() => void refetchTokens()} />)}
           </div>
 
-          <div className="mt-5 p-4 bg-paper dark:bg-abyss border border-line dark:border-edge rounded-card text-xs text-muted dark:text-fog font-mono">
-            <p className="mb-1 text-ink dark:text-bone font-semibold">Agent install (Linux):</p>
-            <p className="text-[11px] selection:bg-accent/20">go build -o serverhub-agent ./cmd/agent</p>
-            <p className="mt-1 text-[11px] selection:bg-accent/20">AGENT_TOKEN=&lt;token&gt; SERVERHUB_URL=http://&lt;host&gt;:4000 ./serverhub-agent</p>
+          <div className="mt-6 p-4 bg-surface-container-low border border-outline-variant/20 rounded-2xl text-xs text-on-surface-variant font-mono">
+            <p className="mb-1 text-on-surface font-semibold">Agent install (Linux):</p>
+            <p className="text-[11px] selection:bg-primary/20">go build -o serverhub-agent ./cmd/agent</p>
+            <p className="mt-1 text-[11px] selection:bg-primary/20">AGENT_TOKEN=&lt;token&gt; SERVERHUB_URL=http://&lt;host&gt;:4000 ./serverhub-agent</p>
           </div>
         </div>
       )}

@@ -453,77 +453,73 @@ export function ServersPage({ setOnline }: { setOnline: (v: boolean) => void }) 
   });
 
   return (
-    <main className="w-full max-w-7xl mx-auto px-10 max-md:px-4 pt-24 pb-36">
+    <main className="w-full max-w-5xl mx-auto px-6 pt-12 pb-28">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-8">
         <div>
-          <div className="flex items-center gap-3">
-            <Server size={22} className="text-accent dark:text-ember" />
-            <h1 className="font-head text-[24px] font-bold text-ink dark:text-bone tracking-[-0.02em]">Servers</h1>
+          <div className="flex items-center gap-2 mb-1.5">
+            <span className="inline-flex items-center justify-center w-6 h-6 rounded-md bg-primary/10 text-primary">
+              <Server size={15} />
+            </span>
+            <span className="text-[11px] font-semibold text-outline uppercase tracking-wider">Infrastructure</span>
           </div>
-          <p className="text-muted dark:text-fog text-xs mt-1 font-mono">
-            Managed host inventory · Remote agents
+          <h1 className="text-[32px] sm:text-[36px] font-bold text-on-surface tracking-tight leading-tight">Servers</h1>
+          <p className="text-[15px] text-on-surface-variant max-w-xl mt-1">
+            Managed host inventory, real-time agent telemetry, and node health.
           </p>
         </div>
-        <div className="flex gap-2.5">
+        <div className="flex items-center gap-2.5">
           <button
             onClick={() => void refetch()}
-            className="w-9 h-9 rounded-full bg-white dark:bg-panel border border-line dark:border-edge flex items-center justify-center text-muted dark:text-fog hover:text-ink dark:hover:text-bone shadow-sm cursor-pointer"
+            className="w-10 h-10 rounded-full bg-surface-container-lowest border border-outline-variant/30 flex items-center justify-center text-on-surface-variant hover:text-on-surface shadow-sm cursor-pointer transition-colors"
             aria-label="Refresh"
+            type="button"
           >
             <RefreshCw size={15} />
           </button>
           <button
             onClick={() => setShowAdd(true)}
-            className="flex items-center gap-1.5 px-3.5 py-2 bg-accent dark:bg-ember text-white dark:text-black text-sm font-semibold rounded-lg hover:bg-accent-hover dark:hover:bg-ember-hover shadow-sm cursor-pointer"
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-primary-container hover:bg-primary text-on-primary text-[14px] font-medium shadow-sm hover:shadow-md transition-all cursor-pointer border-0"
+            type="button"
           >
-            <Plus size={15} /> Add Server
+            <Plus size={16} />
+            <span>Add Server</span>
           </button>
         </div>
       </div>
 
-      {/* Summary */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-6">
-        {[
-          { label: "Total", value: counts.total, color: "text-ink dark:text-bone", filter: null },
-          { label: "Online", value: counts.online, color: "text-moss", filter: "ONLINE" },
-          { label: "Offline", value: counts.offline, color: "text-brick", filter: "OFFLINE" },
-          { label: "Warning", value: counts.warning, color: "text-status-amber", filter: "WARNING" },
-          { label: "Unknown", value: counts.unknown, color: "text-stone", filter: "UNKNOWN" },
-        ].map((c) => (
-          <button
-            key={c.label}
-            onClick={() => setStatusFilter(statusFilter === c.filter ? null : c.filter)}
-            className={`text-left bg-white dark:bg-panel border rounded-card p-4 shadow-sm transition-all cursor-pointer ${
-              statusFilter === c.filter
-                ? "border-accent dark:border-ember ring-1 ring-accent dark:ring-ember"
-                : "border-line dark:border-edge hover:border-accent/40 dark:hover:border-ember/40"
-            }`}
-          >
-            <div className="text-muted dark:text-fog text-[11px] uppercase tracking-wider mb-1 font-medium">{c.label}</div>
-            <div className={`font-bold text-2xl font-mono ${c.color}`}>{c.value}</div>
-          </button>
-        ))}
-      </div>
+      {/* Filter and Search Bar */}
+      <div className="flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between mb-6">
+        <div className="flex items-center gap-1.5 overflow-x-auto p-1 bg-surface-container rounded-full max-w-fit shadow-inner">
+          {[
+            { label: "All", count: counts.total, filter: null },
+            { label: "Online", count: counts.online, filter: "ONLINE" },
+            { label: "Warning", count: counts.warning, filter: "WARNING" },
+            { label: "Offline", count: counts.offline, filter: "OFFLINE" },
+          ].map((c) => (
+            <button
+              key={c.label}
+              onClick={() => setStatusFilter(statusFilter === c.filter ? null : c.filter)}
+              className={`px-3.5 py-1 rounded-full text-[12px] font-medium transition-all cursor-pointer border-0 whitespace-nowrap ${
+                statusFilter === c.filter
+                  ? "bg-surface-container-lowest text-primary font-semibold shadow-sm"
+                  : "text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high"
+              }`}
+            >
+              {c.label} ({c.count})
+            </button>
+          ))}
+        </div>
 
-      {/* Search and Filters */}
-      <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between mb-6">
-        <div className="relative flex-1 max-w-md">
+        <div className="w-full md:w-64">
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search servers by name, hostname, IP..."
-            className="w-full bg-white dark:bg-panel border border-line dark:border-edge rounded-lg px-3 py-2 text-ink dark:text-bone text-sm outline-none focus:border-accent dark:focus:border-ember placeholder:text-stone dark:placeholder:text-fog font-mono shadow-sm"
+            placeholder="Search servers…"
+            className="w-full bg-surface-container-lowest border border-outline-variant/30 rounded-full px-4 py-2 text-on-surface text-[13px] outline-none focus:border-primary placeholder:text-outline"
           />
-          {search && (
-            <button
-              onClick={() => setSearch("")}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted dark:text-fog hover:text-ink dark:hover:text-bone text-xs font-mono cursor-pointer"
-            >
-              Clear
-            </button>
-          )}
         </div>
+      </div>
 
         {/* Group filter & Status clear */}
         <div className="flex gap-1.5 flex-wrap items-center">
@@ -564,7 +560,6 @@ export function ServersPage({ setOnline }: { setOnline: (v: boolean) => void }) 
             </div>
           )}
         </div>
-      </div>
 
       {/* Server grid */}
       {isLoading && (

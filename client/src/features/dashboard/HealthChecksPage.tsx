@@ -188,43 +188,64 @@ export function HealthChecksPage() {
   const down = checks.filter((c) => c.status === "DOWN").length;
 
   return (
-    <main className="w-full max-w-7xl mx-auto px-10 max-md:px-4 pt-24 pb-36">
-      <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
+    <main className="w-full max-w-5xl mx-auto px-6 pt-12 pb-28">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-8">
         <div>
-          <div className="flex items-center gap-3">
-            <Activity size={22} className="text-accent dark:text-ember" />
-            <h1 className="text-ink dark:text-bone font-head font-bold text-[24px] tracking-[-0.02em]">Health Checks</h1>
-            <span className="text-moss text-xs font-mono font-semibold px-2 py-0.5 rounded border border-moss/30 bg-moss/10">{up} up</span>
-            {down > 0 && <span className="text-brick text-xs font-mono font-semibold px-2 py-0.5 rounded border border-brick/30 bg-brick/10">{down} down</span>}
+          <div className="flex items-center gap-2 mb-1.5">
+            <span className="inline-flex items-center justify-center w-6 h-6 rounded-md bg-primary/10 text-primary">
+              <Activity size={15} />
+            </span>
+            <span className="text-[11px] font-semibold text-outline uppercase tracking-wider">Uptime & Probes</span>
           </div>
-          <p className="text-muted dark:text-fog text-xs mt-1 font-mono">
-            Synthetic uptime monitoring · Probe intervals
+          <div className="flex items-center gap-3">
+            <h1 className="text-[32px] sm:text-[36px] font-bold text-on-surface tracking-tight leading-tight">Health Checks</h1>
+            <span className="text-secondary text-[12px] font-semibold px-2.5 py-0.5 rounded-full bg-secondary-container/30 border border-secondary/30 font-mono">
+              {up} up
+            </span>
+            {down > 0 && (
+              <span className="text-error text-[12px] font-semibold px-2.5 py-0.5 rounded-full bg-error-container/30 border border-error/30 font-mono">
+                {down} down
+              </span>
+            )}
+          </div>
+          <p className="text-[15px] text-on-surface-variant max-w-xl mt-1">
+            Synthetic uptime monitoring probes, response times, and failure alerts.
           </p>
         </div>
-        <div className="flex gap-2.5">
-          <button onClick={() => void refetch()}
-            className="w-9 h-9 rounded-full bg-white dark:bg-panel border border-line dark:border-edge flex items-center justify-center text-muted dark:text-fog hover:text-ink dark:hover:text-bone transition-colors shadow-sm cursor-pointer"
+        <div className="flex items-center gap-2.5">
+          <button
+            onClick={() => void refetch()}
+            className="w-10 h-10 rounded-full bg-surface-container-lowest border border-outline-variant/30 flex items-center justify-center text-on-surface-variant hover:text-on-surface shadow-sm cursor-pointer transition-colors"
             aria-label="Refresh"
+            type="button"
           >
             <RefreshCw size={15} />
           </button>
-          <button onClick={() => setShowAdd(true)}
-            className="flex items-center gap-1.5 px-3.5 py-2 bg-accent dark:bg-ember text-white dark:text-black text-sm font-semibold rounded-lg hover:bg-accent-hover dark:hover:bg-ember-hover transition-colors shadow-sm cursor-pointer">
-            <Plus size={15} /> Add Check
+          <button
+            onClick={() => setShowAdd(true)}
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-primary-container hover:bg-primary text-on-primary text-[14px] font-medium shadow-sm hover:shadow-md transition-all cursor-pointer border-0"
+            type="button"
+          >
+            <Plus size={16} />
+            <span>Add Check</span>
           </button>
         </div>
       </div>
 
       {isLoading && (
         <div className="space-y-3">
-          {[1, 2, 3].map((i) => <div key={i} className="h-24 bg-white dark:bg-panel border border-line dark:border-edge rounded-card animate-pulse shadow-sm" />)}
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="h-24 bg-surface-container-lowest rounded-2xl animate-pulse shadow-sm border border-outline-variant/20" />
+          ))}
         </div>
       )}
 
       {!isLoading && checks.length === 0 && (
-        <div className="text-center py-16 bg-paper dark:bg-abyss border border-line dark:border-edge rounded-card px-4">
-          <Activity size={40} className="mx-auto mb-3 opacity-30 text-accent dark:text-ember" />
-          <p className="text-sm font-medium text-ink dark:text-bone">No health checks yet. Add one to start monitoring.</p>
+        <div className="text-center py-16 bg-surface-container-low rounded-2xl border border-outline-variant/20 px-4">
+          <Activity size={40} className="mx-auto mb-3 text-primary opacity-40" />
+          <p className="text-[15px] font-semibold text-on-surface">No health checks configured.</p>
+          <p className="text-[13px] text-on-surface-variant mt-1">Add HTTP, TCP, or ICMP ping endpoints to monitor service availability.</p>
         </div>
       )}
 

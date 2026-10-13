@@ -5,12 +5,12 @@ import {
   Activity,
   AlertTriangle,
   ArrowRight,
+  DatabaseBackup,
   Hash,
-  Radio,
   RefreshCw,
   Server,
 } from "lucide-react";
-import { api } from "../../lib/api";
+import { api, dbBackupsApi } from "../../lib/api";
 import {
   fleetLabel,
   queryState,
@@ -31,22 +31,19 @@ import {
   greeting,
   shortId,
   shortSha,
-  STALE_AFTER_MS,
   timeAgo,
-  todayLong,
 } from "../../lib/format";
 import { useAuth, useUi } from "../../stores/store";
 import { useEvents } from "../../lib/useEvents";
 import type { BusEvent } from "../../lib/types";
-import { Kicker, Meter, StatusPill, DashboardSkeleton, PageError } from "../../components/ui";
+import { Kicker, StatusPill, DashboardSkeleton, PageError } from "../../components/ui";
 import { ProjectDrawer } from "./ProjectDrawer";
 import { DiscoveryModal } from "./DiscoveryModal";
 import { useDashboardData } from "../../lib/useDashboard";
 
 /* ---------- small pieces ---------- */
 
-function useNow(intervalMs = 5000) {
-  const [now, setNow] = useState(() => Date.now());
+function useNow(intervalMs = 5000) {  const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), intervalMs);
     return () => clearInterval(id);
@@ -54,52 +51,7 @@ function useNow(intervalMs = 5000) {
   return now;
 }
 
-function StatShell({
-  kicker,
-  icon,
-  children,
-  foot,
-  onClick,
-}: {
-  kicker: string;
-  icon: React.ReactNode;
-  children: React.ReactNode;
-  foot?: React.ReactNode;
-  onClick?: () => void;
-}) {
-  return (
-    <div
-      className={`bg-white dark:bg-panel border border-line dark:border-edge rounded-card p-5${
-        onClick ? " transition-colors duration-150 cursor-pointer hover:border-accent dark:hover:border-ember" : ""
-      }`}
-      onClick={onClick}
-      title={onClick ? "Open telemetry timeline" : undefined}
-      role={onClick ? "button" : undefined}
-      tabIndex={onClick ? 0 : undefined}
-      onKeyDown={
-        onClick
-          ? (e) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault();
-                onClick();
-              }
-            }
-          : undefined
-      }
-    >
-      <div className="flex items-start justify-between gap-3 mb-4">
-        <Kicker>{kicker}</Kicker>
-        <span className="text-muted dark:text-fog flex">{icon}</span>
-      </div>
-      {children}
-      {foot && (
-        <div className="flex items-center gap-2 flex-wrap justify-between mt-3 text-muted dark:text-fog text-xs">
-          {foot}
-        </div>
-      )}
-    </div>
-  );
-}
+
 
 /* TEMP-HIDE (Projects-hiding review): manual project creation is disabled
    while the Projects section is hidden. The code below is preserved as-is;
@@ -188,6 +140,61 @@ function CreateShipModal({ onClose, onCreated }: { onClose: () => void; onCreate
 END TEMP-HIDE */
 
 /* ---------- page ---------- */
+
+// Compact Database Backups strip for the main dashboard. Reads the real
+// backup summary endpoint on the standard 30s cadence (no extra loops);
+// the full section lives at /db-backups. Silent while loading, honest
+// warning row on failure — never fabricated numbers.
+function DbBackupStrip() {
+  const nav = useNavigate();
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ["dbbackup-summary"],
+    queryFn: dbBackupsApi.dashboard,
+    refetchInterval: 30_000,
+    retry: 1,
+  });
+  // No data yet: an error with nothing to show becomes the honest
+  // warning row (checked before the loading branch — data is undefined
+  // on error, so testing !data first would hide failures forever).
+  if (!data) {
+    if (isError && !isLoading) {
+      return (
+        <button
+          onClick={() => nav("/db-backups")}
+          className="mt-4 w-full text-left rounded-card border border-line dark:border-edge bg-white dark:bg-panel px-5 py-3.5 cursor-pointer"
+        >
+          <span className="text-sm text-muted dark:text-fog">Database backups status unavailable — open the section to retry.</span>
+        </button>
+      );
+    }
+    return null;
+  }
+  const failed = (data.recent_runs ?? []).filter((r) => r.status === "FAILED").slice(0, 3);
+  return (
+    <button
+      onClick={() => nav("/db-backups")}
+      className="mt-4 w-full text-left rounded-card border border-line dark:border-edge bg-white dark:bg-panel px-5 py-4 shadow-sm cursor-pointer hover:border-accent dark:hover:border-ember transition-colors"
+    >
+      <span className="flex items-center gap-2">
+        <DatabaseBackup size={15} className="text-muted dark:text-fog" />
+        <span className="text-sm font-semibold text-ink dark:text-bone">Database backups</span>
+        <span className="font-mono text-[11px] text-muted dark:text-fog">
+          {data.total_jobs} job{data.total_jobs === 1 ? "" : "s"} · {data.agents_online} agent{data.agents_online === 1 ? "" : "s"} online
+        </span>
+        {data.failed_runs > 0 && (
+          <span className="font-mono text-[11px] px-2 py-0.5 rounded border border-brick/30 bg-brick/10 text-brick">
+            {data.failed_runs} failed · 24h
+          </span>
+        )}
+      </span>
+      {failed.length > 0 && (
+        <span className="block text-xs text-muted dark:text-fog mt-1.5 truncate">
+          Latest failure: {failed[0].error_message || failed[0].id.slice(0, 8)}
+        </span>
+      )}
+    </button>
+  );
+}
 
 export function DashboardPage({ setOnline }: { setOnline: (v: boolean) => void }) {
   const { user } = useAuth();
@@ -549,170 +556,212 @@ export function DashboardPage({ setOnline }: { setOnline: (v: boolean) => void }
   }
 
   return (
-    <main className="w-full max-w-7xl mx-auto px-10 max-md:px-4 pt-24 pb-36">
-      {/* masthead */}
-      <div className="flex items-end justify-between gap-4 flex-wrap">
-        <div>
-          {/* <div className="flex items-center gap-2 flex-wrap text-accent-deep dark:text-ember mb-1.5">
-            <span className="w-[7px] h-[7px] rounded-full bg-accent-deep dark:bg-ember" />
-            <Kicker>Bridge console · Station 04</Kicker>
-          </div> */}
-          <h1 className="font-head text-[32px] capitalize font-bold tracking-[-0.03em] leading-[1.2] max-md:text-[26px]">
-            {greeting()}, {user?.username ?? "there"}.
-          </h1>
-          <p className="text-muted dark:text-fog mt-1.5">
-            {todayLong()} <span className="mx-1.5">•</span> {healthLine} <span className="mx-1.5">•</span> Updated {formatAge(now - (fullData?.fetchedAt ?? now))}
-            {now - (fullData?.fetchedAt ?? now) > STALE_AFTER_MS && (
-              <span className="ml-2 inline-flex items-center gap-1 font-mono text-[11px] bg-status-amber/10 border border-status-amber/30 text-status-amber rounded-md px-2 py-[3px] whitespace-nowrap">
-                Data may be outdated
+    <main className="w-full max-w-5xl mx-auto px-6 pt-12 pb-28">
+      <div className="flex flex-col space-y-8">
+        {/* 1. Workspace Header */}
+        <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+          <div className="flex flex-col space-y-3">
+            <div className="flex items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-surface-container-low text-on-surface-variant text-[12px] font-medium">
+                <span className="font-semibold text-on-surface">ServiceHub</span>
+                <span>v2.4</span>
+                <span className="w-1.5 h-1.5 rounded-full bg-secondary inline-block ml-0.5" />
+                <span className="text-secondary font-medium">Operational</span>
               </span>
-            )}
-          </p>
-        </div>
-        <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto">
-          <button
-            className="inline-flex flex-1 sm:flex-none items-center justify-center gap-2 rounded-input text-[13px] font-medium px-4 py-2 cursor-pointer border whitespace-nowrap transition-colors duration-150 disabled:opacity-55 disabled:cursor-not-allowed bg-white dark:bg-panel border-line dark:border-edge text-ink dark:text-bone hover:bg-paper dark:hover:bg-emboss"
-            onClick={() => void load()}
-          >
-            <RefreshCw size={14} /> Refresh
-          </button>
-          {/* TEMP-HIDE (Projects-hiding review): New project button disabled
-              while the Projects section is hidden.
-          <button
-            className="inline-flex flex-1 sm:flex-none items-center justify-center gap-2 rounded-input text-[13px] font-medium px-4 py-2 cursor-pointer border border-transparent whitespace-nowrap transition-colors duration-150 disabled:opacity-55 disabled:cursor-not-allowed bg-accent dark:bg-ember text-white dark:text-black hover:bg-accent-hover dark:hover:bg-ember-hover shadow-sm"
-            onClick={() => setShowCreate(true)}
-          >
-            <Plus size={14} /> New project
-          </button>
-          */}
-        </div>
-      </div>
-
-      {/* stat tiles */}
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3 mt-5">
-        <StatShell
-          kicker="Server load"
-          icon={<Activity size={15} />}
-          foot={<span>{data.dockerAvailable ? "Container service connected" : "Container service unreachable"}</span>}
-          onClick={() => nav("/telemetry")}
-        >
-          <Meter label="CPU" pct={data.server.cpuPercent} display={`${Math.round(data.server.cpuPercent)}%`} />
-          <Meter label="RAM" pct={data.server.memPercent} display={`${Math.round(data.server.memPercent)}%`} />
-          <Meter label="Disk" pct={data.server.diskPercent} display={`${Math.round(data.server.diskPercent)}%`} />
-        </StatShell>
-
-        <StatShell
-          kicker="Infrastructure"
-          icon={<Server size={15} />}
-          foot={<span>Remote agents</span>}
-          onClick={serversOk ? () => nav("/servers") : undefined}
-        >
-          {serversOk ? (
-            <>
-              <div className="flex items-center gap-2 flex-wrap items-baseline mt-2">
-                <span className="font-head text-[34px] font-bold text-ink dark:text-bone">{servers.length}</span>
-                <span className="text-muted dark:text-fog">servers enrolled</span>
-              </div>
-              <div className="text-muted dark:text-fog text-xs mt-1.5 flex items-center gap-2">
-                <span className="inline-flex items-center gap-1 font-mono text-moss font-medium">
-                  <span className="w-1.5 h-1.5 rounded-full bg-moss" />
-                  {servers.filter((s) => s.status === "ONLINE").length} online
-                </span>
-                {servers.some((s) => s.status === "OFFLINE" || s.status === "WARNING") && (
-                  <span className="inline-flex items-center gap-1 font-mono text-brick font-medium">
-                    <span className="w-1.5 h-1.5 rounded-full bg-brick" />
-                    {servers.filter((s) => s.status === "OFFLINE").length} offline
-                  </span>
-                )}
-              </div>
-            </>
-          ) : (
-            <div className="mt-2">
-              <p className="text-status-amber text-xs font-medium">Server list couldn't load.</p>
-              <p className="text-muted dark:text-fog text-xs mt-1 font-mono break-words">
-                {serversError ?? "The server did not answer."}
-              </p>
-              <button
-                onClick={() => void load()}
-                className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs border border-line dark:border-edge rounded-lg cursor-pointer text-muted dark:text-fog hover:text-ink dark:hover:text-bone"
-              >
-                <RefreshCw size={13} /> Retry
-              </button>
             </div>
-          )}
-        </StatShell>
-
-        {/* TEMP-HIDE (Projects-hiding review): Deployments tile disabled —
-            totals over the project-versioning update log. The deployStats
-            memo below is hidden with it; uncomment both to restore.
-        <StatShell
-          kicker="Deployments"
-          icon={<Rocket size={15} />}
-          foot={
-            <>
-              <span>Avg duration: {deployStats.avg !== undefined ? fmtDuration(deployStats.avg) : "—"}</span>
-              <Clock size={13} />
-            </>
-          }
-        >
-          <div className="flex items-center gap-2 flex-wrap items-baseline mt-2">
-            <span className="font-head text-[34px] font-bold text-ink dark:text-bone">{data.counts.deployments}</span>
-            <span className="text-muted dark:text-fog">updates logged</span>
+            <h1 className="text-[32px] sm:text-[36px] font-bold text-on-surface tracking-tight leading-tight">
+              {greeting()}, {user?.username ?? "Operations"}
+            </h1>
+            <p className="text-[16px] text-on-surface-variant max-w-xl leading-relaxed">
+              All core services and backup workers are running smoothly across your fleet.
+            </p>
           </div>
-          <div className="text-muted dark:text-fog text-xs mt-1.5">
-            <span className="font-mono text-ink dark:text-bone font-medium">{deployStats.todayCount}</span> today ·{" "}
-            <span className="font-mono text-ink dark:text-bone font-medium">{deployStats.rate}%</span> successful
-          </div>
-        </StatShell>
-        END TEMP-HIDE */}
-
-        <StatShell
-          kicker="Service Health"
-          icon={<Radio size={15} />}
-          foot={<span>Heartbeat: 30s</span>}
-        >
-          <div className="flex flex-col gap-2 mt-2">
-            <HealthRow label="Working" count={data.counts.healthy} tag="GOOD" pip="bg-moss" />
-            <HealthRow label="Needs attention" count={data.counts.degraded} tag={data.counts.degraded ? "WATCH" : "GOOD"} pip="bg-status-amber" />
-            <HealthRow label="Down" count={data.counts.down} tag={data.counts.down ? "DOWN" : "NONE"} pip="bg-brick" />
-          </div>
-        </StatShell>
-      </div>
-
-      {/* needs attention */}
-      {attention.length > 0 && (
-        <div className="mt-4 rounded-card border border-status-amber/30 bg-white dark:bg-panel shadow-sm overflow-hidden">
-          <div className="flex items-center gap-2 px-5 pt-4 pb-2">
-            <AlertTriangle size={15} className="text-status-amber" />
-            <h2 className="font-head text-[16px] font-bold tracking-[-0.02em] text-ink dark:text-bone">
-              Needs attention
-            </h2>
-            <span className="inline-flex items-center font-mono text-[11px] bg-status-amber/10 border border-status-amber/30 text-status-amber rounded-md px-2 py-[3px] whitespace-nowrap">
-              {attention.length}
-            </span>
-          </div>
-          <div className="px-5 pb-4">
-            {attention.map((item) => (
-              <button
-                key={item.key}
-                onClick={() => nav(item.route)}
-                className="w-full flex items-center gap-3 py-2.5 border-b border-line dark:border-edge last:border-0 text-left cursor-pointer group"
-              >
-                <span
-                  className={`w-2 h-2 rounded-full shrink-0 ${
-                    item.tone === "down" ? "bg-brick" : item.tone === "attention" ? "bg-status-amber" : "bg-stone"
-                  }`}
-                />
-                <span className="flex-1 min-w-0">
-                  <span className="block text-sm font-medium text-ink dark:text-bone truncate">{item.title}</span>
-                  <span className="block text-xs text-muted dark:text-fog truncate">{item.detail}</span>
-                </span>
-                <ArrowRight size={14} className="shrink-0 text-muted dark:text-fog group-hover:text-ink dark:group-hover:text-bone" />
-              </button>
-            ))}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => void reload()}
+              className="inline-flex items-center gap-1.5 text-on-surface-variant hover:text-on-surface text-[13px] font-medium transition-colors py-2 px-3.5 rounded-full bg-surface-container-low hover:bg-surface-container cursor-pointer border-0"
+              type="button"
+            >
+              <RefreshCw size={14} />
+              <span>Refresh</span>
+            </button>
+            <button
+              onClick={() => nav("/settings")}
+              className="inline-flex items-center gap-1.5 text-on-surface-variant hover:text-on-surface text-[13px] font-medium transition-colors py-2 px-3.5 rounded-full hover:bg-surface-container-low cursor-pointer border-0"
+              type="button"
+            >
+              <span>Workspace Settings</span>
+            </button>
           </div>
         </div>
-      )}
+
+        {/* 2. Overall System Health Banner */}
+        <div className="bg-surface-container-low rounded-2xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm">
+          <div className="flex items-center gap-3.5">
+            <div className="w-10 h-10 rounded-xl bg-secondary-fixed flex items-center justify-center shrink-0 text-on-secondary-fixed">
+              <Activity size={22} className="text-secondary" />
+            </div>
+            <div>
+              <p className="text-[16px] font-semibold text-on-surface">
+                {attention.length === 0 ? "All systems normal" : "Attention needed on some components"}
+              </p>
+              <p className="text-[14px] text-on-surface-variant">
+                {servers.length} active servers responding · {healthLine} · {formatAge(now - (fullData?.fetchedAt ?? now))} ago
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => void reload()}
+            className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-surface-container-lowest text-primary hover:bg-primary hover:text-on-primary text-[14px] font-medium shadow-sm transition-all shrink-0 cursor-pointer border-0"
+            type="button"
+          >
+            <RefreshCw size={15} />
+            <span>Run Health Audit</span>
+          </button>
+        </div>
+
+        {/* 3. Attention Items (if any) */}
+        {attention.length > 0 && (
+          <div className="bg-tertiary-fixed/30 rounded-2xl p-4 flex flex-col gap-3 shadow-sm transition-all duration-300">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <AlertTriangle size={18} className="text-tertiary shrink-0" />
+                <span className="text-[14px] font-semibold text-on-surface">
+                  {attention.length} item{attention.length === 1 ? "" : "s"} need attention:
+                </span>
+              </div>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              {attention.map((item) => (
+                <div
+                  key={item.key}
+                  onClick={() => nav(item.route)}
+                  className="flex items-center justify-between p-2.5 rounded-xl bg-surface-container-lowest hover:bg-surface-container transition-colors cursor-pointer"
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <span
+                      className={`w-2 h-2 rounded-full shrink-0 ${
+                        item.tone === "down" ? "bg-error" : item.tone === "attention" ? "bg-tertiary" : "bg-outline"
+                      }`}
+                    />
+                    <span className="text-[13px] font-medium text-on-surface truncate">{item.title}</span>
+                    <span className="text-[13px] text-on-surface-variant truncate hidden sm:inline">{item.detail}</span>
+                  </div>
+                  <ArrowRight size={14} className="text-on-surface-variant shrink-0 ml-2" />
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* 4. Three Compact Summaries (Servers, Backups, System Load) */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+          {/* Servers Card */}
+          <div
+            onClick={serversOk ? () => nav("/servers") : undefined}
+            className="bg-surface-container-lowest rounded-2xl p-6 flex flex-col justify-between shadow-sm hover:shadow-md transition-all group cursor-pointer"
+          >
+            <div>
+              <div className="flex items-center justify-between mb-4">
+                <span className="text-[11px] font-semibold uppercase text-on-surface-variant tracking-wider">Servers</span>
+                <div className="w-8 h-8 rounded-lg bg-surface-container-low flex items-center justify-center text-primary">
+                  <Server size={18} />
+                </div>
+              </div>
+              <div className="space-y-1">
+                <div className="text-[28px] font-bold text-on-surface tracking-tight">
+                  {serversOk ? `${servers.length} Active` : "Offline"}
+                </div>
+                <p className="text-[13px] text-on-surface-variant flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-secondary" />
+                  {serversOk ? `${servers.filter((s) => s.status === "ONLINE").length} reporting online` : (serversError ?? "Unable to load servers")}
+                </p>
+              </div>
+            </div>
+            <div className="pt-6 mt-2">
+              <span className="inline-flex items-center gap-1 text-[13px] font-medium text-primary group-hover:translate-x-0.5 transition-transform">
+                <span>Inspect fleet</span>
+                <ArrowRight size={14} />
+              </span>
+            </div>
+          </div>
+
+          {/* Backups Card */}
+          <div
+            onClick={() => nav("/db-backups")}
+            className="bg-surface-container-lowest rounded-2xl p-6 flex flex-col justify-between shadow-sm hover:shadow-md transition-all group cursor-pointer"
+          >
+            <div>
+              <div className="flex items-center justify-between mb-4">
+                <span className="text-[11px] font-semibold uppercase text-on-surface-variant tracking-wider">Backups</span>
+                <div className="w-8 h-8 rounded-lg bg-surface-container-low flex items-center justify-center text-primary">
+                  <DatabaseBackup size={18} />
+                </div>
+              </div>
+              <div className="space-y-1">
+                <div className="text-[28px] font-bold text-on-surface tracking-tight">
+                  Database Backups
+                </div>
+                <p className="text-[13px] text-on-surface-variant flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-secondary" />
+                  Point-in-time recovery & snapshots
+                </p>
+              </div>
+            </div>
+            <div className="pt-6 mt-2">
+              <span className="inline-flex items-center gap-1 text-[13px] font-medium text-primary group-hover:translate-x-0.5 transition-transform">
+                <span>View backup runs</span>
+                <ArrowRight size={14} />
+              </span>
+            </div>
+          </div>
+
+          {/* System Load Card */}
+          <div
+            onClick={() => nav("/telemetry")}
+            className="bg-surface-container-lowest rounded-2xl p-6 flex flex-col justify-between shadow-sm hover:shadow-md transition-all group cursor-pointer"
+          >
+            <div>
+              <div className="flex items-center justify-between mb-4">
+                <span className="text-[11px] font-semibold uppercase text-on-surface-variant tracking-wider">System Load</span>
+                <div className="w-8 h-8 rounded-lg bg-surface-container-low flex items-center justify-center text-primary">
+                  <Activity size={18} />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <div className="flex justify-between items-center text-[13px]">
+                  <span className="text-on-surface-variant">CPU</span>
+                  <span className="font-mono font-medium text-on-surface">{Math.round(data.server.cpuPercent)}%</span>
+                </div>
+                <div className="h-1.5 rounded-full bg-surface-container overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-primary"
+                    style={{ width: `${Math.min(100, Math.max(0, data.server.cpuPercent))}%` }}
+                  />
+                </div>
+                <div className="flex justify-between items-center text-[13px] pt-1">
+                  <span className="text-on-surface-variant">RAM</span>
+                  <span className="font-mono font-medium text-on-surface">{Math.round(data.server.memPercent)}%</span>
+                </div>
+                <div className="h-1.5 rounded-full bg-surface-container overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-secondary"
+                    style={{ width: `${Math.min(100, Math.max(0, data.server.memPercent))}%` }}
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="pt-6 mt-2">
+              <span className="inline-flex items-center gap-1 text-[13px] font-medium text-primary group-hover:translate-x-0.5 transition-transform">
+                <span>Host Telemetry</span>
+                <ArrowRight size={14} />
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Database Backups Summary Strip */}
+        <DbBackupStrip />
 
       {/* TEMP-HIDE (Projects-hiding review): Recent updates / Update
           history section disabled — it is the visible end of the
@@ -846,7 +895,8 @@ export function DashboardPage({ setOnline }: { setOnline: (v: boolean) => void }
           }}
         />
       )}
-      END TEMP-HIDE */}
+      */}
+      </div>
     </main>
   );
 }
@@ -858,16 +908,7 @@ const DOT_TONE: Record<FleetStatus, string> = {
   docked: "bg-stone",
 };
 
-function HealthRow({ label, count, tag, pip }: { label: string; count: number; tag: string; pip: string }) {
-  return (
-    <div className="flex items-center gap-2 flex-wrap justify-between">
-      <span className="inline-flex items-center gap-1.5 h-6 px-2.5 rounded-full font-mono text-[11px] bg-paper dark:bg-abyss text-ink dark:text-bone whitespace-nowrap border-0">
-        <span className={`w-1.5 h-1.5 rounded-full ${pip}`} /> {count} {label}
-      </span>
-      <span className="font-mono text-[11px] text-muted dark:text-fog">{tag}</span>
-    </div>
-  );
-}
+
 
 export function ShipCard({
   project,

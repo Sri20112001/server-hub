@@ -26,22 +26,22 @@ export function MonitoringTab() {
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div className="bg-paper dark:bg-emboss/40 border border-line dark:border-edge rounded-xl px-5 py-4">
+          <div className="bg-surface-container-low border border-outline-variant/20 rounded-2xl px-5 py-4">
             <Kicker>Heartbeat Timeout</Kicker>
-            <div className="font-mono text-lg font-bold mt-2 text-ink dark:text-bone">30 seconds</div>
-            <p className="text-[11px] text-muted dark:text-fog mt-1">Expected ping interval from remote agents</p>
+            <div className="font-mono text-lg font-bold mt-2 text-on-surface">30 seconds</div>
+            <p className="text-[11px] text-on-surface-variant mt-1">Expected ping interval from remote agents</p>
           </div>
 
-          <div className="bg-paper dark:bg-emboss/40 border border-line dark:border-edge rounded-xl px-5 py-4">
+          <div className="bg-surface-container-low border border-outline-variant/20 rounded-2xl px-5 py-4">
             <Kicker>Offline Threshold</Kicker>
-            <div className="font-mono text-lg font-bold mt-2 text-status-amber">90 seconds</div>
-            <p className="text-[11px] text-muted dark:text-fog mt-1">Mark server offline after 3 missed heartbeats</p>
+            <div className="font-mono text-lg font-bold mt-2 text-tertiary">90 seconds</div>
+            <p className="text-[11px] text-on-surface-variant mt-1">Mark server offline after 3 missed heartbeats</p>
           </div>
 
-          <div className="bg-paper dark:bg-emboss/40 border border-line dark:border-edge rounded-xl px-5 py-4">
+          <div className="bg-surface-container-low border border-outline-variant/20 rounded-2xl px-5 py-4">
             <Kicker>Metrics History</Kicker>
-            <div className="font-mono text-lg font-bold mt-2 text-moss">30 days</div>
-            <p className="text-[11px] text-muted dark:text-fog mt-1">Telemetry retention window for graphs</p>
+            <div className="font-mono text-lg font-bold mt-2 text-primary">30 days</div>
+            <p className="text-[11px] text-on-surface-variant mt-1">Telemetry retention window for graphs</p>
           </div>
         </div>
       </GlassCard>
@@ -51,27 +51,27 @@ export function MonitoringTab() {
         <div className="flex items-start justify-between gap-3 mb-6">
           <div>
             <div className="flex items-center gap-2">
-              <Sliders size={20} className="text-accent dark:text-ember" />
-              <h2 className="text-xl font-semibold text-ink dark:text-bone">Alert Thresholds</h2>
+              <Sliders size={20} className="text-primary" />
+              <h2 className="text-xl font-semibold text-on-surface">Alert Thresholds</h2>
             </div>
-            <p className="text-muted dark:text-fog text-sm mt-1">
+            <p className="text-on-surface-variant text-sm mt-1">
               Resource utilization boundaries that trigger warnings and notifications.
             </p>
           </div>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div className="bg-paper dark:bg-emboss/40 border border-line dark:border-edge rounded-xl px-4 py-3">
-            <span className="text-xs text-muted dark:text-fog">CPU High Load Warning</span>
-            <div className="text-base font-bold font-mono text-ink dark:text-bone mt-1">&gt; 85% for 5 min</div>
+          <div className="bg-surface-container-low border border-outline-variant/20 rounded-2xl px-4 py-3.5">
+            <span className="text-xs text-on-surface-variant">CPU High Load Warning</span>
+            <div className="text-base font-bold font-mono text-on-surface mt-1">&gt; 85% for 5 min</div>
           </div>
-          <div className="bg-paper dark:bg-emboss/40 border border-line dark:border-edge rounded-xl px-4 py-3">
-            <span className="text-xs text-muted dark:text-fog">Memory Usage Warning</span>
-            <div className="text-base font-bold font-mono text-ink dark:text-bone mt-1">&gt; 85% for 5 min</div>
+          <div className="bg-surface-container-low border border-outline-variant/20 rounded-2xl px-4 py-3.5">
+            <span className="text-xs text-on-surface-variant">Memory Usage Warning</span>
+            <div className="text-base font-bold font-mono text-on-surface mt-1">&gt; 85% for 5 min</div>
           </div>
-          <div className="bg-paper dark:bg-emboss/40 border border-line dark:border-edge rounded-xl px-4 py-3">
-            <span className="text-xs text-muted dark:text-fog">Disk Capacity Warning</span>
-            <div className="text-base font-bold font-mono text-ink dark:text-bone mt-1">&gt; 90% space used</div>
+          <div className="bg-surface-container-low border border-outline-variant/20 rounded-2xl px-4 py-3.5">
+            <span className="text-xs text-on-surface-variant">Disk Capacity Warning</span>
+            <div className="text-base font-bold font-mono text-on-surface mt-1">&gt; 90% space used</div>
           </div>
         </div>
       </GlassCard>

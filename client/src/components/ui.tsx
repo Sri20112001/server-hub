@@ -7,23 +7,23 @@ import { fleetLabel, toFleetStatus, type FleetStatus } from "../lib/types";
 
 export function Kicker({ children }: { children: ReactNode }) {
   return (
-    <div className="text-[11px] font-semibold tracking-[0.08em] uppercase text-muted dark:text-fog">
+    <div className="text-[11px] font-semibold tracking-wider uppercase text-on-surface-variant">
       {children}
     </div>
   );
 }
 
 const PIP_TONE: Record<FleetStatus, string> = {
-  sailing: "bg-moss",
-  choppy: "bg-status-amber",
-  lost: "bg-brick",
-  docked: "bg-stone",
+  sailing: "bg-primary",
+  choppy: "bg-tertiary",
+  lost: "bg-error",
+  docked: "bg-outline",
 };
 
 export function StatusPill({ status, label }: { status: string; label?: string }) {
   const f: FleetStatus = toFleetStatus(status);
   return (
-    <span className="inline-flex items-center gap-1.5 h-6 px-2.5 rounded-full font-mono text-[11px] bg-white dark:bg-panel border border-line dark:border-edge text-ink dark:text-bone whitespace-nowrap">
+    <span className="inline-flex items-center gap-1.5 h-6 px-3 rounded-full font-mono text-[11px] bg-surface-container-low border border-outline-variant/30 text-on-surface whitespace-nowrap shadow-sm">
       <span className={`w-1.5 h-1.5 rounded-full ${PIP_TONE[f]}`} />
       {label ?? fleetLabel[f]}
     </span>
@@ -39,9 +39,9 @@ const METER_WIDTHS = [
 ] as const;
 
 const FILL_TONES = [
-  "bg-ink dark:bg-bone",
-  "bg-accent dark:bg-ember",
-  "bg-brick",
+  "bg-primary",
+  "bg-tertiary",
+  "bg-error",
 ] as const;
 
 export function Meter({
@@ -57,11 +57,11 @@ export function Meter({
   const tone = p >= 90 ? FILL_TONES[2] : p >= 70 ? FILL_TONES[1] : FILL_TONES[0];
   return (
     <div className="my-2">
-      <div className="flex justify-between items-baseline text-xs mb-1">
-        <span>{label}</span>
-        <span className="font-mono">{display}</span>
+      <div className="flex justify-between items-baseline text-xs mb-1.5">
+        <span className="text-on-surface-variant">{label}</span>
+        <span className="font-mono text-on-surface font-medium">{display}</span>
       </div>
-      <div className="h-1.5 rounded-full bg-paper dark:bg-abyss border border-line dark:border-edge overflow-hidden">
+      <div className="h-1.5 rounded-full bg-surface-container border border-outline-variant/20 overflow-hidden">
         <div className={`h-full rounded-full ${tone} ${METER_WIDTHS[Math.round(p / 5)]}`} />
       </div>
     </div>
@@ -77,7 +77,7 @@ export function Field({
 }) {
   return (
     <div>
-      <label className="block text-[11px] font-semibold tracking-[0.08em] uppercase text-muted dark:text-fog mb-1.5">
+      <label className="block text-[11px] font-semibold tracking-wider uppercase text-on-surface-variant mb-1.5">
         {label}
       </label>
       {children}
@@ -100,13 +100,13 @@ export function Toggle({
       role="switch"
       aria-checked={checked}
       aria-label={label}
-      className={`w-11 h-6 rounded-full border-0 cursor-pointer relative transition-colors duration-150 shrink-0 ${
-        checked ? "bg-accent-deep dark:bg-ember" : "bg-line dark:bg-edge"
+      className={`w-11 h-6 rounded-full border-0 cursor-pointer relative transition-colors duration-200 shrink-0 ${
+        checked ? "bg-primary" : "bg-surface-container-high border border-outline-variant/30"
       }`}
       onClick={() => onChange(!checked)}
     >
       <span
-        className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white transition-transform duration-150 shadow-[0_1px_2px_rgba(28,25,23,0.2)] ${
+        className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-surface-container-lowest transition-transform duration-200 shadow-sm ${
           checked ? "translate-x-5" : "translate-x-0"
         }`}
       />
@@ -116,10 +116,10 @@ export function Toggle({
 
 export function EmptyState({ title, hint }: { title: string; hint?: string }) {
   return (
-    <div className="bg-paper dark:bg-abyss border border-line dark:border-edge rounded-xl px-4 py-8 text-center flex flex-col items-center justify-center">
-      <img src={emptyDockImg} alt="Empty State" className="w-48 h-auto opacity-70 mb-4 mix-blend-luminosity dark:mix-blend-normal" />
-      <div className="font-head font-semibold mb-1">{title}</div>
-      {hint && <div className="text-muted dark:text-fog text-[13px]">{hint}</div>}
+    <div className="bg-surface-container-lowest border border-outline-variant/20 rounded-2xl px-6 py-12 text-center flex flex-col items-center justify-center shadow-sm">
+      <img src={emptyDockImg} alt="Empty State" className="w-44 h-auto opacity-70 mb-4 mix-blend-luminosity dark:mix-blend-normal" />
+      <div className="font-head font-bold text-on-surface text-[16px] mb-1">{title}</div>
+      {hint && <div className="text-on-surface-variant text-[13px] max-w-sm">{hint}</div>}
     </div>
   );
 }
@@ -129,16 +129,16 @@ export function EmptyState({ title, hint }: { title: string; hint?: string }) {
     `detail` is the backend message (safe: API errors carry no secrets). */
 export function PageError({ title, detail, onRetry }: { title: string; detail?: string; onRetry: () => void }) {
   return (
-    <main className="w-full max-w-7xl mx-auto px-10 max-md:px-4 pt-24 pb-36">
-      <div className="rounded-card border border-brick/30 bg-brick/10 p-10 text-center">
-        <AlertTriangle size={22} className="mx-auto text-brick" />
-        <p className="mt-3 font-head font-bold text-[18px] text-ink dark:text-bone">{title}</p>
-        <p className="mt-1 text-sm text-muted dark:text-fog font-mono break-words">
+    <main className="w-full max-w-5xl mx-auto px-6 pt-12 pb-28">
+      <div className="rounded-2xl border border-error/30 bg-error-container/10 p-10 text-center shadow-sm">
+        <AlertTriangle size={24} className="mx-auto text-error" />
+        <p className="mt-3 font-head font-bold text-[20px] text-on-surface">{title}</p>
+        <p className="mt-1.5 text-sm text-on-surface-variant font-mono break-words max-w-md mx-auto">
           {detail || "The server did not answer. Your data is intact — this is a connection problem, not an empty page."}
         </p>
         <button
           onClick={onRetry}
-          className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium bg-white dark:bg-panel border border-line dark:border-edge rounded-lg cursor-pointer hover:text-ink dark:hover:text-bone text-muted dark:text-fog"
+          className="mt-5 inline-flex items-center gap-2 px-5 py-2 text-sm font-medium bg-surface-container-lowest border border-outline-variant/30 rounded-full cursor-pointer hover:bg-surface-container text-on-surface shadow-sm transition-colors"
         >
           <RefreshCw size={14} /> Try again
         </button>
@@ -158,13 +158,13 @@ export function Modal({ onClose, children }: { onClose: () => void; children: Re
   }, [onClose]);
   return (
     <div
-      className="fixed inset-0 z-[60] flex items-start justify-center p-4 pt-[8dvh] sm:pt-[12vh] bg-[rgba(28,25,23,0.28)] dark:bg-[rgba(0,0,0,0.55)] overflow-y-auto"
+      className="fixed inset-0 z-[60] flex items-start justify-center p-4 pt-[8dvh] sm:pt-[12vh] bg-black/40 backdrop-blur-xs overflow-y-auto"
       onClick={onClose}
     >
       <div
         role="dialog"
         aria-modal="true"
-        className="bg-white dark:bg-panel border border-line dark:border-edge rounded-card w-full max-w-[480px] p-4 sm:p-6 shadow-chrome max-h-[88dvh] overflow-y-auto my-auto"
+        className="bg-surface-container-lowest border border-outline-variant/30 rounded-2xl w-full max-w-[500px] p-6 sm:p-7 shadow-2xl max-h-[88dvh] overflow-y-auto my-auto"
         onClick={(e) => e.stopPropagation()}
       >
         {children}
@@ -196,12 +196,12 @@ export function ConfirmModal({
 }) {
   return (
     <Modal onClose={onClose}>
-      <h3 className="text-[18px] mb-2">{title}</h3>
-      <p className="text-muted dark:text-fog text-[13px] mb-3">{body}</p>
+      <h3 className="text-[20px] font-bold text-on-surface mb-2">{title}</h3>
+      <p className="text-on-surface-variant text-[14px] leading-relaxed mb-4">{body}</p>
       {requireText && (
         <Field label={`Type ${requireText} to confirm`}>
           <input
-            className="w-full bg-white dark:bg-panel border border-line dark:border-edge rounded-input font-body text-[13px] text-ink dark:text-bone px-3 py-2.5 outline-none focus:border-accent dark:focus:border-ember placeholder:text-stone dark:placeholder:text-fog font-mono"
+            className="w-full bg-surface-container-low border border-outline-variant/30 rounded-xl font-body text-[14px] text-on-surface px-3.5 py-2.5 outline-none focus:border-primary placeholder:text-on-surface-variant/40 font-mono transition-colors"
             id="confirm-text"
             placeholder={requireText}
             autoComplete="off"
@@ -212,9 +212,9 @@ export function ConfirmModal({
           />
         </Field>
       )}
-      <div className="flex items-center gap-2 flex-wrap justify-end mt-4">
+      <div className="flex items-center gap-2.5 flex-wrap justify-end mt-6">
         <button
-          className="inline-flex items-center gap-2 rounded-input text-[13px] font-medium px-4 py-2 cursor-pointer border border-transparent whitespace-nowrap transition-colors duration-150 disabled:opacity-55 disabled:cursor-not-allowed bg-white dark:bg-panel border-line dark:border-edge text-ink dark:text-bone hover:bg-paper dark:hover:bg-emboss"
+          className="inline-flex items-center gap-2 rounded-full text-[13px] font-medium px-5 py-2 cursor-pointer border border-outline-variant/30 whitespace-nowrap transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed bg-surface-container-low text-on-surface hover:bg-surface-container"
           onClick={onClose}
           disabled={busy}
         >
@@ -222,7 +222,7 @@ export function ConfirmModal({
         </button>
         <button
           id="confirm-go"
-          className="inline-flex items-center gap-2 rounded-input text-[13px] font-medium px-4 py-2 cursor-pointer whitespace-nowrap transition-colors duration-150 disabled:opacity-55 disabled:cursor-not-allowed bg-transparent border border-brick/40 hover:border-brick text-brick hover:bg-brick/10"
+          className="inline-flex items-center gap-2 rounded-full text-[13px] font-semibold px-5 py-2 cursor-pointer whitespace-nowrap transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed bg-error text-on-error hover:bg-error/90 shadow-sm"
           disabled={busy || !!requireText}
           onClick={onConfirm}
         >
@@ -236,21 +236,21 @@ export function ConfirmModal({
 /* ---------- loading skeletons (see design/*loading_skeleton) ---------- */
 
 function Skel({ className = "" }: { className?: string }) {
-  return <div aria-hidden="true" className={`skel ${className}`} />;
+  return <div aria-hidden="true" className={`skel bg-surface-container-high/60 animate-pulse ${className}`} />;
 }
 
 function SyncPill({ text }: { text: string }) {
   return (
-    <div className="inline-flex items-center gap-2 bg-white dark:bg-panel border border-line dark:border-edge rounded-full px-3 py-1 mb-3">
-      <span className="w-1.5 h-1.5 rounded-full bg-brick" />
-      <span className="text-xs text-muted dark:text-fog">{text}</span>
+    <div className="inline-flex items-center gap-2 bg-surface-container-low border border-outline-variant/30 rounded-full px-3.5 py-1 mb-3 shadow-sm">
+      <span className="w-1.5 h-1.5 rounded-full bg-error" />
+      <span className="text-xs text-on-surface-variant">{text}</span>
     </div>
   );
 }
 
 function StatSkelMeters() {
   return (
-    <div className="bg-white dark:bg-panel border border-line dark:border-edge rounded-card p-5">
+    <div className="bg-surface-container-lowest border border-outline-variant/20 rounded-2xl p-5 shadow-sm">
       <div className="flex items-start justify-between gap-3 mb-2">
         <Skel className="w-24 h-3 rounded" />
         <Skel className="w-4 h-4 rounded" />
@@ -271,7 +271,7 @@ function StatSkelMeters() {
 
 function StatSkelNumber() {
   return (
-    <div className="bg-white dark:bg-panel border border-line dark:border-edge rounded-card p-5">
+    <div className="bg-surface-container-lowest border border-outline-variant/20 rounded-2xl p-5 shadow-sm">
       <div className="flex items-start justify-between gap-3 mb-2">
         <Skel className="w-24 h-3 rounded" />
         <Skel className="w-4 h-4 rounded" />
@@ -285,7 +285,7 @@ function StatSkelNumber() {
 
 function StatSkelHealth() {
   return (
-    <div className="bg-white dark:bg-panel border border-line dark:border-edge rounded-card p-5">
+    <div className="bg-surface-container-lowest border border-outline-variant/20 rounded-2xl p-5 shadow-sm">
       <div className="flex items-start justify-between gap-3 mb-2">
         <Skel className="w-24 h-3 rounded" />
         <Skel className="w-4 h-4 rounded" />
@@ -294,7 +294,7 @@ function StatSkelHealth() {
         {[0, 1, 2].map((i) => (
           <div key={i} className="flex items-center gap-2 flex-wrap justify-between">
             <div className="flex items-center gap-2">
-              <span className="w-1.5 h-1.5 rounded-full bg-skel dark:bg-edge" />
+              <span className="w-1.5 h-1.5 rounded-full bg-outline-variant" />
               <Skel className="w-20 h-5 rounded-full" />
             </div>
             <Skel className="w-14 h-3 rounded" />
@@ -308,10 +308,10 @@ function StatSkelHealth() {
 
 function ShipSkel() {
   return (
-    <div className="bg-white dark:bg-panel border border-line dark:border-edge rounded-card p-5">
+    <div className="bg-surface-container-lowest border border-outline-variant/20 rounded-2xl p-5 shadow-sm">
       <div className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="w-2 h-2 rounded-full bg-skel dark:bg-edge" />
+          <span className="w-2 h-2 rounded-full bg-outline-variant" />
           <Skel className="w-32 h-5 rounded" />
         </div>
         <Skel className="w-14 h-5 rounded-md" />
@@ -322,7 +322,7 @@ function ShipSkel() {
         <Skel className="w-16 h-5 rounded-full" />
         <Skel className="w-12 h-5 rounded-full" />
       </div>
-      <div className="bg-paper dark:bg-abyss border border-line dark:border-edge rounded-xl px-4 py-3.5 flex items-center gap-2 flex-wrap justify-between mt-3">
+      <div className="bg-surface-container-low border border-outline-variant/20 rounded-xl px-4 py-3.5 flex items-center gap-2 flex-wrap justify-between mt-3">
         <div className="flex items-center gap-4 flex-wrap">
           <Skel className="w-12 h-6 rounded" />
           <Skel className="w-12 h-6 rounded" />
@@ -331,7 +331,7 @@ function ShipSkel() {
       </div>
       <div className="flex items-center justify-between gap-4 mt-3">
         <Skel className="w-24 h-3 rounded" />
-        <Skel className="w-24 h-9 rounded-lg" />
+        <Skel className="w-24 h-9 rounded-full" />
       </div>
     </div>
   );
@@ -340,7 +340,7 @@ function ShipSkel() {
 export function DashboardSkeleton() {
   return (
     <main
-      className="w-full max-w-7xl mx-auto px-10 max-md:px-4 pt-24 pb-36"
+      className="w-full max-w-5xl mx-auto px-6 pt-12 pb-28"
       aria-busy="true"
       role="status"
     >
@@ -354,8 +354,8 @@ export function DashboardSkeleton() {
           <Skel className="w-[360px] max-w-full h-4 rounded mt-2" />
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          <Skel className="w-32 h-9 rounded-lg" />
-          <Skel className="w-32 h-9 rounded-lg" />
+          <Skel className="w-32 h-9 rounded-full" />
+          <Skel className="w-32 h-9 rounded-full" />
         </div>
       </div>
 

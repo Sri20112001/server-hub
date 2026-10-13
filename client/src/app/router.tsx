@@ -10,6 +10,7 @@ import { AlertsPage } from "../features/dashboard/AlertsPage";
 import { HealthChecksPage } from "../features/dashboard/HealthChecksPage";
 import { MonitoringPage } from "../features/dashboard/MonitoringPage";
 import { FileTransfersPage } from "../features/transfers/FileTransfersPage";
+import { DatabaseBackupsPage } from "../features/dbbackups/DatabaseBackupsPage";
 import { AuditLogPage } from "../features/dashboard/AuditLogPage";
 import { SettingsPage } from "../features/settings/SettingsPage";
 import { LoginPage } from "../features/auth/LoginPage";
@@ -141,6 +142,18 @@ export function AppRouter() {
                     <FileTransfersPage />
                   </Protected>
                 ),
+              },
+              {
+                path: "db-backups",
+                element: (
+                  <Protected>
+                    <DatabaseBackupsPage />
+                  </Protected>
+                ),
+              },
+              {
+                path: "backups",
+                element: <Navigate to="/db-backups" replace />,
               },
             ],
           },

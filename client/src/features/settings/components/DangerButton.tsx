@@ -7,7 +7,7 @@ export function DangerButton({ children, onClick, disabled, className = '' }: Da
     <button
       onClick={onClick}
       disabled={disabled}
-      className={`inline-flex items-center justify-center gap-2 px-4 py-2 font-medium text-[13px] text-brick transition-colors duration-150 bg-transparent hover:bg-red-50 dark:hover:bg-red-950/40 rounded-input disabled:opacity-50 disabled:cursor-not-allowed border border-brick/40 hover:border-brick ${className}`}
+      className={`inline-flex items-center justify-center gap-2 px-5 py-2 font-semibold text-[13px] text-error transition-colors duration-150 bg-error-container/10 hover:bg-error-container/25 rounded-full disabled:opacity-50 disabled:cursor-not-allowed border border-error/30 hover:border-error/50 shadow-sm ${className}`}
     >
       {children}
     </button>

@@ -124,30 +124,30 @@ export function TeamTab() {
 
         {/* Roles explanation card */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6 text-xs font-mono">
-          <div className="p-3 rounded-xl border border-line dark:border-edge bg-paper/50 dark:bg-abyss/50">
-            <span className="font-semibold text-accent dark:text-ember">Admin</span>
-            <p className="text-muted dark:text-fog font-sans mt-1">Full control over servers, deployments, notifications, and team access.</p>
+          <div className="p-4 rounded-2xl border border-outline-variant/20 bg-surface-container-low">
+            <span className="font-semibold text-primary">Admin</span>
+            <p className="text-on-surface-variant font-sans mt-1">Full control over servers, deployments, notifications, and team access.</p>
           </div>
-          <div className="p-3 rounded-xl border border-line dark:border-edge bg-paper/50 dark:bg-abyss/50">
-            <span className="font-semibold text-moss">Technician (Operator)</span>
-            <p className="text-muted dark:text-fog font-sans mt-1">Deploys projects, creates backups, restarts containers, and inspects metrics.</p>
+          <div className="p-4 rounded-2xl border border-outline-variant/20 bg-surface-container-low">
+            <span className="font-semibold text-tertiary">Technician (Operator)</span>
+            <p className="text-on-surface-variant font-sans mt-1">Deploys projects, creates backups, restarts containers, and inspects metrics.</p>
           </div>
-          <div className="p-3 rounded-xl border border-line dark:border-edge bg-paper/50 dark:bg-abyss/50">
-            <span className="font-semibold text-stone">Viewer</span>
-            <p className="text-muted dark:text-fog font-sans mt-1">Read-only access to status dashboards, activity logs, and system health.</p>
+          <div className="p-4 rounded-2xl border border-outline-variant/20 bg-surface-container-low">
+            <span className="font-semibold text-outline">Viewer</span>
+            <p className="text-on-surface-variant font-sans mt-1">Read-only access to status dashboards, activity logs, and system health.</p>
           </div>
         </div>
 
         {/* Users list */}
-        <div className="divide-y divide-line dark:divide-edge border border-line dark:border-edge rounded-xl overflow-hidden bg-white dark:bg-panel shadow-sm">
+        <div className="divide-y divide-outline-variant/10 border border-outline-variant/20 rounded-2xl overflow-hidden bg-surface-container-lowest shadow-sm">
           {loading && (
-            <div className="p-6 text-center text-xs text-muted dark:text-fog font-mono animate-pulse">
+            <div className="p-6 text-center text-xs text-on-surface-variant font-mono animate-pulse">
               Loading team directory…
             </div>
           )}
 
           {!loading && users.length === 0 && (
-            <div className="p-8 text-center text-muted dark:text-fog text-sm">
+            <div className="p-8 text-center text-on-surface-variant text-sm">
               No additional users configured.
             </div>
           )}
@@ -156,21 +156,21 @@ export function TeamTab() {
             users.map((u) => {
               const isSelf = u.username === currentUser?.username;
               return (
-                <div key={u.username} className="p-4 flex items-center justify-between gap-4 flex-wrap hover:bg-paper/40 dark:hover:bg-emboss/30 transition-colors">
+                <div key={u.username} className="p-4 flex items-center justify-between gap-4 flex-wrap hover:bg-surface-container-low/40 transition-colors">
                   <div className="flex items-center gap-3">
-                    <span className="w-10 h-10 rounded-full bg-paper dark:bg-abyss border border-line dark:border-edge flex items-center justify-center font-head font-bold text-base text-accent dark:text-ember">
+                    <span className="w-10 h-10 rounded-full bg-surface-container-low border border-outline-variant/30 flex items-center justify-center font-head font-bold text-base text-primary">
                       {u.username.slice(0, 1).toUpperCase()}
                     </span>
                     <div>
                       <div className="flex items-center gap-2">
-                        <strong className="text-ink dark:text-bone text-sm">{u.username}</strong>
+                        <strong className="text-on-surface text-sm">{u.username}</strong>
                         {isSelf && (
-                          <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-paper dark:bg-abyss border border-line dark:border-edge text-muted dark:text-fog">
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-surface-container-low border border-outline-variant/30 text-on-surface-variant">
                             You
                           </span>
                         )}
                       </div>
-                      <div className="text-[11px] text-muted dark:text-fog font-mono mt-0.5">
+                      <div className="text-[11px] text-on-surface-variant font-mono mt-0.5">
                         {u.createdAt ? `Joined: ${new Date(u.createdAt).toLocaleDateString()}` : "Local Account"}
                       </div>
                     </div>
@@ -181,14 +181,14 @@ export function TeamTab() {
                       <select
                         value={u.role}
                         onChange={(e) => void handleRoleChange(u.username, e.target.value)}
-                        className="bg-paper dark:bg-abyss border border-line dark:border-edge rounded-lg px-2.5 py-1 text-xs font-mono text-ink dark:text-bone outline-none focus:border-accent dark:focus:border-ember cursor-pointer"
+                        className="bg-surface-container-low border border-outline-variant/30 rounded-xl px-3 py-1 text-xs font-mono text-on-surface outline-none focus:border-primary cursor-pointer transition-colors"
                       >
                         <option value="admin">Admin</option>
                         <option value="operator">Technician</option>
                         <option value="viewer">Viewer</option>
                       </select>
                     ) : (
-                      <span className="inline-flex items-center gap-1 font-mono text-xs px-2.5 py-1 rounded border border-line dark:border-edge bg-paper dark:bg-abyss text-ink dark:text-bone uppercase">
+                      <span className="inline-flex items-center gap-1 font-mono text-xs px-3 py-1 rounded-full border border-outline-variant/30 bg-surface-container-low text-on-surface uppercase">
                         {u.role === "operator" ? "Technician" : u.role}
                       </span>
                     )}
@@ -196,10 +196,10 @@ export function TeamTab() {
                     {currentUser?.role === "admin" && !isSelf && (
                       <button
                         onClick={() => setUserToDelete(u.username)}
-                        className="p-1.5 text-muted dark:text-fog hover:text-brick transition-colors cursor-pointer rounded border border-line dark:border-edge hover:border-brick/40"
+                        className="p-1.5 text-on-surface-variant hover:text-error transition-colors cursor-pointer rounded-full border border-outline-variant/30 hover:border-error/40"
                         title="Delete user"
                       >
-                        <Trash2 size={15} />
+                        <Trash2 size={14} />
                       </button>
                     )}
                   </div>
@@ -211,19 +211,19 @@ export function TeamTab() {
 
       {/* Add User Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(28,25,23,0.35)] dark:bg-[rgba(0,0,0,0.65)] p-4 backdrop-blur-xs" onClick={() => setShowAddModal(false)}>
-          <div className="bg-white dark:bg-panel border border-line dark:border-edge rounded-card p-6 w-full max-w-md shadow-chrome" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-lg font-bold font-head text-ink dark:text-bone mb-1">Add Team Member</h3>
-            <p className="text-xs text-muted dark:text-fog mb-4">Grant dashboard or technician access to an operator.</p>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4" onClick={() => setShowAddModal(false)}>
+          <div className="bg-surface-container-lowest border border-outline-variant/30 rounded-2xl p-6 w-full max-w-md shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-lg font-bold font-head text-on-surface mb-1">Add Team Member</h3>
+            <p className="text-xs text-on-surface-variant mb-4">Grant dashboard or technician access to an operator.</p>
 
-            <form onSubmit={(e) => void handleCreateUser(e)} className="space-y-3">
+            <form onSubmit={(e) => void handleCreateUser(e)} className="space-y-4">
               <Field label="Username (2-64 characters)">
                 <input
                   required
                   value={newUsername}
                   onChange={(e) => setNewUsername(e.target.value)}
                   placeholder="e.g. devops.lead, support_agent"
-                  className="w-full bg-paper dark:bg-abyss border border-line dark:border-edge rounded-lg px-3 py-2 text-ink dark:text-bone text-sm outline-none font-mono focus:border-accent dark:focus:border-ember"
+                  className="w-full bg-surface-container-low border border-outline-variant/30 rounded-xl px-3.5 py-2.5 text-on-surface text-sm outline-none font-mono focus:border-primary transition-colors"
                 />
               </Field>
 
@@ -234,7 +234,7 @@ export function TeamTab() {
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
                   placeholder="••••••••••••"
-                  className="w-full bg-paper dark:bg-abyss border border-line dark:border-edge rounded-lg px-3 py-2 text-ink dark:text-bone text-sm outline-none font-mono focus:border-accent dark:focus:border-ember"
+                  className="w-full bg-surface-container-low border border-outline-variant/30 rounded-xl px-3.5 py-2.5 text-on-surface text-sm outline-none font-mono focus:border-primary transition-colors"
                 />
               </Field>
 
@@ -242,7 +242,7 @@ export function TeamTab() {
                 <select
                   value={newRole}
                   onChange={(e) => setNewRole(e.target.value)}
-                  className="w-full bg-paper dark:bg-abyss border border-line dark:border-edge rounded-lg px-3 py-2 text-ink dark:text-bone text-sm outline-none font-mono focus:border-accent dark:focus:border-ember"
+                  className="w-full bg-surface-container-low border border-outline-variant/30 rounded-xl px-3.5 py-2.5 text-on-surface text-sm outline-none font-mono focus:border-primary transition-colors cursor-pointer"
                 >
                   <option value="operator">Technician (Deploy, Backup, Restart)</option>
                   <option value="viewer">Viewer (Read-only)</option>
@@ -250,11 +250,11 @@ export function TeamTab() {
                 </select>
               </Field>
 
-              <div className="flex justify-end gap-2 pt-4 border-t border-line dark:border-edge">
+              <div className="flex justify-end gap-2.5 pt-4 border-t border-outline-variant/20">
                 <button
                   type="button"
                   onClick={() => setShowAddModal(false)}
-                  className="px-4 py-2 text-sm text-muted dark:text-fog hover:text-ink dark:hover:text-bone border border-line dark:border-edge rounded-lg cursor-pointer"
+                  className="px-5 py-2 text-sm text-on-surface-variant hover:text-on-surface border border-outline-variant/30 rounded-full cursor-pointer bg-surface-container-low hover:bg-surface-container transition-colors"
                 >
                   Cancel
                 </button>

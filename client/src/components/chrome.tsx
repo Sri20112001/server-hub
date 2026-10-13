@@ -5,6 +5,7 @@ import {
   AlertTriangle,
   ClipboardList,
   Database,
+  DatabaseBackup,
   Files,
   FolderGit2,
   LayoutGrid,
@@ -91,6 +92,12 @@ function CommandPalette({ onClose }: { onClose: () => void }) {
         title: "File Transfers",
         sub: "page",
         run: () => nav("/transfers"),
+      },
+      {
+        icon: <DatabaseBackup size={15} />,
+        title: "Database Backups",
+        sub: "page",
+        run: () => nav("/db-backups"),
       },
       {
         icon: <Server size={15} />,
@@ -244,32 +251,47 @@ export function AppShell({ online }: { online: boolean }) {
     }
   };
 
-  const dockBtn = (active: boolean) =>
-    `relative w-11 h-11 rounded-full flex items-center justify-center bg-transparent border-0 cursor-pointer hover:bg-paper dark:hover:bg-emboss hover:text-ink dark:hover:text-bone ${
-      active ? "text-ink dark:text-bone" : "text-muted dark:text-fog"
-    }`;
+  const dockItem = (path: string, label: string, icon: React.ReactNode, exact = false) => {
+    const active = exact ? loc.pathname === path : loc.pathname.startsWith(path);
+    return (
+      <button
+        onClick={() => onDock(path)}
+        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full transition-all cursor-pointer border-0 text-[13px] font-medium ${
+          active
+            ? "bg-surface-container-high dark:bg-emboss text-primary dark:text-ember font-semibold shadow-sm"
+            : "bg-transparent text-on-surface-variant dark:text-fog hover:text-on-surface dark:hover:text-bone hover:bg-surface-container-low dark:hover:bg-emboss/50"
+        }`}
+        aria-label={label}
+        title={label}
+      >
+        <span className="shrink-0 flex">{icon}</span>
+        <span className="hidden md:inline">{label}</span>
+      </button>
+    );
+  };
 
   return (
     <>
       <Brand />
       <button
-        className="bg-white dark:bg-panel border border-line dark:border-edge rounded-full shadow-chrome fixed top-3 sm:top-5 left-1/2 -translate-x-1/2 z-40 flex items-center justify-between gap-2 h-[42px] pl-4 pr-2 w-[calc(100vw-9.5rem)] min-w-0 min-[420px]:w-[calc(100vw-12rem)] sm:w-auto sm:min-w-[480px] text-muted dark:text-fog text-[13px] cursor-pointer hover:border-accent dark:hover:border-ember"
+        className="bg-surface-container-lowest/90 dark:bg-panel backdrop-blur-md border border-outline-variant/30 dark:border-edge rounded-full shadow-[0_4px_20px_rgba(15,23,42,0.06)] fixed top-3 sm:top-5 left-1/2 -translate-x-1/2 z-40 flex items-center justify-between gap-2 h-[42px] pl-4 pr-2 w-[calc(100vw-9.5rem)] min-w-0 min-[420px]:w-[calc(100vw-12rem)] sm:w-auto sm:min-w-[440px] text-on-surface-variant dark:text-fog text-[13px] cursor-pointer hover:border-primary/50 transition-all"
         onClick={() => setPaletteOpen(true)}
         aria-label="Search projects, pages, and actions"
       >
         <div className="flex items-center justify-center gap-2.5 min-w-0">
-          <Search size={15} className="shrink-0" />
-          <span className="truncate hidden min-[420px]:inline">Search projects, servers, or press</span>
-          <span className="truncate min-[420px]:hidden">Search…</span>
+          <Search size={15} className="shrink-0 text-outline" />
+          <span className="truncate hidden min-[420px]:inline font-normal">Search services, servers, actions…</span>
+          <span className="truncate min-[420px]:hidden font-normal">Search…</span>
         </div>
 
-        <span className="hidden sm:flex items-center justify-center font-mono text-[11px] bg-paper dark:bg-abyss border border-line dark:border-edge rounded-md px-2.5 py-1.5 text-muted dark:text-fog">
+        <span className="hidden sm:flex items-center justify-center font-mono text-[11px] bg-surface-container dark:bg-abyss border border-outline-variant/20 dark:border-edge rounded-md px-2 py-1 text-on-surface-variant dark:text-fog">
           ⌘ K
         </span>
       </button>
+
       <div className="fixed top-3 sm:top-5 right-3 sm:right-6 z-40 flex items-center gap-2">
         <button
-          className="bg-white dark:bg-panel border border-line dark:border-edge rounded-full shadow-chrome w-[42px] h-[42px] flex items-center justify-center text-muted dark:text-fog hover:text-ink dark:hover:text-bone cursor-pointer shrink-0"
+          className="bg-surface-container-lowest/90 dark:bg-panel backdrop-blur-md border border-outline-variant/30 dark:border-edge rounded-full shadow-sm w-[42px] h-[42px] flex items-center justify-center text-on-surface-variant dark:text-fog hover:text-on-surface dark:hover:text-bone cursor-pointer shrink-0 transition-colors"
           title={
             theme === "cyberdeck"
               ? "Switch to light mode"
@@ -283,18 +305,20 @@ export function AppShell({ online }: { online: boolean }) {
           {theme === "cyberdeck" ? <Sun size={16} /> : <Moon size={16} />}
         </button>
         <div
-          className="bg-white dark:bg-panel border border-line dark:border-edge rounded-full shadow-chrome flex items-center gap-2 h-[42px] px-3 sm:px-4 font-mono text-xs shrink-0"
+          className="bg-surface-container-lowest/90 dark:bg-panel backdrop-blur-md border border-outline-variant/30 dark:border-edge rounded-full shadow-sm flex items-center gap-2 h-[42px] px-3.5 font-mono text-xs shrink-0"
           title={online ? "Connected" : "Disconnected"}
         >
           <span
             className={
               online
-                ? "w-2 h-2 rounded-full bg-moss shadow-[0_0_0_3px_rgba(22,163,74,0.18)]"
-                : "w-2 h-2 rounded-full bg-brick shadow-[0_0_0_3px_rgba(220,38,38,0.15)]"
+                ? "w-2 h-2 rounded-full bg-secondary shadow-[0_0_0_3px_rgba(0,108,73,0.18)]"
+                : "w-2 h-2 rounded-full bg-error shadow-[0_0_0_3px_rgba(186,26,26,0.15)]"
             }
           />
-          <span className="hidden sm:inline">{online ? "Online" : "Offline"}</span>
-          <span className="sr-only">{online ? "Online" : "Offline"}</span>
+          <span className="hidden sm:inline font-sans font-medium text-on-surface dark:text-bone text-[12px]">
+            {online ? "Operational" : "Offline"}
+          </span>
+          <span className="sr-only">{online ? "Operational" : "Offline"}</span>
         </div>
       </div>
 
@@ -302,110 +326,43 @@ export function AppShell({ online }: { online: boolean }) {
         <Outlet />
       </div>
 
+      {/* Serene Operations Floating Pill Dock */}
       <nav
-        className="bg-white dark:bg-panel border border-line dark:border-edge rounded-full shadow-chrome fixed bottom-4 sm:bottom-6 left-1/2 -translate-x-1/2 z-40 flex items-center gap-0.5 sm:gap-1 px-2 sm:px-3 py-2 max-w-[calc(100vw-1rem)] overflow-x-auto [padding-bottom:calc(0.5rem+env(safe-area-inset-bottom,0px))]"
+        className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-1 sm:gap-1.5 px-3.5 py-1.5 bg-surface-container-lowest/90 dark:bg-panel/95 backdrop-blur-md rounded-full shadow-[0_8px_30px_rgba(15,23,42,0.08)] border border-outline-variant/30 dark:border-edge max-w-[calc(100vw-1.5rem)] overflow-x-auto [padding-bottom:calc(0.4rem+env(safe-area-inset-bottom,0px))]"
         aria-label="Primary"
       >
+        {dockItem("/", "Home", <LayoutGrid size={17} />, true)}
+        {dockItem("/servers", "Servers", <Server size={17} />)}
+        {dockItem("/db-backups", "Backups", <DatabaseBackup size={17} />)}
+        {dockItem("/transfers", "Uploads", <Files size={17} />)}
+        {dockItem("/audit", "Activity", <Activity size={17} />)}
+
+        <div className="h-4 w-px bg-outline-variant/40 dark:bg-edge mx-1 shrink-0" />
+
         <button
-          className={dockBtn(loc.pathname === "/")}
-          title="Dashboard"
-          aria-label="Dashboard"
-          onClick={() => onDock("/")}
+          onClick={() => setPaletteOpen(true)}
+          className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-surface-container-low dark:bg-emboss/60 text-on-surface-variant dark:text-fog hover:text-on-surface dark:hover:text-bone hover:bg-surface-container dark:hover:bg-emboss transition-all cursor-pointer border-0 text-[12px] shrink-0"
+          type="button"
+          aria-label="Search command palette"
         >
-          <LayoutGrid size={19} />
-          {loc.pathname === "/" && (
-            <span className="absolute bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-accent dark:bg-ember" />
-          )}
+          <Search size={13} className="shrink-0" />
+          <span className="hidden sm:inline font-medium">Search</span>
+          <kbd className="text-[10px] px-1 py-0.5 rounded bg-surface-container-highest dark:bg-abyss text-on-surface-variant dark:text-fog font-mono font-medium">
+            ⌘K
+          </kbd>
         </button>
+
         <button
-          className={dockBtn(loc.pathname.startsWith("/servers"))}
-          title="Servers"
-          aria-label="Servers"
-          onClick={() => onDock("/servers")}
-        >
-          <Server size={19} />
-          {loc.pathname.startsWith("/servers") && (
-            <span className="absolute bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-accent dark:bg-ember" />
-          )}
-        </button>
-        <button
-          className={dockBtn(loc.pathname === "/alerts")}
-          title="Alerts"
-          aria-label="Alerts"
-          onClick={() => onDock("/alerts")}
-        >
-          <AlertTriangle size={19} />
-          {loc.pathname === "/alerts" && (
-            <span className="absolute bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-accent dark:bg-ember" />
-          )}
-        </button>
-        <button
-          className={dockBtn(loc.pathname === "/databases")}
-          title="Databases"
-          aria-label="Databases"
-          onClick={() => onDock("/databases")}
-        >
-          <Database size={19} />
-          {loc.pathname === "/databases" && (
-            <span className="absolute bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-accent dark:bg-ember" />
-          )}
-        </button>
-        <button
-          className={dockBtn(loc.pathname === "/telemetry")}
-          title="Telemetry"
-          aria-label="Telemetry"
-          onClick={() => onDock("/telemetry")}
-        >
-          <Activity size={19} />
-          {loc.pathname === "/telemetry" && (
-            <span className="absolute bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-accent dark:bg-ember" />
-          )}
-        </button>
-        <button
-          className={dockBtn(loc.pathname === "/monitoring")}
-          title="Monitoring"
-          aria-label="Monitoring"
-          onClick={() => onDock("/monitoring")}
-        >
-          <BarChart2 size={19} />
-          {loc.pathname === "/monitoring" && (
-            <span className="absolute bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-accent dark:bg-ember" />
-          )}
-        </button>
-        <button
-          className={dockBtn(loc.pathname === "/transfers")}
-          title="File Transfers"
-          aria-label="File Transfers"
-          onClick={() => onDock("/transfers")}
-        >
-          <Files size={19} />
-          {loc.pathname === "/transfers" && (
-            <span className="absolute bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-accent dark:bg-ember" />
-          )}
-        </button>
-        <button
-          className={dockBtn(loc.pathname === "/settings")}
-          title="Settings"
-          aria-label="Settings"
-          onClick={() => onDock("/settings")}
-        >
-          <SlidersHorizontal size={19} />
-          {loc.pathname === "/settings" && (
-            <span className="absolute bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-accent dark:bg-ember" />
-          )}
-        </button>
-        <span className="w-px h-6 bg-line dark:bg-edge mx-1.5" />
-        <button
-          className="relative w-11 h-11 rounded-full flex items-center justify-center bg-transparent border-0 cursor-pointer text-muted dark:text-fog hover:bg-paper dark:hover:bg-emboss hover:text-ink dark:hover:text-bone"
+          className="w-8 h-8 rounded-full flex items-center justify-center bg-transparent border-0 cursor-pointer text-on-surface-variant dark:text-fog hover:bg-surface-container-low dark:hover:bg-emboss hover:text-on-surface dark:hover:text-bone transition-colors shrink-0 ml-0.5"
           title={user ? `Sign out ${user.username}` : "Sign out"}
           aria-label="Sign out"
           onClick={async () => {
             await logout();
-            pushToast("Signed out. Fair winds.");
+            pushToast("Signed out. Have a calm day.");
             nav("/login");
           }}
         >
-          <LogOut size={19} />
+          <LogOut size={16} />
         </button>
       </nav>
 

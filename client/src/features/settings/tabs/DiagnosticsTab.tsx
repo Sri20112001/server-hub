@@ -38,48 +38,48 @@ export function DiagnosticsTab({ info, apiUrl }: DiagnosticsTabProps) {
         </div>
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <div className="bg-paper dark:bg-emboss/40 border border-line dark:border-edge rounded-xl px-5 py-4">
+          <div className="bg-surface-container-low border border-outline-variant/20 rounded-2xl px-5 py-4">
             <Kicker>API Endpoint URL</Kicker>
-            <div className="font-mono text-sm mt-2 truncate text-ink dark:text-bone">{apiUrl}</div>
-            <p className="text-[11px] text-muted dark:text-fog mt-1">Base URL used for agent telemetry ingestion</p>
+            <div className="font-mono text-sm mt-2 truncate text-on-surface font-semibold">{apiUrl}</div>
+            <p className="text-[11px] text-on-surface-variant mt-1">Base URL used for agent telemetry ingestion</p>
           </div>
 
-          <div className="bg-paper dark:bg-emboss/40 border border-line dark:border-edge rounded-xl px-5 py-4">
+          <div className="bg-surface-container-low border border-outline-variant/20 rounded-2xl px-5 py-4">
             <div className="flex items-center justify-between gap-4">
               <Kicker>Docker Daemon Socket</Kicker>
               <span
-                className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-mono font-medium ${
+                className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-mono font-medium ${
                   info?.dockerAvailable
-                    ? "bg-moss/10 text-moss border border-moss/30"
-                    : "bg-stone/10 text-stone border border-stone/30"
+                    ? "bg-primary/10 text-primary border border-primary/30"
+                    : "bg-surface-container-high text-on-surface-variant border border-outline-variant/30"
                 }`}
               >
-                <span className={`w-1.5 h-1.5 rounded-full ${info?.dockerAvailable ? "bg-moss" : "bg-stone"}`} />
+                <span className={`w-1.5 h-1.5 rounded-full ${info?.dockerAvailable ? "bg-primary" : "bg-outline"}`} />
                 {info?.dockerAvailable ? "Ready" : "Unavailable"}
               </span>
             </div>
-            <div className="font-mono text-sm mt-2 truncate text-ink dark:text-bone">
+            <div className="font-mono text-sm mt-2 truncate text-on-surface font-semibold">
               {info ? (info.dockerAvailable ? "/var/run/docker.sock · live" : "unreachable") : "probing…"}
             </div>
-            <p className="text-[11px] text-muted dark:text-fog mt-1">Host socket mounted for container discovery</p>
+            <p className="text-[11px] text-on-surface-variant mt-1">Host socket mounted for container discovery</p>
           </div>
 
-          <div className="bg-paper dark:bg-emboss/40 border border-line dark:border-edge rounded-xl px-5 py-4">
+          <div className="bg-surface-container-low border border-outline-variant/20 rounded-2xl px-5 py-4">
             <Kicker>Hub Process Uptime</Kicker>
-            <div className="font-mono text-sm mt-2 text-ink dark:text-bone">{info ? fmtUptime(info.uptimeSec) : "—"}</div>
-            <p className="text-[11px] text-muted dark:text-fog mt-1">Elapsed runtime since last appliance restart</p>
+            <div className="font-mono text-sm mt-2 text-on-surface font-semibold">{info ? fmtUptime(info.uptimeSec) : "—"}</div>
+            <p className="text-[11px] text-on-surface-variant mt-1">Elapsed runtime since last appliance restart</p>
           </div>
 
-          <div className="bg-paper dark:bg-emboss/40 border border-line dark:border-edge rounded-xl px-5 py-4">
+          <div className="bg-surface-container-low border border-outline-variant/20 rounded-2xl px-5 py-4">
             <Kicker>Container Summary</Kicker>
-            <div className="font-mono text-sm mt-2 truncate text-ink dark:text-bone">
+            <div className="font-mono text-sm mt-2 truncate text-on-surface font-semibold">
               {info
                 ? `${info.projects} projects · ${info.services} services · ${
                     info.runningContainers < 0 ? "?" : info.runningContainers
                   } running`
                 : "—"}
             </div>
-            <p className="text-[11px] text-muted dark:text-fog mt-1">Live active containers tracked by Docker engine</p>
+            <p className="text-[11px] text-on-surface-variant mt-1">Live active containers tracked by Docker engine</p>
           </div>
         </div>
       </GlassCard>

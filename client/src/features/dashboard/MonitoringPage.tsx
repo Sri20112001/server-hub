@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Activity, AlertTriangle, CheckCircle, RefreshCw, Server, Wifi, WifiOff, XCircle } from "lucide-react";
+import { Activity, AlertTriangle, CheckCircle, RefreshCw, Wifi, WifiOff, XCircle } from "lucide-react";
 import { api } from "../../lib/api";
 import type { AmAlert, AmSilence, MonitoringOverview, PromRangeResult, PromTarget, PromTargetsData } from "../../lib/types";
 import { Kicker, Modal, Field } from "../../components/ui";
@@ -678,31 +678,37 @@ export function MonitoringPage() {
   const [tab, setTab] = useState<Tab>("dashboard");
 
   return (
-    <main className="w-full max-w-7xl mx-auto px-10 max-md:px-4 pt-24 pb-36">
-      <div className="flex items-end justify-between gap-4 flex-wrap mb-8">
+    <main className="w-full max-w-5xl mx-auto px-6 pt-12 pb-28">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-8">
         <div>
-          <h1 className="font-head text-[32px] font-bold tracking-[-0.03em] leading-[1.2] max-md:text-[26px]">
-            Monitoring.
+          <div className="flex items-center gap-2 mb-1.5">
+            <span className="inline-flex items-center justify-center w-6 h-6 rounded-md bg-primary/10 text-primary">
+              <Activity size={15} />
+            </span>
+            <span className="text-[11px] font-semibold text-outline uppercase tracking-wider">Metrics & Targets</span>
+          </div>
+          <h1 className="text-[32px] sm:text-[36px] font-bold text-on-surface tracking-tight leading-tight">
+            Monitoring
           </h1>
-          <p className="text-muted dark:text-fog mt-1.5">
-            Prometheus metrics · Alertmanager alerts
+          <p className="text-[15px] text-on-surface-variant max-w-xl mt-1">
+            Prometheus scrape targets, Alertmanager active rules, and cluster telemetry.
           </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Server size={14} className="text-muted dark:text-fog" />
-          <Activity size={14} className="text-muted dark:text-fog" />
         </div>
       </div>
 
-      <div className="flex items-center gap-1 mb-6 border-b border-line dark:border-edge">
+      {/* Contextual Pill Segments */}
+      <div className="flex items-center overflow-x-auto pb-1 gap-1 p-1 bg-surface-container rounded-full max-w-fit shadow-inner mb-6" role="tablist">
         {TABS.map(t => (
           <button
             key={t.id}
+            role="tab"
+            aria-selected={tab === t.id}
             onClick={() => setTab(t.id)}
-            className={`px-4 py-2.5 text-[13px] font-medium border-b-2 -mb-px cursor-pointer bg-transparent transition-colors ${
+            className={`px-4 py-1.5 rounded-full text-[13px] font-medium transition-all cursor-pointer border-0 whitespace-nowrap ${
               tab === t.id
-                ? "border-accent dark:border-ember text-ink dark:text-bone"
-                : "border-transparent text-muted dark:text-fog hover:text-ink dark:hover:text-bone"
+                ? "bg-surface-container-lowest text-primary font-semibold shadow-sm"
+                : "text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high"
             }`}
           >
             {t.label}

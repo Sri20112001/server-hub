@@ -133,44 +133,54 @@ export function AlertsPage() {
   }
 
   return (
-    <main className="w-full max-w-7xl mx-auto px-10 max-md:px-4 pt-24 pb-36">
-      <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
+    <main className="w-full max-w-5xl mx-auto px-6 pt-12 pb-28">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-8">
         <div>
+          <div className="flex items-center gap-2 mb-1.5">
+            <span className="inline-flex items-center justify-center w-6 h-6 rounded-md bg-primary/10 text-primary">
+              <AlertTriangle size={15} />
+            </span>
+            <span className="text-[11px] font-semibold text-outline uppercase tracking-wider">Signals & Incidents</span>
+          </div>
           <div className="flex items-center gap-3">
-            <AlertTriangle size={22} className="text-accent dark:text-ember" />
-            <h1 className="font-head text-[24px] font-bold text-ink dark:text-bone tracking-[-0.02em]">Alerts</h1>
+            <h1 className="text-[32px] sm:text-[36px] font-bold text-on-surface tracking-tight leading-tight">Alerts</h1>
             {triggered.length > 0 && (
-              <span className="bg-brick text-white text-xs font-bold px-2.5 py-0.5 rounded-full font-mono shadow-sm">
+              <span className="bg-error text-white text-[12px] font-semibold px-2.5 py-0.5 rounded-full font-mono shadow-sm">
                 {triggered.length} active
               </span>
             )}
           </div>
-          <p className="text-muted dark:text-fog text-xs mt-1 font-mono">
-            Problems that need attention, plus what happened before
+          <p className="text-[15px] text-on-surface-variant max-w-xl mt-1">
+            Actionable system warnings, thresholds breached, and historical resolution logs.
           </p>
         </div>
         <button
           onClick={() => void refetch()}
-          className="w-9 h-9 rounded-full bg-white dark:bg-panel border border-line dark:border-edge flex items-center justify-center text-muted dark:text-fog hover:text-ink dark:hover:text-bone shadow-sm cursor-pointer"
+          className="w-10 h-10 rounded-full bg-surface-container-lowest border border-outline-variant/30 flex items-center justify-center text-on-surface-variant hover:text-on-surface shadow-sm cursor-pointer transition-colors"
           aria-label="Refresh"
+          type="button"
         >
           <RefreshCw size={15} />
         </button>
       </div>
 
-      <div className="grid grid-cols-3 gap-1 p-1 rounded-card bg-paper dark:bg-abyss border border-line dark:border-edge mb-6 w-full sm:max-w-xs">
+      {/* Contextual Pill Segments */}
+      <div className="flex items-center overflow-x-auto pb-1 gap-1 p-1 bg-surface-container rounded-full max-w-fit shadow-inner mb-6" role="tablist">
         {([
-          { key: "TRIGGERED", label: "Active" },
-          { key: "RESOLVED", label: "Resolved" },
-          { key: "", label: "All" },
+          { key: "TRIGGERED", label: `Active (${triggered.length})` },
+          { key: "RESOLVED", label: `Resolved (${resolved.length})` },
+          { key: "", label: `All (${alerts.length})` },
         ] as const).map((t) => (
           <button
             key={t.key || "all"}
+            role="tab"
+            aria-selected={tab === t.key}
             onClick={() => setTab(t.key)}
-            className={`px-3 py-1.5 rounded-lg text-xs font-mono transition-colors cursor-pointer border ${
+            className={`px-4 py-1.5 rounded-full text-[13px] font-medium transition-all cursor-pointer border-0 whitespace-nowrap ${
               tab === t.key
-                ? "bg-white dark:bg-panel border-line dark:border-edge text-ink dark:text-bone font-semibold shadow-sm"
-                : "bg-transparent border-transparent text-muted dark:text-fog hover:text-ink dark:hover:text-bone"
+                ? "bg-surface-container-lowest text-primary font-semibold shadow-sm"
+                : "text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high"
             }`}
           >
             {t.label}
@@ -180,20 +190,22 @@ export function AlertsPage() {
 
       {isLoading && (
         <div className="space-y-3">
-          {[1, 2, 3].map((i) => <div key={i} className="h-24 bg-white dark:bg-panel border border-line dark:border-edge rounded-card animate-pulse shadow-sm" />)}
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="h-24 bg-surface-container-lowest rounded-2xl animate-pulse shadow-sm border border-outline-variant/20" />
+          ))}
         </div>
       )}
 
       {!isLoading && shown.length === 0 && (
-        <div className="text-center py-16 bg-paper dark:bg-abyss border border-line dark:border-edge rounded-card px-4">
-          <CheckCircle size={40} className="mx-auto mb-3 opacity-30 text-moss" />
-          <p className="text-sm font-medium text-ink dark:text-bone">
+        <div className="text-center py-16 bg-surface-container-low rounded-2xl border border-outline-variant/20 px-4">
+          <CheckCircle size={40} className="mx-auto mb-3 text-secondary opacity-60" />
+          <p className="text-[15px] font-semibold text-on-surface">
             {tab === "TRIGGERED" ? "No active alerts." : tab === "RESOLVED" ? "No resolved alerts yet." : "No alerts at all."}
           </p>
-          <p className="text-xs text-muted dark:text-fog mt-1">
+          <p className="text-[13px] text-on-surface-variant mt-1">
             {tab === "RESOLVED"
-              ? "Past problems will appear here with how long they lasted."
-              : "Everything being watched is working normally."}
+              ? "Past problems will appear here with duration and timestamps."
+              : "All system parameters and watched nodes are operating normally."}
           </p>
         </div>
       )}

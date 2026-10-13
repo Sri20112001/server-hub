@@ -9,34 +9,80 @@
    rounded-card, shadow-chrome are generated from this theme. */
 
 @theme {
-  --color-paper: #faf7f0;
-  --color-ink: #1c1917;
-  --color-muted: #78716c;
-  --color-line: #e7e0d3;
-  --color-accent: #ea580c;
-  --color-accent-hover: #c2410c;
-  --color-accent-deep: #a33900;
-  --color-moss: #16a34a;
-  --color-status-amber: #d97706;
-  --color-brick: #dc2626;
-  --color-stone: #a8a29e;
-  --color-sky: #e0f2f1;
-  --color-butter: #fef3c7;
-  --color-tint: #f6ece6;
-  --color-skel: #eae1da;
+  --color-paper: #faf8ff;
+  --color-ink: #131b2e;
+  --color-muted: #434655;
+  --color-line: #e2e7ff;
+  --color-accent: #004ac6;
+  --color-accent-hover: #003ea8;
+  --color-accent-deep: #00174b;
+  --color-moss: #006c49;
+  --color-status-amber: #784b00;
+  --color-brick: #ba1a1a;
+  --color-stone: #737686;
+  --color-sky: #f2f3ff;
+  --color-butter: #ffddb8;
+  --color-tint: #eaedff;
+  --color-skel: #dae2fd;
+
+  /* Serene Operations Design Tokens */
+  --color-surface: #faf8ff;
+  --color-surface-dim: #d2d9f4;
+  --color-surface-bright: #faf8ff;
+  --color-surface-container-lowest: #ffffff;
+  --color-surface-container-low: #f2f3ff;
+  --color-surface-container: #eaedff;
+  --color-surface-container-high: #e2e7ff;
+  --color-surface-container-highest: #dae2fd;
+  --color-on-surface: #131b2e;
+  --color-on-surface-variant: #434655;
+  --color-inverse-surface: #283044;
+  --color-inverse-on-surface: #eef0ff;
+  --color-outline: #737686;
+  --color-outline-variant: #c3c6d7;
+  --color-surface-tint: #0053db;
+  --color-primary: #004ac6;
+  --color-on-primary: #ffffff;
+  --color-primary-container: #2563eb;
+  --color-on-primary-container: #eeefff;
+  --color-inverse-primary: #b4c5ff;
+  --color-secondary: #006c49;
+  --color-on-secondary: #ffffff;
+  --color-secondary-container: #6cf8bb;
+  --color-on-secondary-container: #00714d;
+  --color-tertiary: #784b00;
+  --color-on-tertiary: #ffffff;
+  --color-tertiary-container: #996100;
+  --color-on-tertiary-container: #ffeedd;
+  --color-error: #ba1a1a;
+  --color-on-error: #ffffff;
+  --color-error-container: #ffdad6;
+  --color-on-error-container: #93000a;
+  --color-primary-fixed: #dbe1ff;
+  --color-primary-fixed-dim: #b4c5ff;
+  --color-on-primary-fixed: #00174b;
+  --color-on-primary-fixed-variant: #003ea8;
+  --color-secondary-fixed: #6ffbbe;
+  --color-secondary-fixed-dim: #4edea3;
+  --color-on-secondary-fixed: #002113;
+  --color-on-secondary-fixed-variant: #005236;
+  --color-tertiary-fixed: #ffddb8;
+  --color-tertiary-fixed-dim: #ffb95f;
+  --color-on-tertiary-fixed: #2a1700;
+  --color-on-tertiary-fixed-variant: #653e00;
 
   /* Cyberdeck Night tokens */
-  --color-abyss: #121316;
-  --color-panel: #1b1e22;
-  --color-emboss: #24272c;
-  --color-bone: #ece7df;
-  --color-fog: #a39c90;
-  --color-edge: #2c3036;
-  --color-ember: #f59e0b;
-  --color-ember-hover: #d97706;
-  --color-danger-night: #251a10;
+  --color-abyss: #0f172a;
+  --color-panel: #1e293b;
+  --color-emboss: #334155;
+  --color-bone: #f8fafc;
+  --color-fog: #94a3b8;
+  --color-edge: #334155;
+  --color-ember: #38bdf8;
+  --color-ember-hover: #0284c7;
+  --color-danger-night: #3b0764;
 
-  --font-head: "Space Grotesk", system-ui, sans-serif;
+  --font-head: "Inter", system-ui, sans-serif;
   --font-body: "Inter", system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
 
@@ -44,8 +90,8 @@
   --radius-input: 10px;
 
   --shadow-chrome:
-    0 4px 12px rgba(28, 25, 23, 0.06),
-    0 1px 2px rgba(28, 25, 23, 0.04);
+    0 8px 30px rgba(15, 23, 42, 0.08),
+    0 1px 3px rgba(15, 23, 42, 0.04);
 }
 
 html {
@@ -143,11 +189,10 @@ a { color: inherit; }
   }
 
   body {
-    background-image: url("./assets/tech-grid.png");
-    background-repeat: repeat;
-    background-attachment: fixed;
-    /* Optional: blend mode to make it subtle */
-    background-blend-mode: overlay;
+    background-color: var(--color-surface);
+  }
+  .dark body {
+    background-color: var(--color-abyss);
   }
 
   /* Responsive media defaults: never overflow narrow viewports. */

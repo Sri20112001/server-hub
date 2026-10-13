@@ -259,39 +259,42 @@ export function TelemetryPage() {
   }, [points]);
 
   return (
-    <main className="w-full max-w-7xl mx-auto px-10 max-md:px-4 pt-24 pb-36">
-      <div className="flex items-end justify-between gap-4 flex-wrap mb-8">
+    <main className="w-full max-w-5xl mx-auto px-6 pt-12 pb-28">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-8">
         <div>
-          <h1 className="font-head text-[32px] capitalize font-bold tracking-[-0.03em] leading-[1.2] max-md:text-[26px]">
-            Telemetry.
+          <div className="flex items-center gap-2 mb-1.5">
+            <span className="inline-flex items-center justify-center w-6 h-6 rounded-md bg-primary/10 text-primary">
+              <span className="font-mono text-xs font-bold">~</span>
+            </span>
+            <span className="text-[11px] font-semibold text-outline uppercase tracking-wider">Host Observability</span>
+          </div>
+          <h1 className="text-[32px] sm:text-[36px] font-bold text-on-surface tracking-tight leading-tight">
+            Host Telemetry
           </h1>
-          <p className="text-muted dark:text-fog mt-1.5">
-            Host resources and metrics
+          <p className="text-[15px] text-on-surface-variant max-w-xl mt-1">
+            Real-time host compute, memory, storage utilization, and network throughput curves.
           </p>
         </div>
-      </div>
 
-      <div className="flex items-center gap-2 flex-wrap mb-4">
-        <p className="text-muted dark:text-fog text-[13px]">
-          One sample per minute, kept for 7 days. Ranges switch the charts.
-        </p>
-      </div>
-      <div className="grid grid-cols-4 gap-1 p-1 rounded-card bg-paper dark:bg-abyss border border-line dark:border-edge mb-8 w-full sm:max-w-sm">
-        {RANGES.map((r) => (
-          <button
-            key={r}
-            type="button"
-            onClick={() => setRange(r)}
-            aria-pressed={range === r}
-            className={`px-3 py-2 rounded-lg font-mono text-[12px] cursor-pointer border transition-colors duration-150 ${
-              range === r
-                ? "bg-white dark:bg-panel text-ink dark:text-bone border-line dark:border-edge shadow-sm"
-                : "bg-transparent text-muted dark:text-fog border-transparent hover:text-ink dark:hover:text-bone"
-            }`}
-          >
-            {r}
-          </button>
-        ))}
+        {/* Time range pill segment */}
+        <div className="flex items-center gap-1 p-1 bg-surface-container rounded-full max-w-fit shadow-inner">
+          {RANGES.map((r) => (
+            <button
+              key={r}
+              type="button"
+              onClick={() => setRange(r)}
+              aria-pressed={range === r}
+              className={`px-3.5 py-1 rounded-full text-[12px] font-medium transition-all cursor-pointer border-0 ${
+                range === r
+                  ? "bg-surface-container-lowest text-primary font-semibold shadow-sm"
+                  : "text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high"
+              }`}
+            >
+              {r}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="flex flex-col gap-6">
