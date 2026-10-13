@@ -16,6 +16,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -27,6 +28,14 @@ type FileService struct {
 	maxUploadSize int64
 	chunkMu       sync.Mutex
 	chunks        map[string][]string // uploadID → ordered tmp chunk paths
+	// opMu serializes the check-then-act windows of finalizing operations
+	// (upload finalize, rename, move, trash restore): existence check and
+	// rename run as one critical section so a concurrent same-process
+	// operation can never slip a file in between and get silently
+	// replaced. Cross-process file races are closed by renameNoReplace's
+	// atomic link; streaming (uploads, chunks, copies) stays outside the
+	// lock so unrelated operations never block each other.
+	opMu sync.Mutex
 }
 
 func NewFileService(root string, maxUploadSize int64) *FileService {
@@ -36,6 +45,12 @@ func NewFileService(root string, maxUploadSize int64) *FileService {
 		chunks:        make(map[string][]string),
 	}
 }
+
+// tmpSeq makes upload temp names unique even when the OS clock resolution
+// is coarser than goroutine scheduling (Windows timers tick ~0.5ms):
+// timestamp-only names collide under burst concurrency and two uploads
+// would stream into one temp file.
+var tmpSeq atomic.Uint64
 
 // validUploadID constrains chunked-upload session IDs to a flat namespace:
 // no separators, no "..", bounded length. Upload IDs arrive from the
@@ -200,16 +215,18 @@ func (s *FileService) SaveUpload(ctx context.Context, destDir, filename string, 
 
 	// Unique temp name: concurrent uploads of the same filename must not
 	// share (and corrupt) one ".tmp" file.
-	tmp := fmt.Sprintf("%s.tmp-%d", destAbs, time.Now().UnixNano())
+	tmp := fmt.Sprintf("%s.tmp-%d-%d", destAbs, time.Now().UnixNano(), tmpSeq.Add(1))
 	f, err := os.Create(tmp)
 	if err != nil {
 		return "", NewError(ErrInternal, "cannot create file")
 	}
 
 	limited := io.LimitReader(src, s.maxUploadSize+1)
-	written, err := io.Copy(f, readerWithContext(ctx, limited))
-	f.Close()
-	if err != nil {
+	written, copyErr := io.Copy(f, readerWithContext(ctx, limited))
+	// A failed close can hide a truncated file (flush errors surface
+	// here), so it fails the upload like a copy error does.
+	closeErr := f.Close()
+	if copyErr != nil || closeErr != nil {
 		_ = os.Remove(tmp)
 		return "", NewError(ErrInternal, "upload failed")
 	}
@@ -218,8 +235,21 @@ func (s *FileService) SaveUpload(ctx context.Context, destDir, filename string, 
 		return "", NewError(ErrFileTooLarge, "file exceeds maximum upload size")
 	}
 
-	if err := os.Rename(tmp, destAbs); err != nil {
+	// Finalize atomically without overwriting: re-check under the op lock
+	// (same-process racers), then link the destination into place
+	// (cross-process racers get FILE_EXISTS, never a silent replace).
+	s.opMu.Lock()
+	defer s.opMu.Unlock()
+	if _, err := os.Stat(destAbs); err == nil {
 		_ = os.Remove(tmp)
+		return "", NewError(ErrFileExists, "file already exists")
+	}
+	if err := renameNoReplace(tmp, destAbs); err != nil {
+		_ = os.Remove(tmp)
+		var appErr *AppError
+		if errors.As(err, &appErr) {
+			return "", err
+		}
 		return "", NewError(ErrInternal, "cannot finalise upload")
 	}
 	return ToClientPath(s.root, destAbs), nil
@@ -238,6 +268,11 @@ func (s *FileService) CreateDirectory(clientPath string) error {
 		return NewError(ErrDirExists, "directory already exists")
 	}
 	if err := os.Mkdir(abs, 0755); err != nil {
+		// Mkdir itself is atomic: a concurrent creator surfaces here as
+		// EEXIST, which maps to "exists", never to a generic failure.
+		if os.IsExist(err) {
+			return NewError(ErrDirExists, "directory already exists")
+		}
 		return NewError(ErrInternal, "cannot create directory")
 	}
 	return nil
@@ -262,10 +297,18 @@ func (s *FileService) Rename(clientPath, newName string) error {
 		return NewError(ErrFileNotFound, "source not found")
 	}
 	newAbs := filepath.Join(filepath.Dir(abs), newName)
+	// Check and rename run locked: otherwise a concurrent operation could
+	// create newAbs in between and be silently replaced (Unix rename).
+	s.opMu.Lock()
+	defer s.opMu.Unlock()
 	if _, err := os.Stat(newAbs); err == nil {
 		return NewError(ErrFileExists, "destination already exists")
 	}
-	if err := os.Rename(abs, newAbs); err != nil {
+	if err := renameNoReplace(abs, newAbs); err != nil {
+		var appErr *AppError
+		if errors.As(err, &appErr) {
+			return err
+		}
 		return NewError(ErrInternal, "rename failed")
 	}
 	return nil
@@ -297,7 +340,17 @@ func (s *FileService) Move(srcPath, dstPath string) error {
 	if strings.HasPrefix(dstAbs+string(filepath.Separator), srcAbs+string(filepath.Separator)) {
 		return NewError(ErrInvalidPath, "cannot move directory into itself")
 	}
-	if err := os.Rename(srcAbs, dstAbs); err != nil {
+	// Locked check-and-move (see Rename): no silent replacement on Unix.
+	s.opMu.Lock()
+	defer s.opMu.Unlock()
+	if _, err := os.Stat(dstAbs); err == nil {
+		return NewError(ErrFileExists, "destination already exists")
+	}
+	if err := renameNoReplace(srcAbs, dstAbs); err != nil {
+		var appErr *AppError
+		if errors.As(err, &appErr) {
+			return err
+		}
 		return NewError(ErrInternal, "move failed")
 	}
 	return nil
@@ -413,8 +466,16 @@ func (s *FileService) TrashList() ([]TrashItem, error) {
 	return items, nil
 }
 
+// validTrashID constrains trash-restore IDs to the server-generated shape
+// (decimal UnixNano). The ID is interpolated into a trash-dir path, so
+// anything looser (e.g. "../x") could address files outside the trash.
+var validTrashID = regexp.MustCompile(`^[0-9]{1,20}$`)
+
 // TrashRestore moves an item from trash back to its original location.
 func (s *FileService) TrashRestore(id string) error {
+	if !validTrashID.MatchString(id) {
+		return NewError(ErrInvalidRequest, "invalid trash id")
+	}
 	trash := s.trashDir()
 	metaPath := filepath.Join(trash, id+".meta")
 	data, err := os.ReadFile(metaPath)
@@ -438,7 +499,18 @@ func (s *FileService) TrashRestore(id string) error {
 	if err := os.MkdirAll(filepath.Dir(destAbs), 0755); err != nil {
 		return NewError(ErrInternal, "cannot create parent directory")
 	}
-	if err := os.Rename(filepath.Join(trash, id), destAbs); err != nil {
+	// Locked check-and-restore (see Rename): a concurrent recreation of
+	// the original path must fail loudly, never be replaced.
+	s.opMu.Lock()
+	defer s.opMu.Unlock()
+	if _, err := os.Stat(destAbs); err == nil {
+		return NewError(ErrFileExists, "destination already exists")
+	}
+	if err := renameNoReplace(filepath.Join(trash, id), destAbs); err != nil {
+		var appErr *AppError
+		if errors.As(err, &appErr) {
+			return err
+		}
 		return NewError(ErrInternal, "restore failed")
 	}
 	_ = os.Remove(metaPath)
@@ -585,8 +657,14 @@ func (s *FileService) SaveChunk(uploadID string, chunkIndex int, src io.Reader) 
 		return NewError(ErrInternal, "cannot create chunk dir")
 	}
 	chunkPath := filepath.Join(tmpDir, fmt.Sprintf("%05d", chunkIndex))
-	f, err := os.Create(chunkPath)
+	// First writer wins: a repeated chunk index errors instead of
+	// silently interleaving two writers' bytes into one chunk file.
+	// Mode 0600 — chunk payloads sit in the shared temp dir until assembly.
+	f, err := os.OpenFile(chunkPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
 	if err != nil {
+		if os.IsExist(err) {
+			return NewError(ErrFileExists, "chunk already received")
+		}
 		return NewError(ErrInternal, "cannot create chunk file")
 	}
 	// Bound a single chunk by the whole-upload budget: a chunk larger

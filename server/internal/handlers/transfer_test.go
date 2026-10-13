@@ -3,6 +3,7 @@ package handlers
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -10,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/bcrypt"
@@ -173,8 +175,13 @@ func TestTransferChunkRBACAndValidation(t *testing.T) {
 		return w
 	}
 
+	// Chunk sessions live in a shared OS temp dir (not the per-test storage
+	// root) and refused/duplicate slots persist there, so fixed IDs would
+	// collide with leftovers from earlier runs. Unique per run.
+	sessA := fmt.Sprintf("sessa-%d", time.Now().UnixNano())
+	sessB := fmt.Sprintf("sessb-%d", time.Now().UnixNano())
 	// Viewer chunk upload is denied (mutations are operator+).
-	if w := chunk("sess-1", "0", viewC, "data"); w.Code != http.StatusForbidden {
+	if w := chunk(sessA, "0", viewC, "data"); w.Code != http.StatusForbidden {
 		t.Fatalf("viewer chunk: want 403, got %d", w.Code)
 	}
 	// Traversal upload_id is rejected even for operators.
@@ -182,23 +189,23 @@ func TestTransferChunkRBACAndValidation(t *testing.T) {
 		t.Fatalf("traversal upload_id: want 400, got %d %s", w.Code, w.Body.String())
 	}
 	// Negative index is rejected.
-	if w := chunk("sess-1", "-1", opC, "data"); w.Code != http.StatusBadRequest {
+	if w := chunk(sessA, "-1", opC, "data"); w.Code != http.StatusBadRequest {
 		t.Fatalf("negative index: want 400, got %d %s", w.Code, w.Body.String())
 	}
 	// Valid chunk round-trip: chunk → finalize → file exists.
-	if w := chunk("sess-1", "0", opC, "chunked-bytes"); w.Code != http.StatusOK {
+	if w := chunk(sessA, "0", opC, "chunked-bytes"); w.Code != http.StatusOK {
 		t.Fatalf("chunk: want 200, got %d %s", w.Code, w.Body.String())
 	}
 	if w := doReq(t, r, "POST", "/api/transfers/files/chunk/finalize",
-		map[string]any{"upload_id": "sess-1", "dest_dir": "/", "filename": "assembled.txt"}, opC); w.Code != http.StatusCreated {
+		map[string]any{"upload_id": sessA, "dest_dir": "/", "filename": "assembled.txt"}, opC); w.Code != http.StatusCreated {
 		t.Fatalf("finalize: want 201, got %d %s", w.Code, w.Body.String())
 	}
 	// Finalize into the trash area is rejected.
-	if w := chunk("sess-2", "0", opC, "x"); w.Code != http.StatusOK {
-		t.Fatalf("chunk sess-2: want 200, got %d", w.Code)
+	if w := chunk(sessB, "0", opC, "x"); w.Code != http.StatusOK {
+		t.Fatalf("chunk sessB: want 200, got %d", w.Code)
 	}
 	if w := doReq(t, r, "POST", "/api/transfers/files/chunk/finalize",
-		map[string]any{"upload_id": "sess-2", "dest_dir": "/.trash", "filename": "x.txt"}, opC); w.Code != http.StatusBadRequest {
+		map[string]any{"upload_id": sessB, "dest_dir": "/.trash", "filename": "x.txt"}, opC); w.Code != http.StatusBadRequest {
 		t.Fatalf("finalize into trash: want 400, got %d %s", w.Code, w.Body.String())
 	}
 }

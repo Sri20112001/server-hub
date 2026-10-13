@@ -114,6 +114,43 @@ func ToClientPath(root, absPath string) string {
 	return "/" + slashed
 }
 
+// renameNoReplace moves src to dst without ever overwriting an existing
+// destination. For files it links dst to src first: the link syscall fails
+// atomically with EEXIST when dst exists (POSIX and Windows/NTFS alike),
+// so dst appears complete in one step and a racing creator can never have
+// its file silently replaced. src is removed only after a successful link.
+// Directories cannot be hard-linked: they fall back to os.Rename, which
+// callers invoke with the destination pre-checked under the service op
+// mutex (same-process writers serialized; Windows rename additionally
+// refuses existing destinations natively). A cross-device or no-hardlink
+// filesystem (bind mounts across devices, FAT/exFAT) takes the same rename
+// fallback instead of failing outright.
+func renameNoReplace(src, dst string) error {
+	if fi, err := os.Stat(src); err == nil && fi.IsDir() {
+		return renameFallback(src, dst)
+	}
+	if err := os.Link(src, dst); err == nil {
+		return os.Remove(src)
+	} else if os.IsExist(err) {
+		return NewError(ErrFileExists, "destination already exists")
+	}
+	// Any other link failure (cross-device bind mounts, FAT/exFAT, other
+	// filesystems without hard links): fall back to rename, which callers
+	// invoke pre-checked under the service op mutex. A genuinely broken
+	// filesystem surfaces its error from the rename itself.
+	return renameFallback(src, dst)
+}
+
+func renameFallback(src, dst string) error {
+	if err := os.Rename(src, dst); err != nil {
+		if os.IsExist(err) {
+			return NewError(ErrFileExists, "destination already exists")
+		}
+		return err
+	}
+	return nil
+}
+
 // CopyFile streams src to dst without loading the whole file into memory.
 // It respects ctx cancellation. O_EXCL guarantees a concurrent create of
 // the same destination fails instead of interleaving two copies.

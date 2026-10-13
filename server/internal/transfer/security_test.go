@@ -3,10 +3,13 @@ package transfer
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 )
 
 // --- chunked-upload session validation -----------------------------------
@@ -67,7 +70,8 @@ func TestSaveChunk_RejectsBadIndex(t *testing.T) {
 func TestSaveChunk_EnforcesChunkCap(t *testing.T) {
 	root := t.TempDir()
 	svc := NewFileService(root, 10) // 10-byte budget
-	if err := svc.SaveChunk("cap-test-1", 0, strings.NewReader("0123456789ABCDEF")); err == nil {
+	sess := sessID("cap")
+	if err := svc.SaveChunk(sess, 0, strings.NewReader("0123456789ABCDEF")); err == nil {
 		t.Fatal("oversize chunk should have been rejected")
 	} else {
 		var appErr *AppError
@@ -76,7 +80,7 @@ func TestSaveChunk_EnforcesChunkCap(t *testing.T) {
 		}
 	}
 	// Rejected chunk must not linger on disk.
-	entries, _ := os.ReadDir(filepath.Join(chunkBaseDir(), "cap-test-1"))
+	entries, _ := os.ReadDir(filepath.Join(chunkBaseDir(), sess))
 	if len(entries) != 0 {
 		t.Errorf("rejected chunk left %d files behind", len(entries))
 	}
@@ -85,14 +89,15 @@ func TestSaveChunk_EnforcesChunkCap(t *testing.T) {
 func TestFinalizeChunk_EnforcesTotalCap(t *testing.T) {
 	root := t.TempDir()
 	svc := NewFileService(root, 10) // 10-byte budget
+	sess := sessID("totalcap")
 	// Each chunk fits the per-chunk cap; the assembled total (16) does not.
-	if err := svc.SaveChunk("total-cap-1", 0, strings.NewReader("12345678")); err != nil {
+	if err := svc.SaveChunk(sess, 0, strings.NewReader("12345678")); err != nil {
 		t.Fatal(err)
 	}
-	if err := svc.SaveChunk("total-cap-1", 1, strings.NewReader("12345678")); err != nil {
+	if err := svc.SaveChunk(sess, 1, strings.NewReader("12345678")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc.FinalizeChunk(context.Background(), "total-cap-1", "/", "big.bin"); err == nil {
+	if _, err := svc.FinalizeChunk(context.Background(), sess, "/", "big.bin"); err == nil {
 		t.Fatal("oversize assembly should have been rejected")
 	} else {
 		var appErr *AppError
@@ -108,13 +113,14 @@ func TestFinalizeChunk_EnforcesTotalCap(t *testing.T) {
 func TestFinalizeChunk_RoundTripUnderCap(t *testing.T) {
 	root := t.TempDir()
 	svc := NewFileService(root, 1024)
-	if err := svc.SaveChunk("roundtrip-1", 0, strings.NewReader("hello-")); err != nil {
+	sess := sessID("roundtrip")
+	if err := svc.SaveChunk(sess, 0, strings.NewReader("hello-")); err != nil {
 		t.Fatal(err)
 	}
-	if err := svc.SaveChunk("roundtrip-1", 1, strings.NewReader("chunked")); err != nil {
+	if err := svc.SaveChunk(sess, 1, strings.NewReader("chunked")); err != nil {
 		t.Fatal(err)
 	}
-	p, err := svc.FinalizeChunk(context.Background(), "roundtrip-1", "/", "out.txt")
+	p, err := svc.FinalizeChunk(context.Background(), sess, "/", "out.txt")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -125,23 +131,24 @@ func TestFinalizeChunk_RoundTripUnderCap(t *testing.T) {
 	if err != nil || string(data) != "hello-chunked" {
 		t.Errorf("assembled content mismatch: %v %q", err, data)
 	}
-	if _, err := os.Stat(filepath.Join(chunkBaseDir(), "roundtrip-1")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(chunkBaseDir(), sess)); !os.IsNotExist(err) {
 		t.Error("chunk dir should be removed after finalize")
 	}
 }
 
 func TestFinalizeChunk_RejectsTraversalAndTrash(t *testing.T) {
 	svc, _ := newSvcForSecurity(t)
-	if err := svc.SaveChunk("fin-guard-1", 0, strings.NewReader("x")); err != nil {
+	sess := sessID("finguard")
+	if err := svc.SaveChunk(sess, 0, strings.NewReader("x")); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := svc.FinalizeChunk(context.Background(), "../../evil", "/", "x.txt"); err == nil {
 		t.Error("traversal upload_id should be rejected")
 	}
-	if _, err := svc.FinalizeChunk(context.Background(), "fin-guard-1", "/.trash", "x.txt"); err == nil {
+	if _, err := svc.FinalizeChunk(context.Background(), sess, "/.trash", "x.txt"); err == nil {
 		t.Error("finalize into trash should be rejected")
 	}
-	if _, err := svc.FinalizeChunk(context.Background(), "fin-guard-1", "/", ".trash"); err == nil {
+	if _, err := svc.FinalizeChunk(context.Background(), sess, "/", ".trash"); err == nil {
 		t.Error("reserved filename should be rejected")
 	}
 }
@@ -310,8 +317,279 @@ func TestSaveUpload_LeavesNoTempBehind(t *testing.T) {
 	}
 }
 
+// --- atomic non-overwriting finalization -----------------------------------
+// These tests pin the check-then-act fix: on Unix, os.Rename silently
+// replaces an existing destination, so a naive stat-then-rename lets a
+// racing operation's file be destroyed. Exactly one contender must win
+// with a complete file; every loser must see FILE_EXISTS; pre-existing
+// destinations must survive byte-for-byte.
+
+func TestSaveUpload_ConcurrentSameDestination(t *testing.T) {
+	svc, root := newSvcForSecurity(t)
+	const racers = 8
+	payloads := make([]string, racers)
+	for i := range payloads {
+		payloads[i] = "payload-" + strings.Repeat(string(rune('A'+i)), 256)
+	}
+
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	errs := make([]error, racers)
+	for i := 0; i < racers; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			<-start
+			_, errs[i] = svc.SaveUpload(context.Background(), "/", "race.txt",
+				strings.NewReader(payloads[i]), int64(len(payloads[i])))
+		}(i)
+	}
+	close(start)
+	wg.Wait()
+
+	wins := 0
+	for _, err := range errs {
+		if err == nil {
+			wins++
+			continue
+		}
+		var appErr *AppError
+		if !errors.As(err, &appErr) || appErr.Code != ErrFileExists {
+			t.Fatalf("loser must see FILE_EXISTS, got %v", err)
+		}
+	}
+	if wins != 1 {
+		t.Fatalf("exactly one upload must win, got %d", wins)
+	}
+	got, err := os.ReadFile(filepath.Join(root, "race.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	complete := false
+	for _, p := range payloads {
+		if string(got) == p {
+			complete = true
+		}
+	}
+	if !complete {
+		t.Error("winner file is truncated or interleaved, not one complete payload")
+	}
+	entries, _ := os.ReadDir(root)
+	for _, e := range entries {
+		if strings.Contains(e.Name(), ".tmp-") {
+			t.Errorf("temp file left behind: %q", e.Name())
+		}
+	}
+}
+
+func TestSaveUpload_ExistingDestinationKept(t *testing.T) {
+	svc, root := newSvcForSecurity(t)
+	if err := os.WriteFile(filepath.Join(root, "keep.txt"), []byte("original-bytes"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := svc.SaveUpload(context.Background(), "/", "keep.txt",
+		strings.NewReader("attacker-bytes"), int64(len("attacker-bytes")))
+	if err == nil {
+		t.Fatal("upload over an existing file must fail")
+	}
+	var appErr *AppError
+	if !errors.As(err, &appErr) || appErr.Code != ErrFileExists {
+		t.Fatalf("want FILE_EXISTS, got %v", err)
+	}
+	got, _ := os.ReadFile(filepath.Join(root, "keep.txt"))
+	if string(got) != "original-bytes" {
+		t.Errorf("pre-existing file was clobbered: %q", got)
+	}
+}
+
+func TestRename_ConcurrentSameTarget(t *testing.T) {
+	svc, root := newSvcForSecurity(t)
+	if err := os.WriteFile(filepath.Join(root, "a.txt"), []byte("content-A"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "b.txt"), []byte("content-B"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	errs := make([]error, 2)
+	for i, src := range []string{"/a.txt", "/b.txt"} {
+		wg.Add(1)
+		go func(i int, src string) {
+			defer wg.Done()
+			<-start
+			errs[i] = svc.Rename(src, "c.txt")
+		}(i, src)
+	}
+	close(start)
+	wg.Wait()
+
+	wins := 0
+	for _, err := range errs {
+		if err == nil {
+			wins++
+			continue
+		}
+		var appErr *AppError
+		if !errors.As(err, &appErr) || appErr.Code != ErrFileExists {
+			t.Fatalf("loser must see FILE_EXISTS, got %v", err)
+		}
+	}
+	if wins != 1 {
+		t.Fatalf("exactly one rename must win, got %d", wins)
+	}
+	got, err := os.ReadFile(filepath.Join(root, "c.txt"))
+	if err != nil || (string(got) != "content-A" && string(got) != "content-B") {
+		t.Errorf("winner file incomplete or missing: %v %q", err, got)
+	}
+}
+
+func TestRename_Move_DirectoryStillWorks(t *testing.T) {
+	svc, root := newSvcForSecurity(t)
+	if err := svc.CreateDirectory("/srcdir"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "srcdir", "inner.txt"), []byte("in"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	// Directory rename/move must keep working through the no-replace path.
+	if err := svc.Rename("/srcdir", "destdir"); err != nil {
+		t.Fatalf("dir rename: %v", err)
+	}
+	if err := svc.Move("/destdir", "/moved"); err != nil {
+		t.Fatalf("dir move: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "moved", "inner.txt")); err != nil {
+		t.Errorf("moved tree incomplete: %v", err)
+	}
+	// ...and still refuse to overwrite an existing directory.
+	if err := svc.CreateDirectory("/other"); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Rename("/moved", "other"); err == nil {
+		t.Error("rename onto an existing directory must fail")
+	}
+}
+
+func TestMove_ExistingDestinationKept(t *testing.T) {
+	svc, root := newSvcForSecurity(t)
+	if err := os.WriteFile(filepath.Join(root, "victim.txt"), []byte("victim-bytes"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "src.txt"), []byte("src-bytes"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Move("/src.txt", "/victim.txt"); err == nil {
+		t.Fatal("move onto an existing file must fail")
+	}
+	got, _ := os.ReadFile(filepath.Join(root, "victim.txt"))
+	if string(got) != "victim-bytes" {
+		t.Errorf("destination was clobbered: %q", got)
+	}
+	if _, err := os.Stat(filepath.Join(root, "src.txt")); err != nil {
+		t.Error("source must survive a refused move")
+	}
+}
+
+func TestCopy_ExistingDestinationKept(t *testing.T) {
+	svc, root := newSvcForSecurity(t)
+	if err := os.WriteFile(filepath.Join(root, "dst.txt"), []byte("dst-bytes"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "src.txt"), []byte("src-bytes"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Copy(context.Background(), "/src.txt", "/dst.txt"); err == nil {
+		t.Fatal("copy onto an existing file must fail")
+	}
+	got, _ := os.ReadFile(filepath.Join(root, "dst.txt"))
+	if string(got) != "dst-bytes" {
+		t.Errorf("destination was clobbered: %q", got)
+	}
+}
+
+func TestTrashRestore_ExistingDestinationKept(t *testing.T) {
+	svc, root := newSvcForSecurity(t)
+	if err := os.WriteFile(filepath.Join(root, "f.txt"), []byte("v1"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.TrashMove("/f.txt"); err != nil {
+		t.Fatal(err)
+	}
+	items, err := svc.TrashList()
+	if err != nil || len(items) != 1 {
+		t.Fatalf("trash list = %+v, %v", items, err)
+	}
+	// Someone recreates the path before the restore lands.
+	if err := os.WriteFile(filepath.Join(root, "f.txt"), []byte("v2"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.TrashRestore(items[0].ID); err == nil {
+		t.Fatal("restore onto an existing file must fail")
+	}
+	got, _ := os.ReadFile(filepath.Join(root, "f.txt"))
+	if string(got) != "v2" {
+		t.Errorf("recreated file was clobbered: %q", got)
+	}
+	// The trash entry (and its metadata) must survive the refused restore
+	// so the user can restore elsewhere after clearing the path.
+	if items, err := svc.TrashList(); err != nil || len(items) != 1 {
+		t.Errorf("trash entry must survive a refused restore: %+v, %v", items, err)
+	}
+}
+
+func TestTrashRestore_RejectsCraftedID(t *testing.T) {
+	svc, _ := newSvcForSecurity(t)
+	for _, id := range []string{"../x", "..", "/abs", "12/34", "abc", "", "1.meta", ".", "1 "} {
+		err := svc.TrashRestore(id)
+		var appErr *AppError
+		if !errors.As(err, &appErr) || appErr.Code != ErrInvalidRequest {
+			t.Errorf("TrashRestore(%q) must be rejected as invalid, got %v", id, err)
+		}
+	}
+	// A well-formed but unknown ID is a lookup miss, not a validation hit.
+	if err := svc.TrashRestore("123456789"); err == nil {
+		t.Fatal("unknown trash id must fail")
+	} else {
+		var appErr *AppError
+		if !errors.As(err, &appErr) || appErr.Code != ErrFileNotFound {
+			t.Errorf("unknown trash id must be FILE_NOT_FOUND, got %v", err)
+		}
+	}
+}
+
+func TestSaveChunk_DuplicateIndexRejected(t *testing.T) {
+	svc, _ := newSvcForSecurity(t)
+	sess := sessID("dupidx")
+	if err := svc.SaveChunk(sess, 0, strings.NewReader("first")); err != nil {
+		t.Fatal(err)
+	}
+	// A second write to the same slot must fail loudly instead of
+	// silently interleaving bytes into the winner's chunk file.
+	if err := svc.SaveChunk(sess, 0, strings.NewReader("second")); err == nil {
+		t.Fatal("duplicate chunk index must fail")
+	} else {
+		var appErr *AppError
+		if !errors.As(err, &appErr) || appErr.Code != ErrFileExists {
+			t.Fatalf("want FILE_EXISTS, got %v", err)
+		}
+	}
+	p, err := svc.FinalizeChunk(context.Background(), sess, "/", "dup.txt")
+	if err != nil || p != "/dup.txt" {
+		t.Fatalf("finalize after refused duplicate: %v %q", err, p)
+	}
+}
+
 func newSvcForSecurity(t *testing.T) (*FileService, string) {
 	t.Helper()
 	root := t.TempDir()
 	return NewFileService(root, 10<<20), root
+}
+
+// sessID hands out globally-unique chunk session IDs: chunk state lives in
+// a shared OS temp dir (not the per-test storage root), so fixed IDs would
+// collide with leftovers from earlier runs and turn O_EXCL's protection
+// into false failures.
+func sessID(tag string) string {
+	return fmt.Sprintf("t%d-%d-%s", os.Getpid(), time.Now().UnixNano(), tag)
 }
